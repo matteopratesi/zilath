@@ -16,6 +16,7 @@
  */
 package dev.varco.verifier.openid4vp
 
+import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
 import dev.varco.verifier.core.StatusChecker
 import dev.varco.verifier.core.TrustEvaluator
@@ -36,8 +37,17 @@ data class RpKeys(
     val responseEncryptionKey: ECKey,
 ) {
     init {
-        require(requestSigningKey.isPrivate) { "requestSigningKey must contain private key material" }
-        require(responseEncryptionKey.isPrivate) { "responseEncryptionKey must contain private key material" }
+        requireProfileKey("requestSigningKey", requestSigningKey)
+        requireProfileKey("responseEncryptionKey", responseEncryptionKey)
+    }
+
+    private fun requireProfileKey(
+        name: String,
+        key: ECKey,
+    ) {
+        require(key.isPrivate) { "$name must contain private key material" }
+        require(key.curve == Curve.P_256) { "$name must be a P-256 key (IT-Wallet profile)" }
+        require(!key.keyID.isNullOrBlank()) { "$name must carry a kid (used in the JAR header)" }
     }
 
     /** Nimbus keys serialize their private parameters: never let them reach a log. */

@@ -39,6 +39,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.time.Duration
 
@@ -187,6 +188,18 @@ class OpenId4VpFlowIntegrationTest {
         assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.INTERNAL_ERROR)
         assertThat(outcome.detail).doesNotContain("status backend down")
         assertThat(fragileFlow.awaitOutcome(started.id)).isEqualTo(outcome)
+    }
+
+    @Test
+    fun `keys outside the profile are rejected at configuration time`() {
+        assertThatThrownBy { RpKeys(signingKey.toPublicJWK(), encryptionKey) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        val wrongCurve = ECKeyGenerator(Curve.P_384).keyID("p384").generate()
+        assertThatThrownBy { RpKeys(wrongCurve, encryptionKey) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        val missingKid = ECKeyGenerator(Curve.P_256).generate()
+        assertThatThrownBy { RpKeys(missingKid, encryptionKey) }
+            .isInstanceOf(IllegalArgumentException::class.java)
     }
 
     @Test
