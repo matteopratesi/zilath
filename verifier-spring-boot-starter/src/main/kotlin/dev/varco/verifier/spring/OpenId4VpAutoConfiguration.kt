@@ -29,6 +29,7 @@ import dev.varco.verifier.openid4vp.VerificationFlow
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import java.time.Clock
@@ -53,6 +54,7 @@ class OpenId4VpAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(VerificationFlow::class)
     @ConditionalOnBean(TrustEvaluator::class, StatusChecker::class)
+    @ConditionalOnProperty(prefix = "varco.openid4vp", name = ["client-id"])
     fun verificationFlow(
         properties: OpenId4VpProperties,
         verifier: CredentialVerifier,

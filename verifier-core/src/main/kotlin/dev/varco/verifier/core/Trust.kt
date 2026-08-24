@@ -36,6 +36,11 @@ data class IssuerTrustInput(
     val keyId: String?,
     /** The `x5c` JWS header chain, base64-encoded DER certificates, outermost first. */
     val certificateChain: List<String>,
+    /**
+     * The `trust_chain` JWS header parameter (OpenID Federation, IT-Wallet offline
+     * scenarios): entity statements from the leaf to the trust anchor, if present.
+     */
+    val trustChain: List<String> = emptyList(),
 )
 
 sealed interface TrustDecision {

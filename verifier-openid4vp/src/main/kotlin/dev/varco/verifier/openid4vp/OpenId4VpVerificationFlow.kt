@@ -67,11 +67,14 @@ class OpenId4VpVerificationFlow(
                     current
                 }
             } ?: return FlowOutcome.Unknown
+        val walletError = body.parameters["error"]
         val outcome =
             when {
                 before.isExpired(clock.instant(), config.transactionTimeToLive) -> FlowOutcome.Expired
                 before.state != TransactionState.CREATED ->
                     FlowOutcome.Rejected(RejectionReason.REPLAY, "transaction nonce already consumed")
+                walletError != null ->
+                    FlowOutcome.WalletErrorAcknowledged(walletError, body.parameters["error_description"])
                 else -> verifyResponse(before, body)
             }
         record(txId, before, outcome)
@@ -134,7 +137,10 @@ class OpenId4VpVerificationFlow(
             else ->
                 store.compareAndUpdate(txId) { current ->
                     val state =
-                        if (outcome is FlowOutcome.Verified) TransactionState.VERIFIED else TransactionState.REJECTED
+                        when (outcome) {
+                            is FlowOutcome.Verified -> TransactionState.VERIFIED
+                            else -> TransactionState.REJECTED
+                        }
                     current.copy(state = state, outcome = outcome)
                 }
         }

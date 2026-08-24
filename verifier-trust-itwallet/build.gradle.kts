@@ -9,6 +9,10 @@ kotlin {
 }
 
 dependencies {
+    api(project(":verifier-core"))
+    implementation(libs.nimbus.jose.jwt)
+    implementation(libs.kotlinx.serialization.json)
+    testImplementation(testFixtures(project(":verifier-core")))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
     testRuntimeOnly(libs.junit.platform.launcher)

@@ -288,6 +288,17 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
+    fun `a wallet error response is acknowledged and terminal`() {
+        val started = startForPid()
+        val body = DirectPostBody(mapOf("error" to "access_denied", "error_description" to "user cancelled"))
+        val outcome = flow.handleWalletResponse(started.id, body)
+        assertThat(outcome).isEqualTo(FlowOutcome.WalletErrorAcknowledged("access_denied", "user cancelled"))
+        assertThat(flow.awaitOutcome(started.id)).isEqualTo(outcome)
+        val afterwards = flow.handleWalletResponse(started.id, DirectPostBody(emptyMap()))
+        assertThat((afterwards as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.REPLAY)
+    }
+
+    @Test
     fun `pending transaction reports pending`() {
         val started = startForPid()
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Pending)

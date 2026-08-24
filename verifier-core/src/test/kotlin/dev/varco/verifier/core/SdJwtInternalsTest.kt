@@ -69,6 +69,28 @@ class SdJwtInternalsTest {
     }
 
     @Test
+    fun `trust_chain header parameter reaches the trust input`() {
+        val issuerJwt = parseIssuerJwt(TestVectors.vector())
+        assertThat(trustInputOf(issuerJwt).trustChain).isEmpty()
+        val withChain =
+            com.nimbusds.jwt.SignedJWT(
+                com.nimbusds.jose.JWSHeader
+                    .Builder(com.nimbusds.jose.JWSAlgorithm.ES256)
+                    .customParam("trust_chain", listOf("statement-a", "statement-b"))
+                    .build(),
+                com.nimbusds.jwt.JWTClaimsSet
+                    .Builder()
+                    .issuer("https://issuer.example")
+                    .build(),
+            )
+        withChain.sign(
+            com.nimbusds.jose.crypto
+                .ECDSASigner(TestVectors.issuerEcKey),
+        )
+        assertThat(trustInputOf(withChain).trustChain).containsExactly("statement-a", "statement-b")
+    }
+
+    @Test
     fun `sd_hash changes when a disclosure is withheld`() {
         val compact = TestVectors.vector()
         val withheld =

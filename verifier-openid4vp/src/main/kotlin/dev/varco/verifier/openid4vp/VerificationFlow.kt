@@ -112,6 +112,15 @@ sealed interface FlowOutcome {
     /** The wallet has not answered yet. */
     data object Pending : FlowOutcome
 
+    /**
+     * The wallet sent an authorization error response (e.g. `access_denied`): terminal,
+     * and acknowledged with HTTP 200 as OpenID4VP requires for `direct_post`.
+     */
+    data class WalletErrorAcknowledged(
+        val error: String,
+        val description: String? = null,
+    ) : FlowOutcome
+
     data class Verified(
         val claims: DisclosedClaims,
     ) : FlowOutcome
