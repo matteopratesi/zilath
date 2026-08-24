@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.ktlint)
     alias(libs.plugins.detekt)
     jacoco
+    `java-test-fixtures`
 }
 
 kotlin {
@@ -14,6 +15,8 @@ dependencies {
     api(libs.kotlinx.serialization.json)
     implementation(libs.eudi.sdjwt)
     implementation(libs.kotlinx.coroutines.core)
+    testFixturesImplementation(libs.eudi.sdjwt)
+    testFixturesImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
     testRuntimeOnly(libs.junit.platform.launcher)
