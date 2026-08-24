@@ -1,0 +1,32 @@
+# Versions verified on Maven Central on 2026-08-24.
+# Dependency choices are bound by the project plan (varco repo, docs/03 §4):
+# do not swap libraries without recording the decision in the project log.
+
+[versions]
+kotlin = "2.4.10"
+springBoot = "4.1.1"
+nimbusJoseJwt = "10.3"
+eudiSdJwt = "0.13.1"
+zxing = "3.5.4"
+junit = "5.14.4"
+assertj = "3.27.7"
+ktlintPlugin = "14.2.0"
+detekt = "1.23.8"
+spotless = "8.10.0"
+
+[libraries]
+nimbus-jose-jwt = { module = "com.nimbusds:nimbus-jose-jwt", version.ref = "nimbusJoseJwt" }
+eudi-sdjwt = { module = "eu.europa.ec.eudi:eudi-lib-jvm-sdjwt-kt", version.ref = "eudiSdJwt" }
+# eudi-lib-jvm-openid4vp-kt: added in M0.3 as testImplementation (wallet simulator);
+# artifact coordinates to be confirmed at that point (not found on Central on 2026-08-24).
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintPlugin" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
