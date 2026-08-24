@@ -8,6 +8,8 @@ springBoot = "4.1.1"
 nimbusJoseJwt = "10.3"
 eudiSdJwt = "0.13.1"
 zxing = "3.5.4"
+kotlinxCoroutines = "1.11.0"
+kotlinxSerialization = "1.11.0"
 junit = "5.14.4"
 assertj = "3.27.7"
 ktlintPlugin = "14.2.0"
@@ -20,6 +22,8 @@ eudi-sdjwt = { module = "eu.europa.ec.eudi:eudi-lib-jvm-sdjwt-kt", version.ref =
 # eudi-lib-jvm-openid4vp-kt: added in M0.3 as testImplementation (wallet simulator);
 # artifact coordinates to be confirmed at that point (not found on Central on 2026-08-24).
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
