@@ -31,6 +31,42 @@ Requires JDK 21 (a Gradle toolchain will pick it up).
 ./gradlew build
 ```
 
+## Try the demo
+
+A fake event checkout that unlocks a companion ticket by presenting the test PID from a
+wallet (the PagoPA conformance tool acts as the wallet — Node >= 22 required).
+
+1. Generate a self-signed RP certificate (the wallet requires the `x509_hash` scheme):
+
+   ```sh
+   mkdir -p demo-keys && cd demo-keys && \
+   openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+     -keyout rp-key.pem -out rp-cert.pem -days 30 -nodes -subj "/CN=localhost" && \
+   cat rp-cert.pem rp-key.pem > rp-combined.pem && cd ..
+   ```
+
+2. Start the app (trust is bootstrapped against the tool's local anchor):
+
+   ```sh
+   VARCO_TRUST_ANCHOR_ID=https://localhost:3001 VARCO_TRUST_ANCHOR_TOFU=true \
+   VARCO_INSECURE_TLS=true VARCO_PID_VCT=urn:eudi:pid:it:1 \
+   VARCO_RP_PEM_PATH=$PWD/demo-keys/rp-combined.pem \
+   ./gradlew :demo-checkout:bootRun
+   ```
+
+3. Open <http://localhost:8080/demo>, click "Ho diritto al biglietto accompagnatore" and
+   copy the transaction id shown on the QR page.
+4. Let the test wallet present the PID:
+
+   ```sh
+   ./scripts/run-demo-wallet.sh <transactionId>
+   ```
+
+5. The page turns into a nominative companion ticket; the "ricevuta di verifica" link is
+   the signed receipt a venue would keep — outcome and timestamp, never a document.
+
+For the full conformance run against this RP, see [docs/conformance](docs/conformance/).
+
 ## License
 
 AGPL-3.0 — free to use in open-source software. For embedding in closed-source commercial

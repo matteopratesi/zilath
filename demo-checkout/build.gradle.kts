@@ -14,9 +14,11 @@ dependencies {
     implementation(project(":verifier-spring-boot-starter"))
     implementation(project(":verifier-trust-itwallet"))
     implementation(libs.spring.boot.starter.web)
+    implementation(libs.zxing.core)
     // Nimbus needs BouncyCastle to parse PEM key material (demo-only dependency).
     runtimeOnly(libs.bcpkix)
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.boot.starter.webmvc.test)
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
     testRuntimeOnly(libs.junit.platform.launcher)
