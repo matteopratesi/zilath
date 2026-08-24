@@ -34,7 +34,17 @@ data class RpKeys(
     val requestSigningKey: ECKey,
     /** EC P-256 key (with kid) the wallet encrypts responses to (`direct_post.jwt`). */
     val responseEncryptionKey: ECKey,
-)
+) {
+    init {
+        require(requestSigningKey.isPrivate) { "requestSigningKey must contain private key material" }
+        require(responseEncryptionKey.isPrivate) { "responseEncryptionKey must contain private key material" }
+    }
+
+    /** Nimbus keys serialize their private parameters: never let them reach a log. */
+    override fun toString(): String =
+        "RpKeys(requestSigningKey=kid:${requestSigningKey.keyID}, " +
+            "responseEncryptionKey=kid:${responseEncryptionKey.keyID})"
+}
 
 data class RelyingPartyConfiguration(
     /** The RP identifier: also the audience the key binding JWT must be addressed to. */

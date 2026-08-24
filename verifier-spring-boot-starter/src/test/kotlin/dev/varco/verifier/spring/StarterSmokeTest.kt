@@ -22,6 +22,7 @@ import dev.varco.verifier.core.CredentialStatus
 import dev.varco.verifier.core.StatusChecker
 import dev.varco.verifier.core.TrustDecision
 import dev.varco.verifier.core.TrustEvaluator
+import dev.varco.verifier.openid4vp.FlowOutcome
 import dev.varco.verifier.openid4vp.PresentationRequest
 import dev.varco.verifier.openid4vp.VerificationFlow
 import org.assertj.core.api.Assertions.assertThat
@@ -113,6 +114,12 @@ class StarterSmokeTest {
         mockMvc
             .perform(get("/openid4vp/request/{txId}", started.id.value))
             .andExpect(status().isNotFound)
-        assertThat(true).isTrue()
+        mockMvc
+            .perform(
+                post("/openid4vp/response/{txId}", started.id.value)
+                    .contentType("application/x-www-form-urlencoded")
+                    .param("response", "not-a-jwe"),
+            ).andExpect(status().isBadRequest)
+        assertThat(flow.awaitOutcome(started.id)).isInstanceOf(FlowOutcome.Rejected::class.java)
     }
 }

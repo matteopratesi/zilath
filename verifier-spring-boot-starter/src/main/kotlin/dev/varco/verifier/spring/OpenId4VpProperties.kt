@@ -37,6 +37,13 @@ data class OpenId4VpProperties(
     val walletAuthorizationScheme: String = "openid4vp://",
     val transactionTimeToLiveSeconds: Long = DEFAULT_TTL_SECONDS,
 ) {
+    /** The JWK properties carry private key material: never let them reach a log. */
+    override fun toString(): String =
+        "OpenId4VpProperties(clientId=$clientId, requestUriBase=$requestUriBase, " +
+            "responseUriBase=$responseUriBase, requestSigningKeyJwk=[REDACTED], " +
+            "responseEncryptionKeyJwk=[REDACTED], walletAuthorizationScheme=$walletAuthorizationScheme, " +
+            "transactionTimeToLiveSeconds=$transactionTimeToLiveSeconds)"
+
     companion object {
         const val DEFAULT_TTL_SECONDS = 300L
     }

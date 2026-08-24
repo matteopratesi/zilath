@@ -47,6 +47,9 @@ internal const val RESPONSE_MODE = "direct_post.jwt"
 internal const val RESPONSE_ENCRYPTION_ALG = "ECDH-ES"
 internal const val RESPONSE_ENCRYPTION_ENC = "A256GCM"
 
+/** OpenID4VP §5.8: `aud` of a request object addressed to a wallet (static discovery). */
+internal const val WALLET_AUDIENCE = "https://self-issued.me/v2"
+
 private val secureRandom = SecureRandom()
 
 /** Internal short-circuit carrying a rejection out of the response pipeline. */
@@ -85,6 +88,7 @@ internal fun buildRequestJwt(
         JWTClaimsSet
             .Builder()
             .issuer(config.clientId)
+            .audience(WALLET_AUDIENCE)
             .claim("client_id", config.clientId)
             .claim("response_type", "vp_token")
             .claim("response_mode", RESPONSE_MODE)
@@ -94,7 +98,8 @@ internal fun buildRequestJwt(
             .claim("dcql_query", jsonToMap(transaction.request.dcqlQuery))
             .claim("client_metadata", clientMetadataOf(config))
             .issueTime(Date.from(now))
-            .expirationTime(Date.from(now.plus(config.transactionTimeToLive)))
+            // The JAR must not advertise a validity window outliving the transaction itself.
+            .expirationTime(Date.from(transaction.createdAt.plus(config.transactionTimeToLive)))
             .build()
     val header =
         JWSHeader

@@ -139,6 +139,63 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
+    fun `request object is addressed to the wallet audience and expires with the transaction`() {
+        val started = startForPid()
+        clock.advance(Duration.ofMinutes(1))
+        val jwt = SignedJWT.parse(flow.requestJwtFor(started.id))
+        assertThat(jwt.jwtClaimsSet.audience).containsExactly("https://self-issued.me/v2")
+        // exp is bound to the transaction creation, not to the fetch instant.
+        assertThat(jwt.jwtClaimsSet.expirationTime.toInstant())
+            .isEqualTo(TestVectors.NOW.plus(Duration.ofMinutes(5)))
+    }
+
+    @Test
+    fun `a recorded outcome survives the transaction expiry`() {
+        val started = startForPid()
+        flow.handleWalletResponse(started.id, walletBody(started))
+        clock.advance(Duration.ofMinutes(6))
+        assertThat(flow.awaitOutcome(started.id)).isInstanceOf(FlowOutcome.Verified::class.java)
+    }
+
+    @Test
+    fun `a throwing status checker ends in a terminal internal error, not a stuck transaction`() {
+        val throwingStatus = StatusChecker { error("status backend down") }
+        val fragileFlow =
+            OpenId4VpVerificationFlow.withInMemoryStore(
+                config.copy(statusChecker = throwingStatus),
+                SdJwtVcCredentialVerifier(),
+                clock,
+            )
+        val started = fragileFlow.start(PresentationRequest.forTestPid("urn:varco:test:entitlement"))
+        val jar = checkNotNull(fragileFlow.requestJwtFor(started.id))
+        val claims = SignedJWT.parse(jar).jwtClaimsSet
+        val compact =
+            TestVectors.vector(
+                nonce = claims.getStringClaim("nonce"),
+                audience = config.clientId,
+                statusUri = "https://status.example/1",
+                statusIndex = 3,
+            )
+        val payload =
+            buildJsonObject {
+                put("vp_token", JsonPrimitive(compact))
+                put("state", claims.getStringClaim("state"))
+            }
+        val jwe = JWEObject(JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM), Payload(payload.toString()))
+        jwe.encrypt(ECDHEncrypter(encryptionKey.toPublicJWK().toECKey()))
+        val outcome = fragileFlow.handleWalletResponse(started.id, DirectPostBody(mapOf("response" to jwe.serialize())))
+        assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.INTERNAL_ERROR)
+        assertThat(outcome.detail).doesNotContain("status backend down")
+        assertThat(fragileFlow.awaitOutcome(started.id)).isEqualTo(outcome)
+    }
+
+    @Test
+    fun `configuration toString never contains private key material`() {
+        assertThat(config.toString()).doesNotContain(signingKey.d.toString())
+        assertThat(config.toString()).doesNotContain(encryptionKey.d.toString())
+    }
+
+    @Test
     fun `a second response for the same transaction is rejected as replay`() {
         val started = startForPid()
         val body = walletBody(started)

@@ -81,10 +81,10 @@ class OpenId4VpVerificationFlow(
     override fun awaitOutcome(txId: TransactionId): FlowOutcome {
         val transaction = store.get(txId) ?: return FlowOutcome.Unknown
         return when {
+            // A recorded outcome survives expiry: the checkout must still observe it.
+            transaction.outcome != null -> transaction.outcome
             transaction.isExpired(clock.instant(), config.transactionTimeToLive) -> FlowOutcome.Expired
-            transaction.state == TransactionState.CREATED -> FlowOutcome.Pending
-            transaction.state == TransactionState.PRESENTED -> FlowOutcome.Pending
-            else -> transaction.outcome ?: FlowOutcome.Pending
+            else -> FlowOutcome.Pending
         }
     }
 
@@ -92,7 +92,7 @@ class OpenId4VpVerificationFlow(
         transaction: Transaction,
         body: DirectPostBody,
     ): FlowOutcome =
-        try {
+        runCatching {
             val jwe = body.response ?: flowReject(RejectionReason.MALFORMED, "missing response parameter")
             val payload = decryptWalletResponse(jwe, config)
             checkState(payload, transaction)
@@ -109,8 +109,17 @@ class OpenId4VpVerificationFlow(
                 is VerificationResult.Verified -> FlowOutcome.Verified(result.claims)
                 is VerificationResult.Rejected -> FlowOutcome.Rejected(result.reason, result.detail)
             }
-        } catch (rejection: FlowRejection) {
-            FlowOutcome.Rejected(rejection.reason, rejection.detail)
+        }.getOrElse { failure ->
+            when (failure) {
+                is FlowRejection -> FlowOutcome.Rejected(failure.reason, failure.detail)
+                else -> {
+                    // Application-supplied TrustEvaluator/StatusChecker beans may throw anything:
+                    // the transaction must still reach a terminal state (its nonce is consumed),
+                    // and internals must not leak towards the wallet.
+                    logger.log(System.Logger.Level.ERROR, "verification pipeline failure", failure)
+                    FlowOutcome.Rejected(RejectionReason.INTERNAL_ERROR, "verification pipeline failure")
+                }
+            }
         }
 
     private fun record(
@@ -132,6 +141,8 @@ class OpenId4VpVerificationFlow(
     }
 
     companion object {
+        private val logger = System.getLogger(OpenId4VpVerificationFlow::class.java.name)
+
         private const val TRANSACTION_ID_BYTES = 16
 
         /** 32 random bytes -> 43 base64url chars, above the 32-char minimum of the profile. */

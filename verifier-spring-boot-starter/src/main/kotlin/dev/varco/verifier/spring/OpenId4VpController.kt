@@ -60,7 +60,11 @@ class OpenId4VpController(
                 )
         ) {
             is FlowOutcome.Verified -> ResponseEntity.ok(emptyMap())
-            is FlowOutcome.Rejected -> badRequest(outcome.detail ?: outcome.reason.name)
+            is FlowOutcome.Rejected -> {
+                // detail is a server-side diagnostic: only the reason code reaches the wallet.
+                logger.warn("wallet response rejected: {} ({})", outcome.reason, outcome.detail)
+                badRequest(outcome.reason.name)
+            }
             FlowOutcome.Expired -> badRequest("transaction expired")
             FlowOutcome.Pending -> badRequest("response not processable")
             FlowOutcome.Unknown -> ResponseEntity.notFound().build()
@@ -73,5 +77,6 @@ class OpenId4VpController(
 
     companion object {
         const val REQUEST_OBJECT_MEDIA_TYPE = "application/oauth-authz-req+jwt"
+        private val logger = org.slf4j.LoggerFactory.getLogger(OpenId4VpController::class.java)
     }
 }

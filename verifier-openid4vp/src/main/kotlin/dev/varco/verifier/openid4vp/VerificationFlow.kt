@@ -18,8 +18,13 @@ package dev.varco.verifier.openid4vp
 
 import dev.varco.verifier.core.DisclosedClaims
 import dev.varco.verifier.core.RejectionReason
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 
 /**
  * The OpenID4VP relying-party flow (cross-device, IT-Wallet profile v1.4.5):
@@ -66,22 +71,22 @@ data class PresentationRequest(
          */
         fun forTestPid(vct: String): PresentationRequest {
             val dcql =
-                """
-                {
-                  "credentials": [
-                    {
-                      "id": "pid",
-                      "format": "dc+sd-jwt",
-                      "meta": { "vct_values": ["$vct"] },
-                      "claims": [
-                        { "path": ["given_name"] },
-                        { "path": ["family_name"] }
-                      ]
+                buildJsonObject {
+                    putJsonArray("credentials") {
+                        addJsonObject {
+                            put("id", "pid")
+                            put("format", "dc+sd-jwt")
+                            putJsonObject("meta") {
+                                putJsonArray("vct_values") { add(vct) }
+                            }
+                            putJsonArray("claims") {
+                                addJsonObject { putJsonArray("path") { add("given_name") } }
+                                addJsonObject { putJsonArray("path") { add("family_name") } }
+                            }
+                        }
                     }
-                  ]
                 }
-                """.trimIndent()
-            return PresentationRequest(Json.parseToJsonElement(dcql) as JsonObject, "pid")
+            return PresentationRequest(dcql, "pid")
         }
     }
 }
