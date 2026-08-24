@@ -81,17 +81,31 @@ internal fun httpFetcher(insecureTls: Boolean): FederationFetcher {
         context.init(null, arrayOf(trustAll), SecureRandom())
         builder.sslContext(context)
     }
-    val client = builder.build()
+    val client = builder.connectTimeout(java.time.Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS)).build()
     return FederationFetcher { url ->
-        val response =
-            client.send(
-                HttpRequest.newBuilder(URI.create(url)).GET().build(),
-                HttpResponse.BodyHandlers.ofString(),
-            )
+        val uri = URI.create(url)
+        if (insecureTls) {
+            // The documented restriction, enforced: trust-all TLS never leaves this machine.
+            check(uri.host in LOOPBACK_HOSTS) { "insecure TLS is restricted to loopback, refused for ${uri.host}" }
+        }
+        val request =
+            HttpRequest
+                .newBuilder(uri)
+                .timeout(java.time.Duration.ofSeconds(REQUEST_TIMEOUT_SECONDS))
+                .GET()
+                .build()
+        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
         check(response.statusCode() in HTTP_OK_MIN..HTTP_OK_MAX) { "GET $url returned ${response.statusCode()}" }
+        check(
+            response.body().length <= MAX_RESPONSE_CHARS,
+        ) { "response from $url larger than $MAX_RESPONSE_CHARS chars" }
         response.body()
     }
 }
 
 private const val HTTP_OK_MIN = 200
 private const val HTTP_OK_MAX = 299
+private const val CONNECT_TIMEOUT_SECONDS = 5L
+private const val REQUEST_TIMEOUT_SECONDS = 10L
+private const val MAX_RESPONSE_CHARS = 256 * 1024
+private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1", "[::1]")

@@ -57,7 +57,7 @@ class FederationTrustEvaluator(
                 } else {
                     resolveChain(issuerChain.issuer ?: trustFail("credential has no iss claim"))
                 }
-            TrustDecision.Trusted(validateChain(chain, issuerChain.issuer, anchor, clock))
+            TrustDecision.Trusted(validateChain(chain, issuerChain.issuer, anchor, clock, maxChainLength))
         }.getOrElse { failure ->
             when (failure) {
                 is TrustFailure -> TrustDecision.Untrusted(failure.message)
@@ -80,10 +80,6 @@ class FederationTrustEvaluator(
             current = superiorConfiguration
         }
         return statements.map { it.serialized }
-    }
-
-    companion object {
-        private const val DEFAULT_MAX_CHAIN_LENGTH = 4
     }
 }
 

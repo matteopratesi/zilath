@@ -137,6 +137,8 @@ class OpenId4VpFlowIntegrationTest {
         assertThat(claims.getJSONObjectClaim("dcql_query")["credentials"]).isNotNull()
         assertThat(claims.getStringClaim("response_uri"))
             .isEqualTo("https://rp.example/openid4vp/response/${started.id.value}")
+        val advertisedKey = advertisedEncryptionKey(claims.getJSONObjectClaim("client_metadata"))
+        assertThat(advertisedKey.algorithm?.name).isEqualTo("ECDH-ES")
     }
 
     @Test

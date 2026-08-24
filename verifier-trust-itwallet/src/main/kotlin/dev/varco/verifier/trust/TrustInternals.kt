@@ -118,6 +118,8 @@ internal fun fetchSubordinateStatement(
     return parseStatement(body)
 }
 
+internal const val DEFAULT_MAX_CHAIN_LENGTH = 4
+
 /**
  * Validates a trust chain ordered leaf-first (spec v1.4.5 §6.11): each statement's
  * signature is checked top-down starting from the out-of-band anchor keys, iss/sub
@@ -129,8 +131,11 @@ internal fun validateChain(
     expectedIssuer: String?,
     anchor: TrustAnchorConfig,
     clock: Clock,
+    maxChainLength: Int = DEFAULT_MAX_CHAIN_LENGTH,
 ): List<JWK> {
     if (chain.size < 2) trustFail("a trust chain needs at least the leaf and an anchor statement")
+    // The offline chain comes from an attacker-controlled header: bound it before any parsing.
+    if (chain.size > maxChainLength) trustFail("trust chain longer than $maxChainLength statements")
     val statements = chain.map(::parseStatement)
     val leaf = statements.first()
     checkChainShape(statements, leaf, expectedIssuer, anchor)

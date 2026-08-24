@@ -11,7 +11,7 @@
   `direct_post.jwt` response decrypted, mock PID validated through the OpenID Federation
   trust chain, claims disclosed.
 - Every failure belongs to one of the gap families listed in
-  [../note-divergenze.md](../note-divergenze.md): same-device flow (out of v0 scope),
+  [../../note-divergenze.md](../../note-divergenze.md): same-device flow (out of v0 scope),
   RP federation onboarding (entity configuration endpoint), or test preconditions on those.
 
 ## How to reproduce

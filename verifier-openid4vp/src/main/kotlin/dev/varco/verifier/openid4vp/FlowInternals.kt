@@ -122,8 +122,15 @@ private fun clientMetadataOf(config: RelyingPartyConfiguration): Map<String, Any
             mapOf(
                 "keys" to
                     listOf(
-                        config.keys.responseEncryptionKey
-                            .toPublicJWK()
+                        // The wallet selects the response encryption key by its alg.
+                        com.nimbusds.jose.jwk
+                            .ECKey
+                            .Builder(
+                                config.keys.responseEncryptionKey
+                                    .toPublicJWK()
+                                    .toECKey(),
+                            ).algorithm(com.nimbusds.jose.JWEAlgorithm.ECDH_ES)
+                            .build()
                             .toJSONObject(),
                     ),
             ),

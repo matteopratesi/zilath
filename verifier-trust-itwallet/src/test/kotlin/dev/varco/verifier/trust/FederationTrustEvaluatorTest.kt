@@ -135,6 +135,14 @@ class FederationTrustEvaluatorTest {
     }
 
     @Test
+    fun `an oversized provided chain is rejected before any signature work`() {
+        val padded = List(10) { FederationFixtures.leafConfiguration() } + FederationFixtures.offlineChain()
+        val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = padded))
+        assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+        assertThat((decision as TrustDecision.Untrusted).reason).contains("longer than")
+    }
+
+    @Test
     fun `fetch failures degrade to untrusted`() {
         val decision = evaluator(FederationFetcher { error("boom") }).evaluate(inputFor())
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
