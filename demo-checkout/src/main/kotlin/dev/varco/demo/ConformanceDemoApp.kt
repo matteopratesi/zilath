@@ -28,6 +28,7 @@ import dev.varco.verifier.openid4vp.RelyingPartyConfiguration
 import dev.varco.verifier.openid4vp.RpEndpoints
 import dev.varco.verifier.openid4vp.RpKeys
 import dev.varco.verifier.openid4vp.VerificationFlow
+import dev.varco.verifier.openid4vp.VerificationReceipts
 import dev.varco.verifier.trust.FederationTrustEvaluator
 import dev.varco.verifier.trust.TrustAnchorConfig
 import org.springframework.beans.factory.annotation.Value
@@ -86,35 +87,44 @@ class ConformanceDemoApp {
 
     @Bean
     @Suppress("LongParameterList") // Spring bean wiring: every parameter is an injected dependency
-    fun verificationFlow(
+    fun relyingPartyConfiguration(
         trustEvaluator: TrustEvaluator,
         statusChecker: StatusChecker,
-        verifier: CredentialVerifier,
-        clock: Clock,
         @Value("\${varco.demo.public-base-url:http://localhost:8080}") baseUrl: String,
         @Value("\${varco.demo.wallet-scheme:openid4vp://}") walletScheme: String,
         @Value("\${varco.demo.rp-pem-path:}") rpPemPath: String,
-    ): VerificationFlow {
+    ): RelyingPartyConfiguration {
         val signingKey = loadOrGenerateSigningKey(rpPemPath)
-        val config =
-            RelyingPartyConfiguration(
-                clientId = clientIdFor(signingKey, baseUrl),
-                endpoints =
-                    RpEndpoints(
-                        requestUriBase = "$baseUrl/openid4vp/request",
-                        responseUriBase = "$baseUrl/openid4vp/response",
-                    ),
-                keys =
-                    RpKeys(
-                        requestSigningKey = signingKey,
-                        responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("demo-rp-enc").generate(),
-                    ),
-                trustEvaluator = trustEvaluator,
-                statusChecker = statusChecker,
-                walletAuthorizationScheme = walletScheme,
-            )
-        return OpenId4VpVerificationFlow.withInMemoryStore(config, verifier, clock)
+        return RelyingPartyConfiguration(
+            clientId = clientIdFor(signingKey, baseUrl),
+            endpoints =
+                RpEndpoints(
+                    requestUriBase = "$baseUrl/openid4vp/request",
+                    responseUriBase = "$baseUrl/openid4vp/response",
+                ),
+            keys =
+                RpKeys(
+                    requestSigningKey = signingKey,
+                    responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("demo-rp-enc").generate(),
+                ),
+            trustEvaluator = trustEvaluator,
+            statusChecker = statusChecker,
+            walletAuthorizationScheme = walletScheme,
+        )
     }
+
+    @Bean
+    fun verificationFlow(
+        config: RelyingPartyConfiguration,
+        verifier: CredentialVerifier,
+        clock: Clock,
+    ): VerificationFlow = OpenId4VpVerificationFlow.withInMemoryStore(config, verifier, clock)
+
+    @Bean
+    fun verificationReceipts(
+        config: RelyingPartyConfiguration,
+        clock: Clock,
+    ): VerificationReceipts = VerificationReceipts(config, clock)
 
     /**
      * With a PEM (self-signed certificate + EC P-256 private key) the demo speaks the
