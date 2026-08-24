@@ -68,6 +68,19 @@ class SdJwtVcCredentialVerifierTest {
     }
 
     @Test
+    fun `a mixed trust list verifies even when the first key type does not match`() {
+        // Regression: an EC verifier throwing on an RS256 JWT must not abort the key loop.
+        val mixedTrust =
+            TrustEvaluator {
+                TrustDecision.Trusted(
+                    listOf(TestVectors.issuerEcKey.toPublicJWK(), TestVectors.issuerRsaKey.toPublicJWK()),
+                )
+            }
+        val result = verify(TestVectors.vector(useRsaIssuer = true), context(trust = mixedTrust))
+        assertThat(result).isInstanceOf(VerificationResult.Verified::class.java)
+    }
+
+    @Test
     fun `tampered issuer signature is rejected`() {
         val compact = TestVectors.withTamperedIssuerSignature(TestVectors.vector())
         assertThat(rejectionOf(verify(compact))).isEqualTo(RejectionReason.INVALID_ISSUER_SIGNATURE)

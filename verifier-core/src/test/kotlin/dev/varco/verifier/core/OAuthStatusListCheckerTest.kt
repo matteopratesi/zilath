@@ -94,6 +94,14 @@ class OAuthStatusListCheckerTest {
     }
 
     @Test
+    fun `oversized status list degrades to unknown instead of exhausting the heap`() {
+        // 4 MiB of zeros compresses to a few KiB: a classic zip-bomb shape.
+        val token = statusListToken(bits = 1, rawList = ByteArray(4 * 1024 * 1024))
+        val checker = OAuthStatusListChecker { token }
+        assertThat(checker.check(StatusReference("u", 0))).isEqualTo(CredentialStatus.UNKNOWN)
+    }
+
+    @Test
     fun `unsupported bits size degrades to unknown`() {
         val token = statusListToken(bits = 3, rawList = byteArrayOf(0))
         val checker = OAuthStatusListChecker { token }

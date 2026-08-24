@@ -76,6 +76,9 @@ class OAuthStatusListChecker(
                 val produced = inflater.inflate(buffer)
                 check(produced > 0 || inflater.finished()) { "truncated status list" }
                 output.write(buffer, 0, produced)
+                // The token comes from a remote, not-yet-trusted source: cap the expansion
+                // so a small zlib payload cannot exhaust the heap (zip bomb).
+                check(output.size() <= MAX_INFLATED_SIZE) { "status list larger than $MAX_INFLATED_SIZE bytes" }
             }
             output.toByteArray()
         } finally {
@@ -86,6 +89,9 @@ class OAuthStatusListChecker(
     companion object {
         private const val BITS_PER_BYTE = 8
         private const val INFLATE_BUFFER_SIZE = 4096
+
+        /** 1 MiB holds 8.4M single-bit entries: far above any realistic status list. */
+        private const val MAX_INFLATED_SIZE = 1 shl 20
         private val VALID_BITS_SIZES = setOf(1, 2, 4, 8)
     }
 }
