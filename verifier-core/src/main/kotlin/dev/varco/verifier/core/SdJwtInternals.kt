@@ -59,6 +59,10 @@ internal fun trustInputOf(issuerJwt: SignedJWT): IssuerTrustInput =
             issuerJwt.header.x509CertChain
                 .orEmpty()
                 .map { it.toString() },
+        trustChain =
+            (issuerJwt.header.getCustomParam("trust_chain") as? List<*>)
+                .orEmpty()
+                .filterIsInstance<String>(),
     )
 
 /** Accepts the issuer JWT only if its signature verifies against one of the trusted keys. */

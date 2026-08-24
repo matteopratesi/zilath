@@ -102,6 +102,17 @@ class StarterSmokeTest {
     }
 
     @Test
+    fun `wallet error responses are acknowledged with 200`() {
+        val started = start()
+        mockMvc
+            .perform(
+                post("/openid4vp/response/{txId}", started.id.value)
+                    .contentType("application/x-www-form-urlencoded")
+                    .param("error", "access_denied"),
+            ).andExpect(status().isOk)
+    }
+
+    @Test
     fun `a garbage response consumes the transaction with a 400`() {
         val started = start()
         mockMvc

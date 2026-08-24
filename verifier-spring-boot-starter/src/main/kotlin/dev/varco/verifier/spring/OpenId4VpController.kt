@@ -60,6 +60,11 @@ class OpenId4VpController(
                 )
         ) {
             is FlowOutcome.Verified -> ResponseEntity.ok(emptyMap())
+            is FlowOutcome.WalletErrorAcknowledged -> {
+                // OpenID4VP direct_post: wallet error responses are acknowledged with 200.
+                logger.info("wallet error response acknowledged: {}", outcome.error)
+                ResponseEntity.ok(emptyMap())
+            }
             is FlowOutcome.Rejected -> {
                 // detail is a server-side diagnostic: only the reason code reaches the wallet.
                 logger.warn("wallet response rejected: {} ({})", outcome.reason, outcome.detail)

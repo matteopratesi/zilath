@@ -1,0 +1,697 @@
+
+ RUN  v3.2.7 /Users/matteo.pratesi/.npm/_npx/3a7446476aefe28b/node_modules/@pagopa/it-wallet-conformance-tool
+
+[info] [globalSetup] Trust anchor server running at https://127.0.0.1:3001 (cert: /Users/matteo.pratesi/.npm/_npx/3a7446476aefe28b/node_modules/@pagopa/it-wallet-conformance-tool/data/backup/server.cert.pem)
+[info] [globalSetup] Wallet provider server running at https://127.0.0.1:3002
+[info] [globalSetup] Credential Issuer server running at https://127.0.0.1:3003
+[info] [test-metadata] steps_mapping: no entry for 'RedirectUriValidation', using built-in default steps
+
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  WCT v1.2.1  •  RedirectUriValidation                                                                                                                                                       │
+│  Target                   openid4vp://authorize?client_id=x509_hash:1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA&request_uri=http://localhost:8080/openid4vp/request/dtr99H8bNNRqqldD9BuX0g  │
+│  Profile                  RedirectUriValidation                                                                                                                                             │
+│  IT Wallet Specs Version  V1_4                                                                                                                                                              │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+[RedirectUriValidation]: Skipping verifier metadata fetch: unsupported client_id format "x509_hash:1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA" (normalized: "1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA"). Expected a plain HTTPS URL or a single-colon prefixed scheme resolving to an HTTPS URL. Configure presentation.verifier explicitly to bypass client_id-derived metadata lookup.
+[RedirectUriValidation]: Presenting 2 local credentials
+[RedirectUriValidation|AUTHORIZATION_REQUEST]: Fetching authorization request from: openid4vp://authorize?client_id=x509_hash%3A1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA&request_uri=http%3A%2F%2Flocalhost%3A8080%2Fopenid4vp%2Frequest%2Fdtr99H8bNNRqqldD9BuX0g
+[RedirectUriValidation|AUTHORIZATION_REQUEST]: Authorization request fetched: {"client_id":"x509_hash:1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA","client_metadata":{"encrypted_response_enc_values_supported":["A256GCM","A128GCM"],"jwks":{"keys":[{"kid":"demo-rp-enc","kty":"EC","crv":"P-256","x":"ieeR2IIe5j2TQr0nklXStoAlJBves3n_XsmmX0ro-O4","y":"OK_D7AO1H5VCxtZHECTAgquDgZrhJFZjLvGBdL_F59Y"}]},"vp_formats_supported":{"dc+sd-jwt":{"kb-jwt_alg_values":["ES256"],"sd-jwt_alg_values":["ES256"]}},"authorization_encrypted_response_alg":"ECDH-ES","authorization_encrypted_response_enc":"A256GCM"},"dcql_query":{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:it:1"]},"claims":[{"path":["given_name"]},{"path":["family_name"]}]}]},"nonce":"9gR3dvyqn6PvE0OTUA4-4aFRGG5S7-SP67TXGd7DaKg","response_mode":"direct_post.jwt","response_type":"vp_token","response_uri":"http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g","state":"dtr99H8bNNRqqldD9BuX0g","aud":"https://self-issued.me/v2","iss":"x509_hash:1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA","exp":1787597215,"iat":1787596915}.
+[RedirectUriValidation|AUTHORIZATION_REQUEST]: Dcql Query requested: {"credentials":[{"id":"pid","require_cryptographic_holder_binding":true,"multiple":false,"format":"dc+sd-jwt","claims":[{"path":["given_name"]},{"path":["family_name"]}],"meta":{"vct_values":["urn:eudi:pid:it:1"]}}]}
+[RedirectUriValidation|AUTHORIZATION_REQUEST]: Credentials available in the wallet (2):
+[RedirectUriValidation|AUTHORIZATION_REQUEST]:   [1] format: dc+sd-jwt, vct: urn:eudi:pid:it:1
+[RedirectUriValidation|AUTHORIZATION_REQUEST]:   [2] format: mso_mdoc, docType: org.iso.18013.5.1.mDL
+[RedirectUriValidation|AUTHORIZATION_REQUEST]: DCQL query requests (1) credential(s):
+[RedirectUriValidation|AUTHORIZATION_REQUEST]:   [1] id: "pid", format: dc+sd-jwt, vct: urn:eudi:pid:it:1
+[RedirectUriValidation|AUTHORIZATION_REQUEST]: VP Token built successfully from DCQL query.
+[RedirectUriValidation]: [2/3] Authorization Request     ✅  54ms
+[RedirectUriValidation|RPR-14]: Conformance test: Invalid Request Object handling
+[RedirectUriValidation|RPR-14]: → Posting an invalid_request Authorization Error Response to response_uri...
+[RedirectUriValidation|RPR-14]: → Validating RP processed the wallet error response without crashing...
+[RedirectUriValidation|RPR-14]: ✅  RP accepts Authorization Error Response for invalid Request Object
+[RedirectUriValidation|RPR-17]: Conformance test: Fake HTTP Cookie
+[RedirectUriValidation|RPR-17]: → Posting a valid JARM to response_uri with a forged HTTP Cookie...
+[RedirectUriValidation|RPR-17]: → Validating RP rejected the forged cookie despite valid state/nonce payload...
+[RedirectUriValidation|RPR-17]: ✅  RP rejects authorization responses coupled to a forged session cookie
+[RedirectUriValidation|RPR-20]: Conformance test: Invalid redirect_uri handling
+[RedirectUriValidation|RPR-20]: → Running redirect step with a tampered response_uri...
+[error] [REDIRECT_URI] step failed: Unexpected error sending authorization response: Unknown error occurred during fetch to 'invalid_response_uri'
+Cause: Failed to parse URL from invalid_response_uri
+[RedirectUriValidation|RPR-20]: → Validating that the step failed for a tampered RP-hosted redirect target...
+[RedirectUriValidation|RPR-20]: ✅  RP securely rejects invalid redirect_uri overrides
+[RedirectUriValidation|RPR-29]: Conformance test: Invalid response codes
+[RedirectUriValidation|RPR-29]: → Running redirect step to get a valid redirect_uri...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-29]: ❌  RP gracefully handles invalid response_code replays
+[RedirectUriValidation|RPR-30]: Conformance test: Status Endpoint unauthorized access
+[RedirectUriValidation|RPR-30]: → Running redirect step to get a valid status endpoint URL...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-30]: ❌  RP denies unauthorized access to the status endpoint
+[RedirectUriValidation|RPR-31]: Conformance test: Status Endpoint invalid session IDs
+[RedirectUriValidation|RPR-31]: → Running redirect step to get a valid status endpoint URL...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-31]: ❌  RP returns an error response when the status endpoint session ID is invalid
+[RedirectUriValidation|RPR-32]: Conformance test: Redirect URI expired sessions
+[RedirectUriValidation|RPR-32]: → Running redirect step to get a valid redirect_uri...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-32]: ❌  RP returns an error response when the redirect URI session is expired
+[RedirectUriValidation|RPR-33]: Conformance test: Redirect URI server errors
+[RedirectUriValidation|RPR-33]: → Running redirect step to get a valid redirect_uri...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-33]: ❌  RP returns an error response when redirect URI processing fails server-side
+[RedirectUriValidation|RPR-34]: Conformance test: Slow network conditions
+[RedirectUriValidation|RPR-34]: → Measuring redirect_uri HTTP response time...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-34]: ❌  RP provides the HTTP response within the maximum limit of 2 seconds
+[RedirectUriValidation|RPR-40]: Conformance test: Relying Party Response malformed responses
+[RedirectUriValidation|RPR-40]: → Posting a malformed JARM response to response_uri...
+[RedirectUriValidation|RPR-40]: → Validating RP returned an error response...
+[RedirectUriValidation|RPR-40]: ✅  RP returns an error response when the wallet response is malformed
+[RedirectUriValidation|RPR-42]: Conformance test: Status Endpoint session timeouts
+[RedirectUriValidation|RPR-42]: → Running redirect step to get a valid status endpoint URL...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-42]: ❌  RP returns an error response when the status endpoint session has timed out
+[RedirectUriValidation|RPR-43]: Conformance test: Status Endpoint invalid status codes
+[RedirectUriValidation|RPR-43]: → Running redirect step to get a valid status endpoint URL...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-43]: ❌  RP returns an error response when the status endpoint receives an invalid status code
+[RedirectUriValidation|RPR-44]: Conformance test: Redirect URI invalid user sessions
+[RedirectUriValidation|RPR-44]: → Running redirect step to get a valid redirect_uri...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-44]: ❌  RP returns an error response when the redirect URI user session is invalid
+[RedirectUriValidation|RPR-45]: Conformance test: Redirect URI unavailable services
+[RedirectUriValidation|RPR-45]: → Running redirect step to get a valid redirect_uri...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-45]: ❌  RP returns an error response when redirect URI service handling is unavailable
+[RedirectUriValidation|RPR-56]: Conformance test: Protected Resource Endpoint unauthorized session access
+[RedirectUriValidation|RPR-56]: → Running redirect step to get a valid protected resource URL...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-56]: ❌  RP denies unauthorized access to protected resource endpoints
+[RedirectUriValidation|RPR-57]: Conformance test: Redirect URI invalid redirect parameters
+[RedirectUriValidation|RPR-57]: → Running redirect step to get a valid redirect_uri...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-57]: ❌  RP returns an error response when redirect parameters are invalid
+[RedirectUriValidation|RPR-58]: Conformance test: Redirect URI redirect failures
+[RedirectUriValidation|RPR-58]: → Running redirect step to get a valid redirect_uri...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-58]: ❌  RP returns an error response when redirect processing fails
+[RedirectUriValidation|RPR-59]: Conformance test: Same Device Flow user cancellation
+[RedirectUriValidation|RPR-59]: → Posting a wallet cancellation Authorization Error Response to response_uri...
+[RedirectUriValidation|RPR-59]: → Validating RP acknowledges the cancellation without treating it as a server error...
+[RedirectUriValidation|RPR-59]: ❌  RP handles Same Device Flow cancellation through access_denied
+[RedirectUriValidation|RPR-41]: Conformance test: Missing response parameters
+[RedirectUriValidation|RPR-41]: → Posting to response_uri without the 'response' parameter...
+[RedirectUriValidation|RPR-41]: → Validating RP rejected the missing parameter...
+[RedirectUriValidation|RPR-41]: ✅  RP correctly detects missing required response parameters
+[RedirectUriValidation|RPR-64]: Conformance test: Response format errors
+[RedirectUriValidation|RPR-64]: → Posting raw garbage data to response_uri as form-urlencoded...
+[RedirectUriValidation|RPR-64]: → Validating RP rejected the malformed payload...
+[RedirectUriValidation|RPR-64]: ✅  RP rejects malformed form/JARM payloads
+[RedirectUriValidation|RPR-69]: Conformance test: Status Endpoint session expiration
+[RedirectUriValidation|RPR-69]: → Running redirect step to get a valid status endpoint URL...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-69]: ❌  RP returns an error response when the status endpoint session is expired
+[RedirectUriValidation|RPR-70]: Conformance test: Status Endpoint session renewal errors
+[RedirectUriValidation|RPR-70]: → Running redirect step to get a valid status endpoint URL...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-70]: ❌  RP returns an error response when status endpoint session renewal fails
+[RedirectUriValidation|RPR-71]: Conformance test: Redirect URI redirect loop errors
+[RedirectUriValidation|RPR-71]: → Running redirect step to get a valid redirect_uri...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-71]: ❌  RP returns an error response when redirect loop handling fails
+[RedirectUriValidation|RPR-72]: Conformance test: Redirect URI redirect security errors
+[RedirectUriValidation|RPR-72]: → Running redirect step to get a valid redirect_uri...
+[error] [REDIRECT_URI] step failed: message=Http request failed. Expected 200, got 400, url: http://localhost:8080/openid4vp/response/dtr99H8bNNRqqldD9BuX0g reason={"error":"invalid_request","error_description":"REPLAY"} statusCode=400
+[RedirectUriValidation|RPR-72]: ❌  RP returns an error response when redirect security validation fails
+[RedirectUriValidation|RPR-98]: Conformance test: Error response content type
+[RedirectUriValidation|RPR-98]: → Sending invalid request to response_uri to trigger error...
+···xxxxxx·xxxxxxxx··xxx[RedirectUriValidation|RPR-98]: → Validating error response has application/json content type...
+[RedirectUriValidation|RPR-98]: ✅  RP returns application/json for error responses
+[RedirectUriValidation|RPR-99]: Conformance test: Error response parameters
+[RedirectUriValidation|RPR-99]: → Sending invalid request to response_uri to trigger error...
+[RedirectUriValidation|RPR-99]: → Validating error response contains error and error_description...
+[RedirectUriValidation|RPR-99]: ✅  RP includes error and error_description parameters
+[RedirectUriValidation|RPR-108]: Conformance test: Authorization Error Response handling
+[RedirectUriValidation|RPR-108]: → Posting an explicit authorization error to response_uri...
+[RedirectUriValidation|RPR-108]: → Validating RP accepted or acknowledged the error response...
+[RedirectUriValidation|RPR-108]: ❌  RP correctly handles explicit authorization error from wallet
+[RedirectUriValidation|RPR-109]: Conformance test: Authorization Error Response encoding
+[RedirectUriValidation|RPR-109]: → Posting authorization error as x-www-form-urlencoded...
+[RedirectUriValidation|RPR-109]: → Validating RP processed the form-urlencoded error response...
+[RedirectUriValidation|RPR-109]: ❌  RP parses authorization generic errors over x-www-form-urlencoded
+[RedirectUriValidation|RPR-114]: Conformance test: Validation error response on response_uri
+[RedirectUriValidation|RPR-114]: → Posting a structurally valid but semantically wrong JARM to trigger validation error...
+[RedirectUriValidation|RPR-114]: → Validating the error response has proper structure...
+[RedirectUriValidation|RPR-114]: ✅  RP returns correct error structure upon wallet submission failure
+
+┌───────────────────────────────────────────────────────────┐
+│  Test Results                                             │
+├───────────────────────────────────────────────────────────┤
+│  ❌   9 passed  20 failed  ⏱ 118ms  RedirectUriValidation  │
+└───────────────────────────────────────────────────────────┘
+
+x··xx·[info] [test-metadata] steps_mapping: no entry for 'HappyFlowPresentation', using built-in default steps
+
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  WCT v1.2.1  •  HappyFlowPresentation                                                                                                                                                       │
+│  Target                   openid4vp://authorize?client_id=x509_hash:1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA&request_uri=http://localhost:8080/openid4vp/request/waIjIHxTLYnxooBpkkRh9g  │
+│  Profile                  HappyFlowPresentation                                                                                                                                             │
+│  IT Wallet Specs Version  V1_4                                                                                                                                                              │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+[HappyFlowPresentation]: Skipping verifier metadata fetch: unsupported client_id format "x509_hash:1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA" (normalized: "1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA"). Expected a plain HTTPS URL or a single-colon prefixed scheme resolving to an HTTPS URL. Configure presentation.verifier explicitly to bypass client_id-derived metadata lookup.
+[HappyFlowPresentation]: Presenting 2 local credentials
+[HappyFlowPresentation|AUTHORIZATION_REQUEST]: Fetching authorization request from: openid4vp://authorize?client_id=x509_hash%3A1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA&request_uri=http%3A%2F%2Flocalhost%3A8080%2Fopenid4vp%2Frequest%2FwaIjIHxTLYnxooBpkkRh9g
+[HappyFlowPresentation|AUTHORIZATION_REQUEST]: Authorization request fetched: {"client_id":"x509_hash:1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA","client_metadata":{"encrypted_response_enc_values_supported":["A256GCM","A128GCM"],"jwks":{"keys":[{"kid":"demo-rp-enc","kty":"EC","crv":"P-256","x":"ieeR2IIe5j2TQr0nklXStoAlJBves3n_XsmmX0ro-O4","y":"OK_D7AO1H5VCxtZHECTAgquDgZrhJFZjLvGBdL_F59Y"}]},"vp_formats_supported":{"dc+sd-jwt":{"kb-jwt_alg_values":["ES256"],"sd-jwt_alg_values":["ES256"]}},"authorization_encrypted_response_alg":"ECDH-ES","authorization_encrypted_response_enc":"A256GCM"},"dcql_query":{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:it:1"]},"claims":[{"path":["given_name"]},{"path":["family_name"]}]}]},"nonce":"KV8cYkgxhFOggMkXTYm3vGckyD34LnZ7WdNcsNETmM0","response_mode":"direct_post.jwt","response_type":"vp_token","response_uri":"http://localhost:8080/openid4vp/response/waIjIHxTLYnxooBpkkRh9g","state":"waIjIHxTLYnxooBpkkRh9g","aud":"https://self-issued.me/v2","iss":"x509_hash:1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA","exp":1787597216,"iat":1787596916}.
+[HappyFlowPresentation|AUTHORIZATION_REQUEST]: Dcql Query requested: {"credentials":[{"id":"pid","require_cryptographic_holder_binding":true,"multiple":false,"format":"dc+sd-jwt","claims":[{"path":["given_name"]},{"path":["family_name"]}],"meta":{"vct_values":["urn:eudi:pid:it:1"]}}]}
+[HappyFlowPresentation|AUTHORIZATION_REQUEST]: Credentials available in the wallet (2):
+[HappyFlowPresentation|AUTHORIZATION_REQUEST]:   [1] format: dc+sd-jwt, vct: urn:eudi:pid:it:1
+[HappyFlowPresentation|AUTHORIZATION_REQUEST]:   [2] format: mso_mdoc, docType: org.iso.18013.5.1.mDL
+[HappyFlowPresentation|AUTHORIZATION_REQUEST]: DCQL query requests (1) credential(s):
+[HappyFlowPresentation|AUTHORIZATION_REQUEST]:   [1] id: "pid", format: dc+sd-jwt, vct: urn:eudi:pid:it:1
+[HappyFlowPresentation|AUTHORIZATION_REQUEST]: VP Token built successfully from DCQL query.
+[HappyFlowPresentation]: [2/3] Authorization Request     ✅  24ms
+[HappyFlowPresentation|REDIRECT_URI]: Fetching authorization response from: http://localhost:8080/openid4vp/response/waIjIHxTLYnxooBpkkRh9g
+[HappyFlowPresentation]: [3/3] Redirect URI              ✅  138ms
+[HappyFlowPresentation]: Presentation flow completed successfully
+[HappyFlowPresentation|RPR-01]: Conformance test: Verifying Same Device Flow HTTP redirect URL alignment with RP metadata
+[HappyFlowPresentation|RPR-01]: ❌  Relying Party correctly issues an inspectable 302 redirect URL using a metadata-declared base URL
+[HappyFlowPresentation|RPR-02]: Conformance test: Verifying Cross Device Flow QR-Code payload presence and format
+[HappyFlowPresentation|RPR-02]: ✅  Relying Party correctly issues a QR-Code payload containing a well-formed authorization request
+[HappyFlowPresentation|RPR-03]: Conformance test: Verifying QR-Code URL alignment with RP metadata
+[HappyFlowPresentation|RPR-03]: ❌  Relying Party correctly issues QR-Code with URL from metadata and client_id matches issuer
+[HappyFlowPresentation|RPR-05]: Conformance test: Verifying Cross Device Flow QR-Code error correction level capacity
+[HappyFlowPresentation|RPR-05]: ✅  Relying Party QR-Code payload fits the required Q error correction level capacity
+[HappyFlowPresentation|RPR-77]: Conformance test: Verifying Cross Device Flow QR-Code payload fits error correction level Q
+[HappyFlowPresentation|RPR-77]: ✅  Relying Party QR-Code payload fits the required Q error correction level capacity
+[HappyFlowPresentation|RPR-07]: Conformance test: Verifying request_uri_method=post with Wallet Instance metadata
+[HappyFlowPresentation|RPR-07]: ✅  Relying Party accepts Wallet Instance metadata via POST and replies with an updated Request Object
+[HappyFlowPresentation|RPR-86]: Conformance test: Verifying Wallet Instance metadata privacy separation
+[HappyFlowPresentation|RPR-86]: ❌  Relying Party correctly evaluates Wallet Instance technical capabilities
+[HappyFlowPresentation|RPR-87]: Conformance test: Verifying request_uri_method=post sends Wallet Instance metadata as application/x-www-form-urlencoded
+[HappyFlowPresentation|RPR-87]: ✅  Relying Party accepts Wallet Instance metadata sent via form-encoded POST to request_uri
+[HappyFlowPresentation|RPR-88]: Conformance test: Verifying Request Object JWT algorithm is supported and not none or MAC
+[HappyFlowPresentation|RPR-88]: ✅  Request Object JWT algorithm is supported by the Wallet and is neither none nor MAC-based
+[HappyFlowPresentation|RPR-08]: Conformance test: Verifying request_uri_method=get Request Object retrieval
+[HappyFlowPresentation|RPR-08]: ✅  Relying Party issues the Request Object via HTTP GET response
+[HappyFlowPresentation|RPR-09]: Conformance test: Verifying HTTP GET method support for request objects
+[HappyFlowPresentation|RPR-09]: ❌  Relying Party supports GET method for request objects, defaults if not specified
+[HappyFlowPresentation|RPR-12]: Conformance test: Verifying state and nonce parameter presence and format
+[HappyFlowPresentation|RPR-12]: ✅  Relying Party receives and validates state and nonce values in response
+[HappyFlowPresentation|RPR-13]: Conformance test: Verifying authorization response encryption key selection
+[HappyFlowPresentation|RPR-13]: ❌  Authorization Response is encrypted with a public key declared by the Relying Party
+[HappyFlowPresentation|RPR-19]: Conformance test: Verifying redirect URI functionality and response code
+[HappyFlowPresentation|RPR-19]: ❌ redirectUri is undefined in response
+[HappyFlowPresentation|RPR-19]:   Response object: {
+  "contentType": "application/json",
+  "status": 200
+}
+[HappyFlowPresentation|RPR-19]: ❌  Relying Party correctly redirects user and endpoint returns valid response_code
+[HappyFlowPresentation|RPR-23]: Conformance test: Verifying Credential Presentation response format compliance
+[HappyFlowPresentation|RPR-23]: ❌  Relying Party metadata declares usable credential presentation formats and requests only declared formats
+[HappyFlowPresentation|RPR-28]: Conformance test: Verifying response_code entropy requirements
+[HappyFlowPresentation|RPR-28]: ❌  Relying Party correctly provides response_code with sufficient entropy (≥32 characters, URL-safe charset)
+[HappyFlowPresentation|RPR-62]: Conformance test: Verifying user-consented optional data is returned in the presentation
+[HappyFlowPresentation|RPR-62]: ✅  Wallet returns the claim data requested by the Relying Party after user consent
+[HappyFlowPresentation|RPR-78]: Conformance test: Verifying DCQL query standard format compliance
+[HappyFlowPresentation|RPR-78]: ✅  Relying Party correctly uses standard DCQL query with valid credentials array
+[HappyFlowPresentation|RPR-79]: Conformance test: Verifying Wallet Attestation does not include claims parameter
+[HappyFlowPresentation|RPR-79]: ✅  Relying Party correctly omits claims parameter for Wallet Attestation in DCQL query
+[HappyFlowPresentation|RPR-80]: Conformance test: Verifying vct_values presence in DCQL credentials
+[HappyFlowPresentation|RPR-80]: ✅  Relying Party correctly requires vct_values in all DCQL query credentials
+[HappyFlowPresentation|RPR-81]: Conformance test: Verifying wallet_nonce binding
+[HappyFlowPresentation|RPR-81]: ✅  Relying Party correctly checks wallet_nonce when present
+[HappyFlowPresentation|RPR-82]: Conformance test: Verifying response_types_supported metadata value
+[HappyFlowPresentation|RPR-82]: ❌  response_types_supported is correctly set to vp_token when present
+[HappyFlowPresentation|RPR-83]: Conformance test: Verifying response_uri and redirect_uri handling
+[HappyFlowPresentation|RPR-83]: ❌ redirectUri is undefined in response
+[HappyFlowPresentation|RPR-83]:   Response keys: contentType, redirectUri, responseCode, status
+[HappyFlowPresentation|RPR-83]:   Full response: {
+  "contentType": "application/json",
+  "status": 200
+}
+[HappyFlowPresentation|RPR-83]: ❌  Relying Party correctly provides response_uri and handles redirect_uri
+[HappyFlowPresentation|RPR-84]: Conformance test: Verifying required Same Device and Cross Device flow support
+[HappyFlowPresentation|RPR-84]: ❌  Relying Party supports both Same Device and Cross Device flows
+[HappyFlowPresentation|RPR-85]: Conformance test: Verifying request_uri base path is attested by verifier metadata
+[HappyFlowPresentation|RPR-85]: ❌  request_uri base path is present in client metadata request_uris
+[HappyFlowPresentation|RPR-89]: Conformance test: Verifying JWT typ header parameter
+[HappyFlowPresentation|RPR-89]: ✅  Relying Party correctly sets JWT typ header to oauth-authz-req+jwt
+[HappyFlowPresentation|RPR-90]: Conformance test: Verifying response_mode parameter value
+[HappyFlowPresentation|RPR-90]: ✅  Relying Party correctly sets response_mode to direct_post.jwt
+[HappyFlowPresentation|RPR-91]: Conformance test: Verifying response_type parameter value
+[HappyFlowPresentation|RPR-91]: ✅  Relying Party correctly sets response_type to vp_token
+[HappyFlowPresentation|RPR-92]: Conformance test: Verifying authorization response submission to response_uri
+[HappyFlowPresentation|RPR-92]: ✅  Relying Party correctly sends Authorization Response to response_uri endpoint
+[HappyFlowPresentation|RPR-93]: Conformance test: Verifying nonce entropy requirements
+[HappyFlowPresentation|RPR-93]: ✅  Relying Party correctly provides nonce with sufficient entropy (≥32 characters)
+[HappyFlowPresentation|RPR-101]: Conformance test: Verifying vp_token contains the requested signed presentations
+[HappyFlowPresentation|RPR-101]: ✅  vp_token contains the requested signed presentations as required
+[HappyFlowPresentation|RPR-102]: Conformance test: Verifying SD-JWT VP KB-JWT inclusion
+[HappyFlowPresentation|RPR-102]: ✅  SD-JWT VP contains a KB-JWT proof
+[HappyFlowPresentation|RPR-104]: Conformance test: Verifying KB-JWT protected header claims
+[HappyFlowPresentation|RPR-104]: ✅  KB-JWT protected header contains required typ and alg
+[HappyFlowPresentation|RPR-105]: Conformance test: Verifying KB-JWT required payload claims
+[HappyFlowPresentation|RPR-105]: ❌  KB-JWT payload contains required iat, aud, nonce, and sd_hash
+[HappyFlowPresentation|RPR-106]: Conformance test: Verifying KB-JWT audience claim
+[HappyFlowPresentation|RPR-106]: ❌  KB-JWT aud claim equals the Relying Party unique entity identifier
+[HappyFlowPresentation|RPR-107]: Conformance test: Verifying KB-JWT nonce claim
+[HappyFlowPresentation|RPR-107]: ✅  KB-JWT nonce claim equals the Request Object nonce
+[HappyFlowPresentation|RPR-110]: Conformance test: Successful response_uri processing
+[HappyFlowPresentation|RPR-110]: → Inspecting the already completed response_uri exchange...
+[HappyFlowPresentation|RPR-110]: ✅  Response URI returns HTTP 200 with application/json content type
+[HappyFlowPresentation|RPR-95]: Conformance test: Verifying response_uri base path is attested by verifier metadata
+[HappyFlowPresentation|RPR-95]: ❌  response_uri base path is present in client metadata response_uris
+[HappyFlowPresentation|RPR-112]: Conformance test: Verifying fresh response_code in redirect_uri
+[HappyFlowPresentation|RPR-112]: ❌  Relying Party includes fresh response code in redirect_uri
+[HappyFlowPresentation|RPR-94]: Conformance test: Verifying JWT expiration timestamp validity
+[HappyFlowPresentation|RPR-94]: ✅  Relying Party correctly sets JWT exp parameter to a future timestamp
+
+┌──────────────────────────────────────────────────────────┐
+│  Test Results                                            │
+├──────────────────────────────────────────────────────────┤
+│  ❌  24 passed  16 failed  ⏱ 16ms  HappyFlowPresentation  │
+└──────────────────────────────────────────────────────────┘
+
+x·x···x···x-·xxxx·····xxxx········xx··xx·[info] [test-metadata] steps_mapping: no entry for 'AuthorizationRequestValidation', using built-in default steps
+
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  WCT v1.2.1  •  AuthorizationRequestValidation                                                                                                                                              │
+│  Target                   openid4vp://authorize?client_id=x509_hash:1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA&request_uri=http://localhost:8080/openid4vp/request/BkVNfc4gWiHBLtinAzbb_w  │
+│  Profile                  AuthorizationRequestValidation                                                                                                                                    │
+│  IT Wallet Specs Version  V1_4                                                                                                                                                              │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+[AuthorizationRequestValidation]: Skipping verifier metadata fetch: unsupported client_id format "x509_hash:1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA" (normalized: "1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA"). Expected a plain HTTPS URL or a single-colon prefixed scheme resolving to an HTTPS URL. Configure presentation.verifier explicitly to bypass client_id-derived metadata lookup.
+[AuthorizationRequestValidation]: Presenting 2 local credentials
+[AuthorizationRequestValidation|AUTHORIZATION_REQUEST]: Fetching authorization request from: openid4vp://authorize?client_id=x509_hash%3A1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA&request_uri=http%3A%2F%2Flocalhost%3A8080%2Fopenid4vp%2Frequest%2FBkVNfc4gWiHBLtinAzbb_w
+[AuthorizationRequestValidation|AUTHORIZATION_REQUEST]: Authorization request fetched: {"client_id":"x509_hash:1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA","client_metadata":{"encrypted_response_enc_values_supported":["A256GCM","A128GCM"],"jwks":{"keys":[{"kid":"demo-rp-enc","kty":"EC","crv":"P-256","x":"ieeR2IIe5j2TQr0nklXStoAlJBves3n_XsmmX0ro-O4","y":"OK_D7AO1H5VCxtZHECTAgquDgZrhJFZjLvGBdL_F59Y"}]},"vp_formats_supported":{"dc+sd-jwt":{"kb-jwt_alg_values":["ES256"],"sd-jwt_alg_values":["ES256"]}},"authorization_encrypted_response_alg":"ECDH-ES","authorization_encrypted_response_enc":"A256GCM"},"dcql_query":{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:it:1"]},"claims":[{"path":["given_name"]},{"path":["family_name"]}]}]},"nonce":"HhqquzmtYEEM-Xo3D6dvONrdHIQZvSNC3UnGOGoFFJA","response_mode":"direct_post.jwt","response_type":"vp_token","response_uri":"http://localhost:8080/openid4vp/response/BkVNfc4gWiHBLtinAzbb_w","state":"BkVNfc4gWiHBLtinAzbb_w","aud":"https://self-issued.me/v2","iss":"x509_hash:1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7jblq2hA","exp":1787597217,"iat":1787596917}.
+[AuthorizationRequestValidation|AUTHORIZATION_REQUEST]: Dcql Query requested: {"credentials":[{"id":"pid","require_cryptographic_holder_binding":true,"multiple":false,"format":"dc+sd-jwt","claims":[{"path":["given_name"]},{"path":["family_name"]}],"meta":{"vct_values":["urn:eudi:pid:it:1"]}}]}
+[AuthorizationRequestValidation|AUTHORIZATION_REQUEST]: Credentials available in the wallet (2):
+[AuthorizationRequestValidation|AUTHORIZATION_REQUEST]:   [1] format: dc+sd-jwt, vct: urn:eudi:pid:it:1
+[AuthorizationRequestValidation|AUTHORIZATION_REQUEST]:   [2] format: mso_mdoc, docType: org.iso.18013.5.1.mDL
+[AuthorizationRequestValidation|AUTHORIZATION_REQUEST]: DCQL query requests (1) credential(s):
+[AuthorizationRequestValidation|AUTHORIZATION_REQUEST]:   [1] id: "pid", format: dc+sd-jwt, vct: urn:eudi:pid:it:1
+[AuthorizationRequestValidation|AUTHORIZATION_REQUEST]: VP Token built successfully from DCQL query.
+[AuthorizationRequestValidation]: [2/3] Authorization Request     ✅  25ms
+
+┌────────────────────────────────────────────────────────────────────┐
+│  Test Results                                                      │
+├────────────────────────────────────────────────────────────────────┤
+│  ✅   0 passed   0 failed  ⏱ 136ms  AuthorizationRequestValidation  │
+└────────────────────────────────────────────────────────────────────┘
+
+---------------------Conformance session ID: 2b1efcb0-5b34-4ac2-bef4-c5db3a571e48
+
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  dist/tests/conformance/presentation/authorization-request.presentation.spec.js > [AuthorizationRequestValidation] Presentation Authorization Request Validation
+Error: Setup failed: verifierMetadata is undefined — RP did not return valid metadata
+ ❯ dist/tests/conformance/presentation/authorization-request.presentation.spec.js:4718:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/37]⎯
+
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 36 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-01: Relying Party issues a correct URL using the base url provided within its metadata.
+TypeError: Cannot read properties of undefined (reading 'success')
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:4903:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-03: Relying Party issues the QR-Code containing an URL using the base url provided within its metadata.
+TypeError: Cannot read properties of undefined (reading 'success')
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:5000:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-86: Privacy Protection | Relying Party validates Wallet Instance metadata without User information
+AssertionError: expected undefined to be defined
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:5176:55
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-09: Relying Party accepts defaults to GET method.
+TypeError: Cannot read properties of undefined (reading 'success')
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:5316:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-13: Authorization Response is encrypted for one of the Relying Party public keys.
+TypeError: Cannot read properties of undefined (reading 'response')
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:5481:52
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-19: User is redirected correctly, the endpoint works.
+AssertionError: expected undefined to be defined
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:5567:55
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-23: Relying Party supports all credential formats declared in vp_formats_supported metadata.
+TypeError: Cannot read properties of undefined (reading 'success')
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:5599:36
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-28: response_code has sufficient entropy with at least 32 URL-safe characters.
+AssertionError: expected undefined to be defined
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:5666:56
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-82: Response Types | response_types_supported is set to vp_token when present
+TypeError: Cannot read properties of undefined (reading 'success')
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:5918:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-83: Relying Party correctly provides and handles redirect_uri.
+AssertionError: expected undefined to be defined
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:5980:55
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-84: Flow Support | Relying Party supports both Same Device and Cross Device flows
+AssertionError: expected undefined to be defined
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:6014:55
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-85: Endpoint Security | request_uri is attested in verifier metadata request_uris.
+TypeError: Cannot read properties of undefined (reading 'success')
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:6032:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-105: KB-JWT payload contains required iat, aud, nonce, and sd_hash.
+AssertionError: expected [ Array(1) ] to include '1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7j…'
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:6332:32
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-106: KB-JWT aud claim equals the Relying Party unique entity identifier.
+AssertionError: RPR-106: KB-JWT aud must equal RP identifier: expected [ Array(1) ] to include '1B0VUWMAh_I9QaYXw1z8FBg9fo-PYr_3lPJ7j…'
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:6373:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-95: Response URI Security | response_uri is attested in verifier metadata response_uris.
+TypeError: Cannot read properties of undefined (reading 'success')
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:6449:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/happy.presentation.spec.js > [HappyFlowPresentation] Credential Presentation Tests > RPR-112: Response Code Inclusion | Relying Party includes response code in redirect_uri
+AssertionError: expected undefined to be defined
+ ❯ dist/tests/conformance/presentation/happy.presentation.spec.js:6491:55
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-29: Invalid response codes | RP gracefully handles invalid response_code in redirect
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4840:30
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-30: Verify handling of unauthorized access.
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4871:30
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-31: Test handling of invalid session IDs.
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4905:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-32: Verify handling of expired sessions.
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4929:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-33: Test handling of server errors.
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4950:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-34: Verify handling of slow network conditions.
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4976:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-42: Status Endpoint | RP returns an error response for timed-out sessions
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5019:25
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-43: Status Endpoint | RP rejects invalid status codes
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5040:25
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-44: Redirect URI | RP rejects invalid user sessions
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5061:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[26/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-45: Redirect URI | RP handles unavailable services with an error response
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5085:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[27/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-56: Protected Resource Endpoint | RP denies unauthorized session access
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5114:36
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[28/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-57: Redirect URI | RP returns an error response for invalid redirect parameters
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5145:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[29/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-58: Redirect URI | RP returns an error response for redirect failures
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5172:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[30/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-59: Same Device Flow | RP handles wallet cancellation with access_denied
+AssertionError: RP must acknowledge wallet cancellation errors on response_uri per OID4VP direct_post: expected 400 to be 200 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 200[39m
+[31m+ 400[39m
+
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5218:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[31/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-69: Status Endpoint | RP returns an error response for expired sessions
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5270:25
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[32/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-70: Status Endpoint | RP returns an error response for session renewal errors
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5295:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[33/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-71: Redirect URI | RP returns an error response for redirect loop errors
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5324:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[34/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-72: Redirect URI | RP returns an error response for redirect security errors
+AssertionError: expected false to be true // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ fetchRedirectUrl dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:4720:28
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5353:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[35/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-108: Authorization Error Response handling | RP correctly handles explicit authorization error from wallet
+AssertionError: RP must respond 200 to wallet error responses per OID4VP §8.2: expected 400 to be 200 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 200[39m
+[31m+ 400[39m
+
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5458:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[36/37]⎯
+
+ FAIL  dist/tests/conformance/presentation/redirect-uri.presentation.spec.js > [RedirectUriValidation] Presentation Redirect URI Validation Tests > RPR-109: Authorization Error Response encoding | RP parses authorization errors over application/x-www-form-urlencoded
+AssertionError: RP must respond 200 to wallet error responses per OID4VP §8.2: expected 400 to be 200 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 200[39m
+[31m+ 400[39m
+
+ ❯ dist/tests/conformance/presentation/redirect-uri.presentation.spec.js:5498:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[37/37]⎯
+
+
+ Test Files  3 failed (3)
+      Tests  36 failed | 33 passed | 22 skipped (91)
+   Start at  20:41:54
+   Duration  2.86s (transform 19ms, setup 28ms, collect 984ms, tests 861ms, environment 0ms, prepare 254ms)
+
+[info] [globalSetup] Trust anchor stopped
+[info] [globalSetup] Wallet provider stopped
+[info] [globalSetup] Credential Issuer stopped

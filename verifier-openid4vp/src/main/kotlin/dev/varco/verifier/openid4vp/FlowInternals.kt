@@ -101,12 +101,16 @@ internal fun buildRequestJwt(
             // The JAR must not advertise a validity window outliving the transaction itself.
             .expirationTime(Date.from(transaction.createdAt.plus(config.transactionTimeToLive)))
             .build()
-    val header =
+    val headerBuilder =
         JWSHeader
             .Builder(JWSAlgorithm.ES256)
             .keyID(config.keys.requestSigningKey.keyID)
             .type(JOSEObjectType(REQUEST_OBJECT_TYP))
-            .build()
+    // x509_hash client id scheme: the JAR carries the RP certificate chain (spec v1.4.5).
+    config.keys.requestSigningKey.x509CertChain
+        ?.takeIf { it.isNotEmpty() }
+        ?.let(headerBuilder::x509CertChain)
+    val header = headerBuilder.build()
     val jwt = SignedJWT(header, claims)
     jwt.sign(ECDSASigner(config.keys.requestSigningKey))
     return jwt.serialize()
@@ -118,11 +122,29 @@ private fun clientMetadataOf(config: RelyingPartyConfiguration): Map<String, Any
             mapOf(
                 "keys" to
                     listOf(
-                        config.keys.responseEncryptionKey
-                            .toPublicJWK()
+                        // The wallet selects the response encryption key by its alg.
+                        com.nimbusds.jose.jwk
+                            .ECKey
+                            .Builder(
+                                config.keys.responseEncryptionKey
+                                    .toPublicJWK()
+                                    .toECKey(),
+                            ).algorithm(com.nimbusds.jose.JWEAlgorithm.ECDH_ES)
+                            .build()
                             .toJSONObject(),
                     ),
             ),
+        // IT-Wallet v1.4.5 / OpenID4VP 1.0 member names.
+        "encrypted_response_enc_values_supported" to listOf(RESPONSE_ENCRYPTION_ENC, "A128GCM"),
+        "vp_formats_supported" to
+            mapOf(
+                "dc+sd-jwt" to
+                    mapOf(
+                        "sd-jwt_alg_values" to listOf("ES256"),
+                        "kb-jwt_alg_values" to listOf("ES256"),
+                    ),
+            ),
+        // Legacy JARM member names, kept as harmless extras for older wallets.
         "authorization_encrypted_response_alg" to RESPONSE_ENCRYPTION_ALG,
         "authorization_encrypted_response_enc" to RESPONSE_ENCRYPTION_ENC,
     )

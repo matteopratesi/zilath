@@ -137,6 +137,8 @@ class OpenId4VpFlowIntegrationTest {
         assertThat(claims.getJSONObjectClaim("dcql_query")["credentials"]).isNotNull()
         assertThat(claims.getStringClaim("response_uri"))
             .isEqualTo("https://rp.example/openid4vp/response/${started.id.value}")
+        val advertisedKey = advertisedEncryptionKey(claims.getJSONObjectClaim("client_metadata"))
+        assertThat(advertisedKey.algorithm?.name).isEqualTo("ECDH-ES")
     }
 
     @Test
@@ -285,6 +287,17 @@ class OpenId4VpFlowIntegrationTest {
         val started = startForPid()
         flow.handleWalletResponse(started.id, walletBody(started))
         assertThat(flow.requestJwtFor(started.id)).isNull()
+    }
+
+    @Test
+    fun `a wallet error response is acknowledged and terminal`() {
+        val started = startForPid()
+        val body = DirectPostBody(mapOf("error" to "access_denied", "error_description" to "user cancelled"))
+        val outcome = flow.handleWalletResponse(started.id, body)
+        assertThat(outcome).isEqualTo(FlowOutcome.WalletErrorAcknowledged("access_denied", "user cancelled"))
+        assertThat(flow.awaitOutcome(started.id)).isEqualTo(outcome)
+        val afterwards = flow.handleWalletResponse(started.id, DirectPostBody(emptyMap()))
+        assertThat((afterwards as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.REPLAY)
     }
 
     @Test

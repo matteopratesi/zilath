@@ -25,15 +25,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  */
 @ConfigurationProperties("varco.openid4vp")
 data class OpenId4VpProperties(
-    val clientId: String,
+    val clientId: String = "",
     /** Public base URL of the request endpoint, e.g. `https://rp.example/openid4vp/request`. */
-    val requestUriBase: String,
+    val requestUriBase: String = "",
     /** Public base URL of the response endpoint, e.g. `https://rp.example/openid4vp/response`. */
-    val responseUriBase: String,
+    val responseUriBase: String = "",
     /** JWK JSON of the EC P-256 request signing key (with kid). */
-    val requestSigningKeyJwk: String,
+    val requestSigningKeyJwk: String = "",
     /** JWK JSON of the EC P-256 response encryption key (with kid). */
-    val responseEncryptionKeyJwk: String,
+    val responseEncryptionKeyJwk: String = "",
     val walletAuthorizationScheme: String = "openid4vp://",
     val transactionTimeToLiveSeconds: Long = DEFAULT_TTL_SECONDS,
 ) {
