@@ -21,6 +21,15 @@ package dev.varco.demo
  * Italian copy: the demo's audience is Italian venues and associations.
  */
 
+/** Escapes a value coming from credential claims before interpolating it into HTML. */
+internal fun htmlEscape(value: String): String =
+    value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;")
+
 private fun page(
     title: String,
     body: String,
@@ -103,7 +112,7 @@ internal fun ticketHtml(
         <div class="ticket">
           <p><strong>Concerto d'autunno — Teatro di Prova</strong><br>
           Venerdì 20 novembre 2026, ore 21:00 — Platea, posto D13</p>
-          <p>Intestato a: <strong>$holder</strong><br>
+          <p>Intestato a: <strong>${htmlEscape(holder)}</strong><br>
           <span class="muted">Biglietto nominativo, valido solo insieme al titolare del diritto.</span></p>
           <p class="muted">Transazione: <code>$txId</code> — DEMO, non valido per l'ingresso</p>
         </div>

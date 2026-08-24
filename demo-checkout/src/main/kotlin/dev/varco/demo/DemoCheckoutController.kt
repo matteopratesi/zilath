@@ -20,7 +20,6 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import dev.varco.verifier.openid4vp.FlowOutcome
 import dev.varco.verifier.openid4vp.PresentationRequest
-import dev.varco.verifier.openid4vp.StartedTransaction
 import dev.varco.verifier.openid4vp.TransactionId
 import dev.varco.verifier.openid4vp.VerificationFlow
 import dev.varco.verifier.openid4vp.VerificationReceipts
@@ -35,7 +34,6 @@ import org.springframework.web.bind.annotation.RestController
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.net.URI
-import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
 
 /**
@@ -46,10 +44,11 @@ import javax.imageio.ImageIO
 class DemoCheckoutController(
     private val flow: VerificationFlow,
     private val receipts: VerificationReceipts,
+    clock: java.time.Clock,
     @Value("\${varco.demo.pid-vct:urn:eu.europa.ec.eudi:pid:1}") private val pidVct: String,
 ) {
-    /** The demo keeps the started transactions so it can render QR codes and receipts. */
-    private val started = ConcurrentHashMap<String, Pair<StartedTransaction, PresentationRequest>>()
+    /** Started transactions, kept a bit longer than the flow TTL so receipts stay downloadable. */
+    private val registry = DemoTransactionRegistry(clock, REGISTRY_TIME_TO_LIVE)
 
     @GetMapping("/demo", produces = [MediaType.TEXT_HTML_VALUE])
     fun eventPage(): String = eventPageHtml()
@@ -58,7 +57,7 @@ class DemoCheckoutController(
     fun startEntitledPurchase(): ResponseEntity<Void> {
         val request = PresentationRequest.forTestPid(pidVct)
         val transaction = flow.start(request)
-        started[transaction.id.value] = transaction to request
+        registry.register(transaction, request)
         return ResponseEntity
             .status(HttpStatus.FOUND)
             .location(URI.create("/demo/wait/${transaction.id.value}"))
@@ -69,33 +68,35 @@ class DemoCheckoutController(
     fun waitPage(
         @PathVariable txId: String,
     ): ResponseEntity<String> {
-        val (transaction, _) = started[txId] ?: return notFoundPage()
-        return ResponseEntity.ok(waitPageHtml(txId, transaction.qrPayload))
+        val entry = registry.get(txId) ?: return notFoundPage()
+        return ResponseEntity.ok(waitPageHtml(txId, entry.transaction.qrPayload))
     }
 
     @GetMapping("/demo/qr/{txId}.png", produces = [MediaType.IMAGE_PNG_VALUE])
     fun qrCode(
         @PathVariable txId: String,
     ): ResponseEntity<ByteArray> {
-        val (transaction, _) = started[txId] ?: return ResponseEntity.notFound().build()
-        return ResponseEntity.ok(qrPng(transaction.qrPayload))
+        val entry = registry.get(txId) ?: return ResponseEntity.notFound().build()
+        return ResponseEntity.ok(qrPng(entry.transaction.qrPayload))
     }
 
     @GetMapping("/demo/authorize-url/{txId}", produces = [MediaType.TEXT_PLAIN_VALUE])
     fun authorizeUrl(
         @PathVariable txId: String,
     ): ResponseEntity<String> {
-        val (transaction, _) = started[txId] ?: return ResponseEntity.notFound().build()
-        return ResponseEntity.ok(transaction.qrPayload)
+        val entry = registry.get(txId) ?: return ResponseEntity.notFound().build()
+        return ResponseEntity.ok(entry.transaction.qrPayload)
     }
 
     @GetMapping("/demo/status/{txId}", produces = [MediaType.APPLICATION_JSON_VALUE])
     fun status(
         @PathVariable txId: String,
-    ): Map<String, String> =
-        mapOf(
+    ): Map<String, String> {
+        val outcome = flow.awaitOutcome(TransactionId(txId))
+        recordReceiptIfTerminal(txId, outcome)
+        return mapOf(
             "status" to
-                when (flow.awaitOutcome(TransactionId(txId))) {
+                when (outcome) {
                     FlowOutcome.Pending -> "pending"
                     is FlowOutcome.Verified -> "verified"
                     is FlowOutcome.Rejected, is FlowOutcome.WalletErrorAcknowledged -> "rejected"
@@ -103,12 +104,14 @@ class DemoCheckoutController(
                     FlowOutcome.Unknown -> "unknown"
                 },
         )
+    }
 
     @GetMapping("/demo/ticket/{txId}", produces = [MediaType.TEXT_HTML_VALUE])
     fun ticket(
         @PathVariable txId: String,
     ): ResponseEntity<String> {
         val outcome = flow.awaitOutcome(TransactionId(txId))
+        recordReceiptIfTerminal(txId, outcome)
         if (outcome !is FlowOutcome.Verified) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(notVerifiedHtml(txId))
         }
@@ -125,34 +128,50 @@ class DemoCheckoutController(
     fun receipt(
         @PathVariable txId: String,
     ): ResponseEntity<String> {
-        val (_, request) = started[txId] ?: return ResponseEntity.notFound().build()
-        return when (flow.awaitOutcome(TransactionId(txId))) {
-            is FlowOutcome.Verified -> ResponseEntity.ok(receipts.issue(TransactionId(txId), request, true))
-            is FlowOutcome.Rejected, is FlowOutcome.WalletErrorAcknowledged ->
-                ResponseEntity.ok(receipts.issue(TransactionId(txId), request, false))
-            else -> ResponseEntity.status(HttpStatus.CONFLICT).body("transaction not completed")
+        val entry = registry.get(txId) ?: return ResponseEntity.notFound().build()
+        recordReceiptIfTerminal(txId, flow.awaitOutcome(TransactionId(txId)))
+        return when (val receipt = entry.receipt.get()) {
+            null -> ResponseEntity.status(HttpStatus.CONFLICT).body("transaction not completed")
+            else -> ResponseEntity.ok(receipt)
         }
+    }
+
+    /** The receipt is signed ONCE, when the terminal outcome is first observed. */
+    private fun recordReceiptIfTerminal(
+        txId: String,
+        outcome: FlowOutcome,
+    ) {
+        val verified =
+            when (outcome) {
+                is FlowOutcome.Verified -> true
+                is FlowOutcome.Rejected, is FlowOutcome.WalletErrorAcknowledged -> false
+                else -> return
+            }
+        registry.receiptFor(txId) { request -> receipts.issue(TransactionId(txId), request, verified) }
     }
 
     private fun notFoundPage(): ResponseEntity<String> =
         ResponseEntity.status(HttpStatus.NOT_FOUND).body(notFoundHtml())
 
-    private fun qrPng(payload: String): ByteArray {
-        val matrix = QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, QR_SIZE, QR_SIZE)
-        val image = BufferedImage(QR_SIZE, QR_SIZE, BufferedImage.TYPE_INT_RGB)
-        for (x in 0 until QR_SIZE) {
-            for (y in 0 until QR_SIZE) {
-                image.setRGB(x, y, if (matrix.get(x, y)) BLACK else WHITE)
-            }
-        }
-        val out = ByteArrayOutputStream()
-        ImageIO.write(image, "png", out)
-        return out.toByteArray()
-    }
-
     companion object {
-        private const val QR_SIZE = 320
-        private const val BLACK = 0x000000
-        private const val WHITE = 0xFFFFFF
+        private val REGISTRY_TIME_TO_LIVE: java.time.Duration = java.time.Duration.ofMinutes(15)
     }
 }
+
+/** Renders a QR PNG without pulling the zxing `javase` artifact in. */
+internal fun qrPng(payload: String): ByteArray {
+    val matrix = QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, QR_SIZE, QR_SIZE)
+    val image = BufferedImage(QR_SIZE, QR_SIZE, BufferedImage.TYPE_INT_RGB)
+    for (x in 0 until QR_SIZE) {
+        for (y in 0 until QR_SIZE) {
+            image.setRGB(x, y, if (matrix.get(x, y)) QR_BLACK else QR_WHITE)
+        }
+    }
+    val out = ByteArrayOutputStream()
+    ImageIO.write(image, "png", out)
+    return out.toByteArray()
+}
+
+private const val QR_SIZE = 320
+private const val QR_BLACK = 0x000000
+private const val QR_WHITE = 0xFFFFFF
