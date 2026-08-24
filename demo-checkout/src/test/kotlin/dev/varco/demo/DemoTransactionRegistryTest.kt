@@ -76,6 +76,38 @@ class DemoTransactionRegistryTest {
     }
 
     @Test
+    fun `an entry expires exactly at the TTL boundary`() {
+        registry.register(transaction("edge"), request)
+        clock.advance(Duration.ofMinutes(15))
+        registry.register(transaction("fresh"), request)
+        assertThat(registry.get("edge")).isNull()
+    }
+
+    @Test
+    fun `concurrent receipt requests issue exactly once`() {
+        registry.register(transaction("tx"), request)
+        val issued =
+            java.util.concurrent.atomic
+                .AtomicInteger()
+        val pool =
+            java.util.concurrent.Executors
+                .newFixedThreadPool(8)
+        val results =
+            (1..16)
+                .map {
+                    pool.submit<String?> {
+                        registry.receiptFor("tx") {
+                            issued.incrementAndGet()
+                            "receipt"
+                        }
+                    }
+                }.map { it.get() }
+        pool.shutdown()
+        assertThat(results).containsOnly("receipt")
+        assertThat(issued.get()).isEqualTo(1)
+    }
+
+    @Test
     fun `holder names are escaped before reaching the ticket page`() {
         val html = ticketHtml("tx", "<script>alert(1)</script>")
         assertThat(html).doesNotContain("<script>alert(1)</script>")

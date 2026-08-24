@@ -53,17 +53,24 @@ internal class DemoTransactionRegistry(
 
     fun get(txId: String): Entry? = entries[txId]
 
-    /** Issues the receipt at most once per transaction; later calls return the same JWS. */
+    /**
+     * Issues the receipt at most once per transaction; later calls return the same JWS.
+     * Issuance is serialized per entry: CAS-style updaters may run more than once under
+     * contention, which would sign multiple receipts.
+     */
     fun receiptFor(
         txId: String,
         issue: (PresentationRequest) -> String,
     ): String? =
         entries[txId]?.let { entry ->
-            entry.receipt.updateAndGet { existing -> existing ?: issue(entry.request) }
+            synchronized(entry) {
+                entry.receipt.get() ?: issue(entry.request).also(entry.receipt::set)
+            }
         }
 
     private fun sweep() {
         val now = clock.instant()
-        entries.values.removeIf { it.createdAt.plus(timeToLive).isBefore(now) }
+        // Inclusive boundary: an entry is expired the instant its TTL is reached.
+        entries.values.removeIf { !it.createdAt.plus(timeToLive).isAfter(now) }
     }
 }
