@@ -27,11 +27,11 @@ Born for accessibility rights: letting a person with a disability prove an entit
 
 Requires JDK 21 (a Gradle toolchain will pick it up).
 
-```
+```sh
 ./gradlew build
 ```
 
 ## License
 
-AGPL-3.0 — free to use in open source software. For embedding in closed-source commercial
+AGPL-3.0 — free to use in open-source software. For embedding in closed-source commercial
 products, a commercial license is available: contact the author.
