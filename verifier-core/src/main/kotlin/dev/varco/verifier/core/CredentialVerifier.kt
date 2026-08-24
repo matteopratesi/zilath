@@ -92,4 +92,10 @@ enum class RejectionReason {
     MALFORMED,
     DISCLOSURE_TAMPERED,
     UNSUPPORTED_FORMAT,
+
+    /** A wallet response arrived for a transaction whose nonce was already consumed. */
+    REPLAY,
+
+    /** The verification pipeline itself failed unexpectedly (infrastructure, not the credential). */
+    INTERNAL_ERROR,
 }
