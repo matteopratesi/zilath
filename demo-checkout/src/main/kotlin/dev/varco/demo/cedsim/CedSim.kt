@@ -37,6 +37,8 @@ import eu.europa.ec.eudi.sdjwt.NimbusSdJwtOps
 import eu.europa.ec.eudi.sdjwt.cnf
 import eu.europa.ec.eudi.sdjwt.sdJwt
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -201,8 +203,12 @@ object CedSim {
         claims: kotlinx.serialization.json.JsonObject,
         clock: Clock,
     ): Boolean {
+        // A JSON Boolean is required: the string "true" must not grant anything.
+        val entitledPrimitive = claims["companion_entitlement"] as? JsonPrimitive
         val entitled =
-            (claims["companion_entitlement"] as? kotlinx.serialization.json.JsonPrimitive)?.content == "true"
+            entitledPrimitive != null &&
+                !entitledPrimitive.isString &&
+                entitledPrimitive.booleanOrNull == true
         val expiry =
             runCatching {
                 java.time.LocalDate.parse(

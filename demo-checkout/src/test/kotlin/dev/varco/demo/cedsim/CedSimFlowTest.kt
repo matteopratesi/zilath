@@ -138,6 +138,16 @@ class CedSimFlowTest {
     }
 
     @Test
+    fun `the string true does not grant the entitlement`() {
+        val forged =
+            kotlinx.serialization.json.buildJsonObject {
+                put("companion_entitlement", kotlinx.serialization.json.JsonPrimitive("true"))
+                put("date_of_expiry", kotlinx.serialization.json.JsonPrimitive("2030-12-31"))
+            }
+        assertThat(CedSim.entitlementGranted(forged, clock)).isFalse()
+    }
+
+    @Test
     fun `a simulated CED from an unknown federation is rejected`() {
         val impostorKeys = CedSim.generateKeys()
         val outcome = presentSimulatedCed(impostorKeys)
