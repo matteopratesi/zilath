@@ -290,6 +290,26 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
+    fun `the ARF baseline profile completes the flow with plain direct_post`() {
+        val arfConfig = config.copy(profile = ArfBaselineProfile)
+        val arfFlow = OpenId4VpVerificationFlow.withInMemoryStore(arfConfig, SdJwtVcCredentialVerifier(), clock)
+        val started = arfFlow.start(PresentationRequest.forTestPid("urn:varco:test:entitlement"))
+        val jwt = SignedJWT.parse(arfFlow.requestJwtFor(started.id))
+        assertThat(jwt.jwtClaimsSet.getStringClaim("response_mode")).isEqualTo("direct_post")
+        val compact =
+            TestVectors.vector(
+                nonce = jwt.jwtClaimsSet.getStringClaim("nonce"),
+                audience = config.clientId,
+            )
+        val outcome =
+            arfFlow.handleWalletResponse(
+                started.id,
+                DirectPostBody(mapOf("vp_token" to compact, "state" to started.id.value)),
+            )
+        assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
+    }
+
+    @Test
     fun `a wallet error response is acknowledged and terminal`() {
         val started = startForPid()
         val body = DirectPostBody(mapOf("error" to "access_denied", "error_description" to "user cancelled"))

@@ -66,6 +66,8 @@ data class RelyingPartyConfiguration(
     /** URI scheme of the QR payload; IT-Wallet accepts `openid4vp://` and `haip-vp://`. */
     val walletAuthorizationScheme: String = DEFAULT_SCHEME,
     val transactionTimeToLive: Duration = DEFAULT_TIME_TO_LIVE,
+    /** The wallet profile in force; the Italian IT-Wallet profile is the default. */
+    val profile: WalletProfile = ItWalletProfile,
 ) {
     companion object {
         const val DEFAULT_SCHEME = "openid4vp://"
