@@ -69,9 +69,12 @@ wallet (the PagoPA conformance tool acts as the wallet — Node >= 22 required).
 
 The same checkout can ask for a **simulated European Disability Card** instead of the PID —
 the ticket then unlocks on the *entitlement*, not on identity. The real CED has been a
-production IT-Wallet credential on app IO since December 2024 (`dc_sd_jwt_EuropeanDisabilityCard`,
-vct `https://ta.wallet.ipzs.it/vct/v1.0.0/europeandisabilitycard`); what does not exist yet is
-production verification by private relying parties. The simulation therefore mirrors the real
+production IT-Wallet credential on app IO since December 2024: configuration
+`dc_sd_jwt_EuropeanDisabilityCard`, whose issuer metadata advertises
+`vct: https://ta.wallet.ipzs.it/vct/v1.0.0/europeandisabilitycard` (verified against the
+production entity statement on 2026-08-25; the same URL serves the credential type metadata —
+newer issuer versions may adopt the spec's `urn:eudi:<type>:it:1` vct convention instead).
+What does not exist yet is production verification by private relying parties. The simulation therefore mirrors the real
 claim names (`given_name`, `family_name`, `constant_attendance_allowance`, `expiry_date`) under
 an openly fake vct and federation — it never impersonates the real issuer — and discloses only
 that minimized subset (never portrait, birth date or document number). Note the semantic limit
