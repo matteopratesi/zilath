@@ -11,7 +11,7 @@ Born for accessibility rights: letting a person with a disability prove an entit
 (companion ticket, priority access) online without ever sending health documents to anyone.
 
 > Working name. Status: pre-alpha, milestone M0.1 (project skeleton).
-> Target spec: IT-Wallet v1.4.5 — see [docs/spec-version.md](docs/spec-version.md).
+> Target spec: IT-Wallet v1.4.6 — see [docs/spec-version.md](docs/spec-version.md).
 
 ## Modules
 
@@ -68,9 +68,18 @@ wallet (the PagoPA conformance tool acts as the wallet — Node >= 22 required).
 ### Simulated CED mode
 
 The same checkout can ask for a **simulated European Disability Card** instead of the PID —
-the ticket then unlocks on the *entitlement*, not on identity. The simulation deliberately
-models only what a card proves (name, companion-entitlement flag, expiry): the real CED is
-not wallet-presentable yet and its future claim set is unknown.
+the ticket then unlocks on the *entitlement*, not on identity. The real CED has been a
+production IT-Wallet credential on app IO since December 2024: configuration
+`dc_sd_jwt_EuropeanDisabilityCard`, whose issuer metadata advertises
+`vct: https://ta.wallet.ipzs.it/vct/v1.0.0/europeandisabilitycard` (verified against the
+production entity statement on 2026-08-25; the same URL serves the credential type metadata —
+newer issuer versions may adopt the spec's `urn:eudi:<type>:it:1` vct convention instead).
+What does not exist yet is production verification by private relying parties. The simulation therefore mirrors the real
+claim names (`given_name`, `family_name`, `constant_attendance_allowance`, `expiry_date`) under
+an openly fake vct and federation — it never impersonates the real issuer — and discloses only
+that minimized subset (never portrait, birth date or document number). Note the semantic limit
+of the real claim: `constant_attendance_allowance` covers the attendance allowance, not every
+card printed with the companion "A".
 
 ```sh
 ./scripts/run-ced-wallet.sh init

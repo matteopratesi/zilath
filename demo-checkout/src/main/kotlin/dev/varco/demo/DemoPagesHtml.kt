@@ -115,7 +115,7 @@ internal fun verifiedTicketHtml(
             claims["family_name"]?.jsonPrimitive?.content,
         ).joinToString(" ").ifBlank { "—" }
     val entitledLine =
-        if (claims["companion_entitlement"]?.jsonPrimitive?.content == "true") {
+        if (claims["constant_attendance_allowance"]?.jsonPrimitive?.content == "true") {
             "Diritto al biglietto accompagnatore verificato — credenziale CED SIMULATA"
         } else {
             null
