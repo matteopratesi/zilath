@@ -15,8 +15,9 @@
 | 75-90s | Ritorno alla pagina evento | "Verifichi una volta, compri ovunque come tutti. Il codice è open source: la fiducia si ispeziona. Questo è Varco." |
 
 Note di regia:
-- Tenere visibili insieme browser (sx) e terminale (dx): il "wallet" della demo è il
-  conformance tool ufficiale PagoPA, e dirlo rafforza la credibilità.
+- Tenere visibili insieme browser (sx) e terminale (dx). Il wallet della demo CED è il
+  simulatore incluso nel repo (run-ced-wallet.sh); in modalità PID è invece il conformance
+  tool ufficiale PagoPA — dirlo rafforza la credibilità.
 - Il nome sul biglietto è quello della credenziale simulata (Maria Bianchi): farlo notare.
 - La parola "simulata" va detta esplicitamente: è onestà, e spiega il calendario 2027.
 - Nessun dato reale in scena.

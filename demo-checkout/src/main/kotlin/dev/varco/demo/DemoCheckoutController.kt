@@ -23,7 +23,6 @@ import dev.varco.verifier.openid4vp.PresentationRequest
 import dev.varco.verifier.openid4vp.TransactionId
 import dev.varco.verifier.openid4vp.VerificationFlow
 import dev.varco.verifier.openid4vp.VerificationReceipts
-import kotlinx.serialization.json.jsonPrimitive
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -44,7 +43,7 @@ import javax.imageio.ImageIO
 class DemoCheckoutController(
     private val flow: VerificationFlow,
     private val receipts: VerificationReceipts,
-    clock: java.time.Clock,
+    private val clock: java.time.Clock,
     @Value("\${varco.demo.pid-vct:urn:eu.europa.ec.eudi:pid:1}") private val pidVct: String,
     @Value("\${varco.demo.credential-mode:pid}") private val credentialMode: String,
 ) {
@@ -128,22 +127,16 @@ class DemoCheckoutController(
     ): ResponseEntity<String> {
         val outcome = flow.awaitOutcome(TransactionId(txId))
         recordReceiptIfTerminal(txId, outcome)
-        if (outcome !is FlowOutcome.Verified) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(notVerifiedHtml(txId))
+        return when {
+            outcome !is FlowOutcome.Verified ->
+                ResponseEntity.status(HttpStatus.CONFLICT).body(notVerifiedHtml(txId))
+            // The DCQL only asks for disclosure: the VALUE of the entitlement is enforced here.
+            credentialMode == CED_SIM_MODE &&
+                !dev.varco.demo.cedsim.CedSim
+                    .entitlementGranted(outcome.claims.claims, clock) ->
+                ResponseEntity.status(HttpStatus.CONFLICT).body(notEntitledHtml(txId))
+            else -> ResponseEntity.ok(verifiedTicketHtml(txId, outcome.claims.claims))
         }
-        val claims = outcome.claims.claims
-        val holder =
-            listOfNotNull(
-                claims["given_name"]?.jsonPrimitive?.content,
-                claims["family_name"]?.jsonPrimitive?.content,
-            ).joinToString(" ").ifBlank { "—" }
-        val entitledLine =
-            if (claims["companion_entitlement"]?.jsonPrimitive?.content == "true") {
-                "Diritto al biglietto accompagnatore verificato — credenziale CED SIMULATA"
-            } else {
-                null
-            }
-        return ResponseEntity.ok(ticketHtml(txId, holder, entitledLine))
     }
 
     @GetMapping("/demo/receipt/{txId}", produces = [MediaType.TEXT_PLAIN_VALUE])

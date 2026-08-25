@@ -82,6 +82,7 @@ object DemoWalletSimulator {
         val presentation = CedSim.mintPresentation(keys, nonce, audience, Clock.systemUTC())
         val response = CedSim.buildEncryptedResponse(state, presentation, encryptionKey)
         val status = postForm(responseUri, "response=" + java.net.URLEncoder.encode(response, StandardCharsets.UTF_8))
+        check(status in HTTP_OK_MIN..HTTP_OK_MAX) { "wallet response rejected: HTTP $status" }
         println("Presented simulated CED for $txId -> HTTP $status")
     }
 

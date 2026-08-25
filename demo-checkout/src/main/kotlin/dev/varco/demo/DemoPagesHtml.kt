@@ -16,6 +16,9 @@
  */
 package dev.varco.demo
 
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
 /*
  * Server-rendered pages of the demo (plan: simple server-side templates, no SPA).
  * Italian copy: the demo's audience is Italian venues and associations.
@@ -101,6 +104,25 @@ internal fun waitPageHtml(
         """.trimIndent(),
     )
 
+/** Renders the verified ticket from the disclosed claims. */
+internal fun verifiedTicketHtml(
+    txId: String,
+    claims: JsonObject,
+): String {
+    val holder =
+        listOfNotNull(
+            claims["given_name"]?.jsonPrimitive?.content,
+            claims["family_name"]?.jsonPrimitive?.content,
+        ).joinToString(" ").ifBlank { "—" }
+    val entitledLine =
+        if (claims["companion_entitlement"]?.jsonPrimitive?.content == "true") {
+            "Diritto al biglietto accompagnatore verificato — credenziale CED SIMULATA"
+        } else {
+            null
+        }
+    return ticketHtml(txId, holder, entitledLine)
+}
+
 internal fun ticketHtml(
     txId: String,
     holder: String,
@@ -131,6 +153,17 @@ internal fun notVerifiedHtml(txId: String): String =
         <h1>Verifica non completata</h1>
         <p class="muted">La transazione <code>$txId</code> non risulta verificata.</p>
         <p><a class="btn" href="/demo">Riprova dall'evento</a></p>
+        """.trimIndent(),
+    )
+
+internal fun notEntitledHtml(txId: String): String =
+    page(
+        "Diritto non presente",
+        """
+        <h1>La credenziale è valida, ma il diritto non c'è</h1>
+        <p class="muted">La carta presentata non include il diritto al biglietto accompagnatore
+        o risulta scaduta. Transazione <code>$txId</code>.</p>
+        <p><a class="btn" href="/demo">Torna all'evento</a></p>
         """.trimIndent(),
     )
 

@@ -75,13 +75,24 @@ class CedSimFlowTest {
         return JWK.parse(JSONObjectUtils.toJSONString(list.first() as Map<String, Any?>))
     }
 
-    private fun presentSimulatedCed(withKeys: CedSim.Keys): FlowOutcome {
+    private fun presentSimulatedCed(
+        withKeys: CedSim.Keys,
+        companionEntitlement: Boolean = true,
+        dateOfExpiry: String = "2030-12-31",
+    ): FlowOutcome {
         val request = PresentationRequest.forVct(CedSim.VCT, CedSim.CLAIM_PATHS, CedSim.CREDENTIAL_QUERY_ID)
         val started = flow.start(request)
         val jar = SignedJWT.parse(checkNotNull(flow.requestJwtFor(started.id)))
         val claims = jar.jwtClaimsSet
         val presentation =
-            CedSim.mintPresentation(withKeys, claims.getStringClaim("nonce"), claims.getStringClaim("client_id"), clock)
+            CedSim.mintPresentation(
+                withKeys,
+                claims.getStringClaim("nonce"),
+                claims.getStringClaim("client_id"),
+                clock,
+                companionEntitlement,
+                dateOfExpiry,
+            )
         val response =
             CedSim.buildEncryptedResponse(
                 claims.getStringClaim("state"),
@@ -100,6 +111,30 @@ class CedSimFlowTest {
         assertThat(claims["given_name"]?.jsonPrimitive?.content).isEqualTo("Maria")
         // The simulation models only card-level facts: never conditions or subcategories.
         assertThat(claims.keys).doesNotContain("diagnosis", "art3c3", "percentage")
+    }
+
+    @Test
+    fun `a valid card WITHOUT the entitlement verifies but does not grant the ticket`() {
+        val outcome = presentSimulatedCed(keys, companionEntitlement = false)
+        // The credential itself is cryptographically fine...
+        assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
+        // ...but the checkout policy must refuse the benefit.
+        val claims = (outcome as FlowOutcome.Verified).claims.claims
+        assertThat(CedSim.entitlementGranted(claims, clock)).isFalse()
+    }
+
+    @Test
+    fun `an expired card does not grant the ticket`() {
+        val outcome = presentSimulatedCed(keys, dateOfExpiry = "2026-08-24")
+        val claims = (outcome as FlowOutcome.Verified).claims.claims
+        assertThat(CedSim.entitlementGranted(claims, clock)).isFalse()
+    }
+
+    @Test
+    fun `an entitled unexpired card grants the ticket`() {
+        val outcome = presentSimulatedCed(keys)
+        val claims = (outcome as FlowOutcome.Verified).claims.claims
+        assertThat(CedSim.entitlementGranted(claims, clock)).isTrue()
     }
 
     @Test

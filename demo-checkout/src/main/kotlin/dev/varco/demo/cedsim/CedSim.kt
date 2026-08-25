@@ -125,11 +125,14 @@ object CedSim {
     }
 
     /** Mints the simulated CED presentation, ready for the wallet response. */
+    @Suppress("LongParameterList") // demo factory: independent, defaulted axes for tests
     fun mintPresentation(
         keys: Keys,
         nonce: String,
         audience: String,
         clock: Clock,
+        companionEntitlement: Boolean = true,
+        dateOfExpiry: String = "2030-12-31",
     ): String =
         runBlocking {
             val now = clock.instant()
@@ -143,8 +146,8 @@ object CedSim {
                     cnf(keys.holder.toPublicJWK())
                     sdClaim("given_name", "Maria")
                     sdClaim("family_name", "Bianchi")
-                    sdClaim("companion_entitlement", true)
-                    sdClaim("date_of_expiry", "2030-12-31")
+                    sdClaim("companion_entitlement", companionEntitlement)
+                    sdClaim("date_of_expiry", dateOfExpiry)
                 }
             val issuer =
                 NimbusSdJwtOps.issuer(
@@ -187,6 +190,27 @@ object CedSim {
         val jwe = JWEObject(JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM), Payload(payload.toString()))
         jwe.encrypt(ECDHEncrypter(encryptionKey.toECKey()))
         return jwe.serialize()
+    }
+
+    /**
+     * Checkout policy for the simulated CED: the DCQL only asks for DISCLOSURE of the
+     * claims — enforcing their values is the relying party's job. The ticket is granted
+     * only for an entitled, non-expired card.
+     */
+    fun entitlementGranted(
+        claims: kotlinx.serialization.json.JsonObject,
+        clock: Clock,
+    ): Boolean {
+        val entitled =
+            (claims["companion_entitlement"] as? kotlinx.serialization.json.JsonPrimitive)?.content == "true"
+        val expiry =
+            runCatching {
+                java.time.LocalDate.parse(
+                    (claims["date_of_expiry"] as? kotlinx.serialization.json.JsonPrimitive)?.content,
+                )
+            }.getOrNull() ?: return false
+        val today = java.time.LocalDate.ofInstant(clock.instant(), java.time.ZoneOffset.UTC)
+        return entitled && !expiry.isBefore(today)
     }
 
     private fun jwks(key: ECKey): Map<String, Any> = mapOf("keys" to listOf(key.toPublicJWK().toJSONObject()))
