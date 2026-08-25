@@ -1,19 +1,22 @@
 # Scaletta video demo (90 secondi)
 
-> Da registrare (Matteo). Setup: app avviata come da README "Try the demo", terminale
-> pronto col comando del wallet di test, browser su http://localhost:8080/demo.
+> Da registrare (Matteo). Setup CONSIGLIATO: modalità **CED simulata** (README, "Simulated
+> CED mode") — il biglietto si sblocca per il DIRITTO, non per l'identità. Dire sempre
+> "simulata": la CED reale non è ancora presentabile dal wallet. Terminale pronto col
+> comando run-ced-wallet.sh, browser su http://localhost:8080/demo.
 
 | Tempo | Scena | Voce (indicativa) |
 |---|---|---|
 | 0-10s | Pagina evento del "Teatro di Prova", biglietto a €35 | "Oggi, per avere il biglietto accompagnatore, una persona con disabilità manda il proprio verbale INPS via email. A ogni evento, da capo." |
 | 10-20s | Click su "Ho diritto al biglietto accompagnatore" → appare il QR | "Con Varco basta il wallet: la pagina chiede una credenziale, non un documento." |
-| 20-40s | Terminale: parte il wallet di test che presenta il PID (comando già pronto) | "Il wallet presenta la credenziale dello Stato. Cifrata, firmata, legata a questa transazione: non si può copiare né riusare." |
-| 40-55s | La pagina passa da 'in attesa' al biglietto verde NOMINATIVO | "Il sistema risponde solo sì o no. Ed ecco il biglietto accompagnatore, intestato." |
+| 20-40s | Terminale: il wallet di test presenta la CED SIMULATA (comando già pronto) | "Il wallet presenta la Carta della Disabilità — qui simulata, perché quella vera arriverà nel wallet nel 2027. Cifrata, firmata, legata a questa transazione: non si può copiare né riusare." |
+| 40-55s | La pagina passa al biglietto verde: "Diritto al biglietto accompagnatore verificato" | "Il sistema sa una cosa sola: che il diritto c'è. Non la diagnosi, non la percentuale, non la storia clinica. Ed ecco il biglietto, intestato." |
 | 55-75s | Click su "Ricevuta di verifica firmata": mostrare il JWT decodificato (jwt.io o simile) | "Questo è tutto ciò che il teatro conserva: esito, orario, transazione. Niente diagnosi, niente verbale, niente dati sanitari. La ricevuta è firmata: vale come prova." |
 | 75-90s | Ritorno alla pagina evento | "Verifichi una volta, compri ovunque come tutti. Il codice è open source: la fiducia si ispeziona. Questo è Varco." |
 
 Note di regia:
 - Tenere visibili insieme browser (sx) e terminale (dx): il "wallet" della demo è il
   conformance tool ufficiale PagoPA, e dirlo rafforza la credibilità.
-- Il nome sul biglietto è quello del PID di test (Ada Lovelace o simile): farlo notare.
+- Il nome sul biglietto è quello della credenziale simulata (Maria Bianchi): farlo notare.
+- La parola "simulata" va detta esplicitamente: è onestà, e spiega il calendario 2027.
 - Nessun dato reale in scena.

@@ -76,14 +76,15 @@ internal fun eventPageHtml(): String =
 internal fun waitPageHtml(
     txId: String,
     qrPayload: String,
+    walletCommand: String = "./scripts/run-demo-wallet.sh $txId",
 ): String =
     page(
         "Verifica in corso",
         """
         <h1>Inquadra il QR col tuo wallet</h1>
         <img class="qr" src="/demo/qr/$txId.png" width="320" height="320" alt="QR OpenID4VP">
-        <p class="muted">Oppure, per la demo, fai presentare il PID di test al wallet di conformance:<br>
-        <code>./scripts/run-demo-wallet.sh $txId</code></p>
+        <p class="muted">Oppure, per la demo, fai presentare la credenziale al wallet di test:<br>
+        <code>$walletCommand</code></p>
         <p id="status" class="muted">In attesa della presentazione…</p>
         <details><summary class="muted">authorize URL</summary><p><code>$qrPayload</code></p></details>
         <script>
@@ -103,11 +104,12 @@ internal fun waitPageHtml(
 internal fun ticketHtml(
     txId: String,
     holder: String,
+    entitledLine: String? = null,
 ): String =
     page(
         "Biglietto accompagnatore",
         """
-        <p class="ok">✔ Diritto verificato</p>
+        <p class="ok">✔ ${entitledLine ?: "Diritto verificato"}</p>
         <h1>Biglietto accompagnatore — omaggio</h1>
         <div class="ticket">
           <p><strong>Concerto d'autunno — Teatro di Prova</strong><br>

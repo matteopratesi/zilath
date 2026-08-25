@@ -17,3 +17,5 @@ varco:
     # PEM with a self-signed certificate + EC P-256 private key: enables the x509_hash
     # client id scheme required by the conformance wallet.
     rp-pem-path: ${VARCO_RP_PEM_PATH:}
+    # pid (default) | ced-sim: which credential the demo checkout asks for.
+    credential-mode: ${VARCO_DEMO_CREDENTIAL_MODE:pid}
