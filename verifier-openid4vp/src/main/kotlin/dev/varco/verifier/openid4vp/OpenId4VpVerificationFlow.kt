@@ -96,8 +96,7 @@ class OpenId4VpVerificationFlow(
         body: DirectPostBody,
     ): FlowOutcome =
         runCatching {
-            val jwe = body.response ?: flowReject(RejectionReason.MALFORMED, "missing response parameter")
-            val payload = decryptWalletResponse(jwe, config)
+            val payload = config.profile.decodeWalletResponse(body, config)
             checkState(payload, transaction)
             val compact = extractPresentation(payload, transaction.request.credentialQueryId)
             val context =

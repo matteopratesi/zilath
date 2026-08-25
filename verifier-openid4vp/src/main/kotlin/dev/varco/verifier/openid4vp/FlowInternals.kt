@@ -37,13 +37,11 @@ import java.security.SecureRandom
 import java.time.Instant
 import java.util.Date
 
-/**
- * IT-Wallet v1.4.5 request object profile (docs/spec-version.md): JAR typed
- * `oauth-authz-req+jwt`, `response_mode=direct_post.jwt`, `dcql_query`, and the
- * RP encryption key advertised in `client_metadata.jwks`.
+/*
+ * Profile-independent request machinery; everything a profile may change lives
+ * behind [WalletProfile] (response mode, client_metadata, response decoding).
  */
 internal const val REQUEST_OBJECT_TYP = "oauth-authz-req+jwt"
-internal const val RESPONSE_MODE = "direct_post.jwt"
 internal const val RESPONSE_ENCRYPTION_ALG = "ECDH-ES"
 internal const val RESPONSE_ENCRYPTION_ENC = "A256GCM"
 
@@ -91,12 +89,12 @@ internal fun buildRequestJwt(
             .audience(WALLET_AUDIENCE)
             .claim("client_id", config.clientId)
             .claim("response_type", "vp_token")
-            .claim("response_mode", RESPONSE_MODE)
+            .claim("response_mode", config.profile.responseMode)
             .claim("response_uri", "${config.endpoints.responseUriBase}/${transaction.id.value}")
             .claim("nonce", transaction.nonce)
             .claim("state", transaction.id.value)
             .claim("dcql_query", jsonToMap(transaction.request.dcqlQuery))
-            .claim("client_metadata", clientMetadataOf(config))
+            .claim("client_metadata", config.profile.clientMetadataFor(config))
             .issueTime(Date.from(now))
             // The JAR must not advertise a validity window outliving the transaction itself.
             .expirationTime(Date.from(transaction.createdAt.plus(config.transactionTimeToLive)))
@@ -115,39 +113,6 @@ internal fun buildRequestJwt(
     jwt.sign(ECDSASigner(config.keys.requestSigningKey))
     return jwt.serialize()
 }
-
-private fun clientMetadataOf(config: RelyingPartyConfiguration): Map<String, Any> =
-    mapOf(
-        "jwks" to
-            mapOf(
-                "keys" to
-                    listOf(
-                        // The wallet selects the response encryption key by its alg.
-                        com.nimbusds.jose.jwk
-                            .ECKey
-                            .Builder(
-                                config.keys.responseEncryptionKey
-                                    .toPublicJWK()
-                                    .toECKey(),
-                            ).algorithm(com.nimbusds.jose.JWEAlgorithm.ECDH_ES)
-                            .build()
-                            .toJSONObject(),
-                    ),
-            ),
-        // IT-Wallet v1.4.5 / OpenID4VP 1.0 member names.
-        "encrypted_response_enc_values_supported" to listOf(RESPONSE_ENCRYPTION_ENC, "A128GCM"),
-        "vp_formats_supported" to
-            mapOf(
-                "dc+sd-jwt" to
-                    mapOf(
-                        "sd-jwt_alg_values" to listOf("ES256"),
-                        "kb-jwt_alg_values" to listOf("ES256"),
-                    ),
-            ),
-        // Legacy JARM member names, kept as harmless extras for older wallets.
-        "authorization_encrypted_response_alg" to RESPONSE_ENCRYPTION_ALG,
-        "authorization_encrypted_response_enc" to RESPONSE_ENCRYPTION_ENC,
-    )
 
 private fun jsonToMap(json: JsonObject): Map<String, Any?> =
     com.nimbusds.jose.util.JSONObjectUtils
