@@ -16,6 +16,9 @@
  */
 package dev.varco.demo
 
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
 /*
  * Server-rendered pages of the demo (plan: simple server-side templates, no SPA).
  * Italian copy: the demo's audience is Italian venues and associations.
@@ -76,14 +79,15 @@ internal fun eventPageHtml(): String =
 internal fun waitPageHtml(
     txId: String,
     qrPayload: String,
+    walletCommand: String = "./scripts/run-demo-wallet.sh $txId",
 ): String =
     page(
         "Verifica in corso",
         """
         <h1>Inquadra il QR col tuo wallet</h1>
         <img class="qr" src="/demo/qr/$txId.png" width="320" height="320" alt="QR OpenID4VP">
-        <p class="muted">Oppure, per la demo, fai presentare il PID di test al wallet di conformance:<br>
-        <code>./scripts/run-demo-wallet.sh $txId</code></p>
+        <p class="muted">Oppure, per la demo, fai presentare la credenziale al wallet di test:<br>
+        <code>$walletCommand</code></p>
         <p id="status" class="muted">In attesa della presentazione…</p>
         <details><summary class="muted">authorize URL</summary><p><code>$qrPayload</code></p></details>
         <script>
@@ -100,14 +104,34 @@ internal fun waitPageHtml(
         """.trimIndent(),
     )
 
+/** Renders the verified ticket from the disclosed claims. */
+internal fun verifiedTicketHtml(
+    txId: String,
+    claims: JsonObject,
+): String {
+    val holder =
+        listOfNotNull(
+            claims["given_name"]?.jsonPrimitive?.content,
+            claims["family_name"]?.jsonPrimitive?.content,
+        ).joinToString(" ").ifBlank { "—" }
+    val entitledLine =
+        if (claims["companion_entitlement"]?.jsonPrimitive?.content == "true") {
+            "Diritto al biglietto accompagnatore verificato — credenziale CED SIMULATA"
+        } else {
+            null
+        }
+    return ticketHtml(txId, holder, entitledLine)
+}
+
 internal fun ticketHtml(
     txId: String,
     holder: String,
+    entitledLine: String? = null,
 ): String =
     page(
         "Biglietto accompagnatore",
         """
-        <p class="ok">✔ Diritto verificato</p>
+        <p class="ok">✔ ${entitledLine ?: "Diritto verificato"}</p>
         <h1>Biglietto accompagnatore — omaggio</h1>
         <div class="ticket">
           <p><strong>Concerto d'autunno — Teatro di Prova</strong><br>
@@ -129,6 +153,17 @@ internal fun notVerifiedHtml(txId: String): String =
         <h1>Verifica non completata</h1>
         <p class="muted">La transazione <code>$txId</code> non risulta verificata.</p>
         <p><a class="btn" href="/demo">Riprova dall'evento</a></p>
+        """.trimIndent(),
+    )
+
+internal fun notEntitledHtml(txId: String): String =
+    page(
+        "Diritto non presente",
+        """
+        <h1>La credenziale è valida, ma il diritto non c'è</h1>
+        <p class="muted">La carta presentata non include il diritto al biglietto accompagnatore
+        o risulta scaduta. Transazione <code>$txId</code>.</p>
+        <p><a class="btn" href="/demo">Torna all'evento</a></p>
         """.trimIndent(),
     )
 

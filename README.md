@@ -65,6 +65,22 @@ wallet (the PagoPA conformance tool acts as the wallet — Node >= 22 required).
 5. The page turns into a nominative companion ticket; the "ricevuta di verifica" link is
    the signed receipt a venue would keep — outcome and timestamp, never a document.
 
+### Simulated CED mode
+
+The same checkout can ask for a **simulated European Disability Card** instead of the PID —
+the ticket then unlocks on the *entitlement*, not on identity. The simulation deliberately
+models only what a card proves (name, companion-entitlement flag, expiry): the real CED is
+not wallet-presentable yet and its future claim set is unknown.
+
+```sh
+./scripts/run-ced-wallet.sh init
+VARCO_TRUST_ANCHOR_ID=https://anchor.ced-sim.varco.invalid \
+VARCO_TRUST_ANCHOR_JWKS_PATH=$PWD/demo-keys/ced-sim/anchor-jwks.json \
+VARCO_DEMO_CREDENTIAL_MODE=ced-sim ./gradlew :demo-checkout:bootRun
+# then, with the transaction id from the QR page:
+./scripts/run-ced-wallet.sh <transactionId>
+```
+
 For the full conformance run against this RP, see [docs/conformance](docs/conformance/).
 
 ## License

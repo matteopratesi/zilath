@@ -10,11 +10,18 @@ kotlin {
     jvmToolchain(21)
 }
 
+springBoot {
+    mainClass.set("dev.varco.demo.ConformanceDemoAppKt")
+}
+
 dependencies {
     implementation(project(":verifier-spring-boot-starter"))
     implementation(project(":verifier-trust-itwallet"))
     implementation(libs.spring.boot.starter.web)
     implementation(libs.zxing.core)
+    // Simulated-CED demo wallet: mints the credential with the same EUDI library.
+    implementation(libs.eudi.sdjwt)
+    implementation(libs.kotlinx.coroutines.core)
     // Nimbus needs BouncyCastle to parse PEM key material (demo-only dependency).
     runtimeOnly(libs.bcpkix)
     testImplementation(libs.spring.boot.starter.test)
@@ -26,4 +33,13 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+tasks.register<JavaExec>("cedWallet") {
+    group = "demo"
+    description = "Simulated-CED demo wallet (args: init [dir] | run <txId> [baseUrl] [keysDir])"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.varco.demo.cedsim.DemoWalletSimulator")
+    // Relative key paths must resolve against the repository root, not the module dir.
+    workingDir = rootDir
 }

@@ -66,28 +66,39 @@ data class PresentationRequest(
 ) {
     companion object {
         /**
-         * Minimal query for the test PID (plan docs/03 §5-M0.3): given name and family
-         * name only. The production vct is confirmed against the conformance tool in M0.4.
+         * DCQL query for a single SD-JWT VC type: [claimPaths] are top-level claim names
+         * (nested paths can be expressed with the full [PresentationRequest] constructor).
          */
-        fun forTestPid(vct: String): PresentationRequest {
+        fun forVct(
+            vct: String,
+            claimPaths: List<String>,
+            credentialQueryId: String,
+        ): PresentationRequest {
             val dcql =
                 buildJsonObject {
                     putJsonArray("credentials") {
                         addJsonObject {
-                            put("id", "pid")
+                            put("id", credentialQueryId)
                             put("format", "dc+sd-jwt")
                             putJsonObject("meta") {
                                 putJsonArray("vct_values") { add(vct) }
                             }
                             putJsonArray("claims") {
-                                addJsonObject { putJsonArray("path") { add("given_name") } }
-                                addJsonObject { putJsonArray("path") { add("family_name") } }
+                                claimPaths.forEach { path ->
+                                    addJsonObject { putJsonArray("path") { add(path) } }
+                                }
                             }
                         }
                     }
                 }
-            return PresentationRequest(dcql, "pid")
+            return PresentationRequest(dcql, credentialQueryId)
         }
+
+        /**
+         * Minimal query for the test PID (plan docs/03 §5-M0.3): given name and family
+         * name only. The production vct is confirmed against the conformance tool in M0.4.
+         */
+        fun forTestPid(vct: String): PresentationRequest = forVct(vct, listOf("given_name", "family_name"), "pid")
     }
 }
 

@@ -23,7 +23,6 @@ import dev.varco.verifier.openid4vp.PresentationRequest
 import dev.varco.verifier.openid4vp.TransactionId
 import dev.varco.verifier.openid4vp.VerificationFlow
 import dev.varco.verifier.openid4vp.VerificationReceipts
-import kotlinx.serialization.json.jsonPrimitive
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -44,8 +43,9 @@ import javax.imageio.ImageIO
 class DemoCheckoutController(
     private val flow: VerificationFlow,
     private val receipts: VerificationReceipts,
-    clock: java.time.Clock,
+    private val clock: java.time.Clock,
     @Value("\${varco.demo.pid-vct:urn:eu.europa.ec.eudi:pid:1}") private val pidVct: String,
+    @Value("\${varco.demo.credential-mode:pid}") private val credentialMode: String,
 ) {
     /** Started transactions, kept a bit longer than the flow TTL so receipts stay downloadable. */
     private val registry = DemoTransactionRegistry(clock, REGISTRY_TIME_TO_LIVE)
@@ -55,7 +55,16 @@ class DemoCheckoutController(
 
     @GetMapping("/demo/entitled")
     fun startEntitledPurchase(): ResponseEntity<Void> {
-        val request = PresentationRequest.forTestPid(pidVct)
+        val request =
+            if (credentialMode == CED_SIM_MODE) {
+                PresentationRequest.forVct(
+                    dev.varco.demo.cedsim.CedSim.VCT,
+                    dev.varco.demo.cedsim.CedSim.CLAIM_PATHS,
+                    dev.varco.demo.cedsim.CedSim.CREDENTIAL_QUERY_ID,
+                )
+            } else {
+                PresentationRequest.forTestPid(pidVct)
+            }
         val transaction = flow.start(request)
         registry.register(transaction, request)
         return ResponseEntity
@@ -69,7 +78,13 @@ class DemoCheckoutController(
         @PathVariable txId: String,
     ): ResponseEntity<String> {
         val entry = registry.get(txId) ?: return notFoundPage()
-        return ResponseEntity.ok(waitPageHtml(txId, entry.transaction.qrPayload))
+        val walletCommand =
+            if (credentialMode == CED_SIM_MODE) {
+                "./scripts/run-ced-wallet.sh $txId"
+            } else {
+                "./scripts/run-demo-wallet.sh $txId"
+            }
+        return ResponseEntity.ok(waitPageHtml(txId, entry.transaction.qrPayload, walletCommand))
     }
 
     @GetMapping("/demo/qr/{txId}.png", produces = [MediaType.IMAGE_PNG_VALUE])
@@ -112,16 +127,16 @@ class DemoCheckoutController(
     ): ResponseEntity<String> {
         val outcome = flow.awaitOutcome(TransactionId(txId))
         recordReceiptIfTerminal(txId, outcome)
-        if (outcome !is FlowOutcome.Verified) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(notVerifiedHtml(txId))
+        return when {
+            outcome !is FlowOutcome.Verified ->
+                ResponseEntity.status(HttpStatus.CONFLICT).body(notVerifiedHtml(txId))
+            // The DCQL only asks for disclosure: the VALUE of the entitlement is enforced here.
+            credentialMode == CED_SIM_MODE &&
+                !dev.varco.demo.cedsim.CedSim
+                    .entitlementGranted(outcome.claims.claims, clock) ->
+                ResponseEntity.status(HttpStatus.CONFLICT).body(notEntitledHtml(txId))
+            else -> ResponseEntity.ok(verifiedTicketHtml(txId, outcome.claims.claims))
         }
-        val claims = outcome.claims.claims
-        val holder =
-            listOfNotNull(
-                claims["given_name"]?.jsonPrimitive?.content,
-                claims["family_name"]?.jsonPrimitive?.content,
-            ).joinToString(" ").ifBlank { "—" }
-        return ResponseEntity.ok(ticketHtml(txId, holder))
     }
 
     @GetMapping("/demo/receipt/{txId}", produces = [MediaType.TEXT_PLAIN_VALUE])
@@ -155,6 +170,7 @@ class DemoCheckoutController(
 
     companion object {
         private val REGISTRY_TIME_TO_LIVE: java.time.Duration = java.time.Duration.ofMinutes(15)
+        private const val CED_SIM_MODE = "ced-sim"
     }
 }
 
