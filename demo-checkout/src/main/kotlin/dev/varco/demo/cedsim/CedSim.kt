@@ -50,17 +50,19 @@ import java.util.Date
 /*
  * SIMULATED European Disability Card, for the demo only.
  *
- * The real CED is not presentable from any wallet yet, and the claim set of its future
- * credential is UNKNOWN (tracked on the project board): this simulation deliberately
- * models only what a card proves — holder name, a companion-entitlement flag and an
- * expiry — nothing about conditions, percentages or legal subcategories.
+ * The claim names mirror the PRODUCTION credential (dc_sd_jwt_EuropeanDisabilityCard,
+ * vct https://ta.wallet.ipzs.it/vct/v1.0.0/europeandisabilitycard) but the vct and the
+ * federation stay openly simulated: this demo must never impersonate the real issuer.
+ * The DCQL asks only for the minimized subset a checkout needs — holder name, the
+ * constant-attendance-allowance flag and the expiry — never portrait, birth date,
+ * document number, conditions, percentages or legal subcategories.
  */
 object CedSim {
     const val VCT = "urn:varco:sim:ced:1"
     const val ANCHOR_ID = "https://anchor.ced-sim.varco.invalid"
     const val ISSUER_ID = "https://issuer.ced-sim.varco.invalid"
     const val CREDENTIAL_QUERY_ID = "ced"
-    val CLAIM_PATHS = listOf("given_name", "family_name", "companion_entitlement", "date_of_expiry")
+    val CLAIM_PATHS = listOf("given_name", "family_name", "constant_attendance_allowance", "expiry_date")
 
     private const val ENTITY_STATEMENT_TYP = "entity-statement+jwt"
     private const val STATEMENT_VALIDITY_SECONDS = 3600L
@@ -133,8 +135,8 @@ object CedSim {
         nonce: String,
         audience: String,
         clock: Clock,
-        companionEntitlement: Boolean = true,
-        dateOfExpiry: String = "2030-12-31",
+        constantAttendanceAllowance: Boolean = true,
+        expiryDate: String = "2030-12-31",
     ): String =
         runBlocking {
             val now = clock.instant()
@@ -148,8 +150,8 @@ object CedSim {
                     cnf(keys.holder.toPublicJWK())
                     sdClaim("given_name", "Maria")
                     sdClaim("family_name", "Bianchi")
-                    sdClaim("companion_entitlement", companionEntitlement)
-                    sdClaim("date_of_expiry", dateOfExpiry)
+                    sdClaim("constant_attendance_allowance", constantAttendanceAllowance)
+                    sdClaim("expiry_date", expiryDate)
                 }
             val issuer =
                 NimbusSdJwtOps.issuer(
@@ -204,7 +206,7 @@ object CedSim {
         clock: Clock,
     ): Boolean {
         // A JSON Boolean is required: the string "true" must not grant anything.
-        val entitledPrimitive = claims["companion_entitlement"] as? JsonPrimitive
+        val entitledPrimitive = claims["constant_attendance_allowance"] as? JsonPrimitive
         val entitled =
             entitledPrimitive != null &&
                 !entitledPrimitive.isString &&
@@ -212,7 +214,7 @@ object CedSim {
         val expiry =
             runCatching {
                 java.time.LocalDate.parse(
-                    (claims["date_of_expiry"] as? kotlinx.serialization.json.JsonPrimitive)?.content,
+                    (claims["expiry_date"] as? kotlinx.serialization.json.JsonPrimitive)?.content,
                 )
             }.getOrNull() ?: return false
         val today = java.time.LocalDate.ofInstant(clock.instant(), java.time.ZoneOffset.UTC)

@@ -77,8 +77,8 @@ class CedSimFlowTest {
 
     private fun presentSimulatedCed(
         withKeys: CedSim.Keys,
-        companionEntitlement: Boolean = true,
-        dateOfExpiry: String = "2030-12-31",
+        constantAttendanceAllowance: Boolean = true,
+        expiryDate: String = "2030-12-31",
     ): FlowOutcome {
         val request = PresentationRequest.forVct(CedSim.VCT, CedSim.CLAIM_PATHS, CedSim.CREDENTIAL_QUERY_ID)
         val started = flow.start(request)
@@ -90,8 +90,8 @@ class CedSimFlowTest {
                 claims.getStringClaim("nonce"),
                 claims.getStringClaim("client_id"),
                 clock,
-                companionEntitlement,
-                dateOfExpiry,
+                constantAttendanceAllowance,
+                expiryDate,
             )
         val response =
             CedSim.buildEncryptedResponse(
@@ -107,15 +107,16 @@ class CedSimFlowTest {
         val outcome = presentSimulatedCed(keys)
         assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
         val claims = (outcome as FlowOutcome.Verified).claims.claims
-        assertThat(claims["companion_entitlement"]?.jsonPrimitive?.boolean).isTrue()
+        assertThat(claims["constant_attendance_allowance"]?.jsonPrimitive?.boolean).isTrue()
         assertThat(claims["given_name"]?.jsonPrimitive?.content).isEqualTo("Maria")
-        // The simulation models only card-level facts: never conditions or subcategories.
-        assertThat(claims.keys).doesNotContain("diagnosis", "art3c3", "percentage")
+        // The simulation discloses only the minimized subset: never the portrait or the
+        // document number, and never conditions or subcategories.
+        assertThat(claims.keys).doesNotContain("diagnosis", "art3c3", "percentage", "portrait", "document_number")
     }
 
     @Test
     fun `a valid card WITHOUT the entitlement verifies but does not grant the ticket`() {
-        val outcome = presentSimulatedCed(keys, companionEntitlement = false)
+        val outcome = presentSimulatedCed(keys, constantAttendanceAllowance = false)
         // The credential itself is cryptographically fine...
         assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
         // ...but the checkout policy must refuse the benefit.
@@ -125,7 +126,7 @@ class CedSimFlowTest {
 
     @Test
     fun `an expired card does not grant the ticket`() {
-        val outcome = presentSimulatedCed(keys, dateOfExpiry = "2026-08-24")
+        val outcome = presentSimulatedCed(keys, expiryDate = "2026-08-24")
         val claims = (outcome as FlowOutcome.Verified).claims.claims
         assertThat(CedSim.entitlementGranted(claims, clock)).isFalse()
     }
@@ -141,8 +142,8 @@ class CedSimFlowTest {
     fun `the string true does not grant the entitlement`() {
         val forged =
             kotlinx.serialization.json.buildJsonObject {
-                put("companion_entitlement", kotlinx.serialization.json.JsonPrimitive("true"))
-                put("date_of_expiry", kotlinx.serialization.json.JsonPrimitive("2030-12-31"))
+                put("constant_attendance_allowance", kotlinx.serialization.json.JsonPrimitive("true"))
+                put("expiry_date", kotlinx.serialization.json.JsonPrimitive("2030-12-31"))
             }
         assertThat(CedSim.entitlementGranted(forged, clock)).isFalse()
     }
