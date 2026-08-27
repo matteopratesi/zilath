@@ -112,12 +112,16 @@ class OpenId4VpVerificationFlow(
         val callbackBase = config.endpoints.sameDeviceCallbackBase
         val transaction = store.get(txId)
         // The redirect exists only for a same-device transaction whose response has
-        // been processed: the ack to the wallet is the only place it belongs.
+        // been processed: the ack to the wallet is the only place it belongs. After the
+        // return leg no further redirect exists, and an expired transaction gets no
+        // code either — its callback could never complete the flow.
         val eligible =
             callbackBase != null &&
                 transaction != null &&
                 transaction.mode == FlowMode.SAME_DEVICE &&
-                transaction.outcome != null
+                transaction.outcome != null &&
+                !transaction.returned &&
+                !transaction.isExpired(clock.instant(), config.transactionTimeToLive)
         if (!eligible) return null
         val code = transaction.responseCode ?: assignResponseCode(txId)
         return code?.let { "$callbackBase?response_code=$it" }
