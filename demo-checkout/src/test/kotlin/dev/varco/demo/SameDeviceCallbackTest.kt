@@ -16,73 +16,129 @@
  */
 package dev.varco.demo
 
+import com.nimbusds.jose.jwk.Curve
+import com.nimbusds.jose.jwk.gen.ECKeyGenerator
+import dev.varco.verifier.core.CredentialStatus
+import dev.varco.verifier.core.StatusChecker
+import dev.varco.verifier.core.TrustDecision
+import dev.varco.verifier.core.TrustEvaluator
+import dev.varco.verifier.openid4vp.DirectPostBody
+import dev.varco.verifier.openid4vp.FlowMode
+import dev.varco.verifier.openid4vp.FlowOutcome
+import dev.varco.verifier.openid4vp.PresentationRequest
+import dev.varco.verifier.openid4vp.RelyingPartyConfiguration
+import dev.varco.verifier.openid4vp.RpEndpoints
+import dev.varco.verifier.openid4vp.RpKeys
+import dev.varco.verifier.openid4vp.StartedTransaction
+import dev.varco.verifier.openid4vp.TransactionId
+import dev.varco.verifier.openid4vp.VerificationFlow
+import dev.varco.verifier.openid4vp.VerificationReceipts
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.time.Clock
 
 /**
  * The same-device return leg: an unknown session, a missing code and an error carried in
- * the query must be told apart — and none of them may look like a success.
+ * the query must be told apart — and an error must never spend the code, which is what a
+ * stub flow can prove and an end-to-end call cannot.
  */
-@SpringBootTest(
-    classes = [ConformanceDemoApp::class],
-    properties = ["varco.demo.trust-anchor-tofu=true"],
-)
-@AutoConfigureMockMvc
 class SameDeviceCallbackTest {
-    @Autowired
-    lateinit var mockMvc: MockMvc
+    private val known = TransactionId("tx-known")
 
-    private fun startSameDevice(): String {
-        val location =
-            mockMvc
-                .perform(get("/demo/entitled").param("flow", "same-device"))
-                .andExpect(status().isFound)
-                .andReturn()
-                .response
-                .getHeader("Location")
-        return checkNotNull(location).substringAfterLast('/')
+    /** Records what the controller asks of the flow. */
+    private class RecordingFlow(
+        private val knownId: TransactionId,
+        private val consumes: Boolean,
+    ) : VerificationFlow {
+        var consumeCalls = 0
+            private set
+
+        override fun start(
+            request: PresentationRequest,
+            mode: FlowMode,
+        ): StartedTransaction = error("not used")
+
+        override fun requestJwtFor(txId: TransactionId): String? = null
+
+        override fun handleWalletResponse(
+            txId: TransactionId,
+            body: DirectPostBody,
+        ): FlowOutcome = FlowOutcome.Unknown
+
+        override fun awaitOutcome(txId: TransactionId): FlowOutcome =
+            if (txId == knownId) FlowOutcome.Pending else FlowOutcome.Unknown
+
+        override fun sameDeviceRedirectFor(txId: TransactionId): String? = null
+
+        override fun consumeResponseCode(
+            txId: TransactionId,
+            code: String,
+        ): Boolean {
+            consumeCalls++
+            return consumes && txId == knownId
+        }
+    }
+
+    private fun controllerWith(flow: VerificationFlow): DemoCheckoutController {
+        val config =
+            RelyingPartyConfiguration(
+                clientId = "https://demo.varco.example",
+                endpoints = RpEndpoints("https://demo.varco.example/req", "https://demo.varco.example/res"),
+                keys =
+                    RpKeys(
+                        requestSigningKey = ECKeyGenerator(Curve.P_256).keyID("t-sign").generate(),
+                        responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("t-enc").generate(),
+                    ),
+                trustEvaluator = TrustEvaluator { TrustDecision.Untrusted("test") },
+                statusChecker = StatusChecker { CredentialStatus.VALID },
+            )
+        return DemoCheckoutController(
+            flow = flow,
+            receipts = VerificationReceipts(config, Clock.systemUTC()),
+            clock = Clock.systemUTC(),
+            pidVct = "urn:eudi:pid:it:1",
+            credentialMode = "pid",
+        )
     }
 
     @Test
-    fun `an unknown session is unauthorized, not merely not-found`() {
-        mockMvc
-            .perform(get("/demo/cb/unknown-session").param("response_code", "whatever"))
-            .andExpect(status().isUnauthorized)
+    fun `a valid code on its own transaction redirects to the ticket`() {
+        val flow = RecordingFlow(known, consumes = true)
+        val response = controllerWith(flow).sameDeviceCallback(known.value, "a-code", null)
+        assertThat(response.statusCode.value()).isEqualTo(302)
+        assertThat(response.headers.location.toString()).isEqualTo("/demo/ticket/tx-known")
     }
 
     @Test
-    fun `a known session without a response code is unauthorized`() {
-        mockMvc
-            .perform(get("/demo/cb/${startSameDevice()}"))
-            .andExpect(status().isUnauthorized)
+    fun `an error in the query is a bad request and never spends the code`() {
+        val flow = RecordingFlow(known, consumes = true)
+        val response = controllerWith(flow).sameDeviceCallback(known.value, "a-code", "server_error")
+        assertThat(response.statusCode.value()).isEqualTo(400)
+        assertThat(flow.consumeCalls).isZero()
     }
 
     @Test
-    fun `an error carried in the query is a bad request, and never consumes anything`() {
-        val txId = startSameDevice()
-        mockMvc
-            .perform(get("/demo/cb/$txId").param("error", "server_error").param("response_code", "x"))
-            .andExpect(status().isBadRequest)
-        // The code was not consumed by the error call: the invalid one still reports as such.
-        mockMvc
-            .perform(get("/demo/cb/$txId").param("response_code", "x"))
-            .andExpect(status().isBadRequest)
+    fun `an unknown session is unauthorized, and the code is left alone`() {
+        val flow = RecordingFlow(known, consumes = true)
+        val response = controllerWith(flow).sameDeviceCallback("someone-elses-tx", "a-code", null)
+        assertThat(response.statusCode.value()).isEqualTo(401)
+        assertThat(flow.consumeCalls).isZero()
     }
 
     @Test
-    fun `an invalid response code on a known session is a bad request`() {
-        val response =
-            mockMvc
-                .perform(get("/demo/cb/${startSameDevice()}").param("response_code", "not-a-real-code"))
-                .andExpect(status().isBadRequest)
-                .andReturn()
-                .response.contentAsString
-        assertThat(response).contains("invalid_response_code")
+    fun `a missing code is unauthorized`() {
+        val flow = RecordingFlow(known, consumes = true)
+        assertThat(controllerWith(flow).sameDeviceCallback(known.value, null, null).statusCode.value())
+            .isEqualTo(401)
+        assertThat(controllerWith(flow).sameDeviceCallback(known.value, "  ", null).statusCode.value())
+            .isEqualTo(401)
+    }
+
+    @Test
+    fun `a code the flow refuses is a bad request`() {
+        val flow = RecordingFlow(known, consumes = false)
+        val response = controllerWith(flow).sameDeviceCallback(known.value, "stale", null)
+        assertThat(response.statusCode.value()).isEqualTo(400)
+        assertThat(response.body).contains("invalid_response_code")
     }
 }

@@ -342,7 +342,7 @@ class OpenId4VpFlowIntegrationTest {
         // The stale code is not consumable, and the wallet outcome is never exposed:
         // Expired while the entry survives, Unknown once the store sweep removed it.
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
-        assertThat(flow.consumeResponseCode(code)).isNull()
+        assertThat(flow.consumeResponseCode(started.id, code)).isFalse()
         assertThat(flow.awaitOutcome(started.id)).isIn(FlowOutcome.Expired, FlowOutcome.Unknown)
     }
 
@@ -374,9 +374,6 @@ class OpenId4VpFlowIntegrationTest {
                 override fun remove(id: TransactionId) {
                     synchronized(lock) { entries.remove(id) }
                 }
-
-                override fun findByResponseCode(code: String): Transaction? =
-                    synchronized(lock) { entries.values.firstOrNull { it.responseCode == code } }
             }
         val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
         val started =
@@ -386,7 +383,7 @@ class OpenId4VpFlowIntegrationTest {
             checkNotNull(retainingFlow.sameDeviceRedirectFor(started.id)).substringAfter("response_code=")
         clock.advance(config.transactionTimeToLive.plusSeconds(1))
         // The retained entry is findable, but the stale code must not complete the flow.
-        assertThat(retainingFlow.consumeResponseCode(code)).isNull()
+        assertThat(retainingFlow.consumeResponseCode(started.id, code)).isFalse()
         assertThat(retainingFlow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
     }
 }

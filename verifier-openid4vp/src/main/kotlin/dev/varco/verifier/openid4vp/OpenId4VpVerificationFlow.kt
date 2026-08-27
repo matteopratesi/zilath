@@ -141,22 +141,23 @@ class OpenId4VpVerificationFlow(
         return store.get(txId)?.responseCode
     }
 
-    override fun consumeResponseCode(code: String): TransactionId? {
-        val transaction = if (code.isBlank()) null else store.findByResponseCode(code)
-        if (transaction == null) return null
-        // Single use: only the caller that observes the code still present wins, and the
-        // return state is set in the same atomic step (WP_094). Expiry is a precondition
-        // of that SAME step, and the decision is captured INSIDE it: re-evaluating the
-        // clock outside would race and could disown a code that was in fact consumed.
+    override fun consumeResponseCode(
+        txId: TransactionId,
+        code: String,
+    ): Boolean {
+        if (code.isBlank()) return false
+        // The decision is taken INSIDE the atomic update, once, and the code must belong
+        // to THIS transaction: presenting another transaction's code here leaves it
+        // untouched, so its own return leg still works.
         var consumed = false
-        store.compareAndUpdate(transaction.id) { current ->
+        store.compareAndUpdate(txId) { current ->
             val eligible =
                 current.responseCode == code &&
                     !current.isExpired(clock.instant(), config.transactionTimeToLive)
             consumed = eligible
             if (eligible) current.copy(responseCode = null, returned = true) else current
         }
-        return transaction.id.takeIf { consumed }
+        return consumed
     }
 
     private fun verifyResponse(

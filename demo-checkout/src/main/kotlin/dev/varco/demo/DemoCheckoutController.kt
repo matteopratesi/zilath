@@ -159,8 +159,8 @@ class DemoCheckoutController(
         when {
             error != null -> ResponseEntity.badRequest().body(callbackErrorHtml(error))
             responseCode.isNullOrBlank() -> unauthorizedPage()
-            registry.get(txId) == null -> unauthorizedPage()
-            flow.consumeResponseCode(responseCode)?.value != txId ->
+            flow.awaitOutcome(TransactionId(txId)) == FlowOutcome.Unknown -> unauthorizedPage()
+            !flow.consumeResponseCode(TransactionId(txId), responseCode) ->
                 ResponseEntity.badRequest().body(callbackErrorHtml("invalid_response_code"))
             else ->
                 ResponseEntity

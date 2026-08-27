@@ -39,10 +39,19 @@ is the run these notes describe) showed exactly why:
 - **An echoed `nonce` in the response payload must match the transaction** (defence in
   depth; the binding that matters stays the one inside the key-binding JWT).
 
-Reproduce with [config.ini](config.ini) in the working directory (the `[presentation]
-verifier` key has no CLI flag), the demo started with
-`VARCO_DEMO_CLIENT_ID_SCHEME=openid-federation`, and the command in
-[../2026-08-24/README.md](../2026-08-24/README.md).
+Reproduce it: start the demo with `VARCO_DEMO_CLIENT_ID_SCHEME=openid-federation` (plus
+the environment in [../2026-08-24/README.md](../2026-08-24/README.md)), copy
+[config.ini](config.ini) into the directory you run the tool from — the `[presentation]
+verifier` key has no CLI flag, which is why it must live in a file — and run:
+
+```sh
+npx @pagopa/it-wallet-conformance-tool@1.2.1 test:presentation \
+  --presentation-authorize-script <repo>/scripts/conformance-authorize.sh \
+  --wallet-version V1_4 --unsafe-tls
+```
+
+[`scripts/conformance-authorize.sh`](../../../scripts/conformance-authorize.sh) prints the
+authorize URL of a fresh transaction, which is all the tool asks of it.
 
 ## The 23 that still fail, honestly
 

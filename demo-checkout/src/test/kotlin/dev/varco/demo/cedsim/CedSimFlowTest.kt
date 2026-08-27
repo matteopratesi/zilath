@@ -176,8 +176,17 @@ class CedSimFlowTest {
         // WP_094: same-device outcomes stay pending until the user-agent comes back.
         assertThat(flow.awaitOutcome(txId)).isEqualTo(FlowOutcome.Pending)
         val code = redirect!!.substringAfter("response_code=")
-        assertThat(flow.consumeResponseCode(code)).isEqualTo(txId)
-        assertThat(flow.consumeResponseCode(code)).isNull()
+        // Presented on another transaction the code is refused AND left intact...
+        assertThat(
+            flow.consumeResponseCode(
+                dev.varco.verifier.openid4vp
+                    .TransactionId("other"),
+                code,
+            ),
+        ).isFalse()
+        // ...so its own return leg still completes, exactly once.
+        assertThat(flow.consumeResponseCode(txId, code)).isTrue()
+        assertThat(flow.consumeResponseCode(txId, code)).isFalse()
         // A consumed code is never re-minted, and the outcome is now observable.
         assertThat(flow.sameDeviceRedirectFor(txId)).isNull()
         assertThat(flow.awaitOutcome(txId)).isInstanceOf(FlowOutcome.Verified::class.java)

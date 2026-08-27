@@ -5,7 +5,10 @@
 A Kotlin/JVM library that lets any JVM application act as an **OpenID4VP relying party**
 for European digital identity wallets: request a credential from the user's wallet
 (cross-device QR or same-device link), receive and cryptographically verify it
-(SD-JWT VC), and get back a minimal yes/no outcome — **without ever storing anything**.
+(SD-JWT VC), and get back a minimal yes/no outcome — **without ever storing the
+credential**. What a verification leaves behind is the transaction's own bookkeeping
+(nonce, outcome, expiry) and the signed receipt: never the presented document, never a
+claim value.
 
 Wallet behavior is a pluggable **profile**: the Italian **IT-Wallet** profile is the
 default and the most complete (signed JAR, encrypted `direct_post.jwt`, OpenID

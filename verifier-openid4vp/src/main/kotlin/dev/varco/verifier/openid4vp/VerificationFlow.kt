@@ -64,11 +64,15 @@ interface VerificationFlow {
     fun sameDeviceRedirectFor(txId: TransactionId): String?
 
     /**
-     * Exchanges a same-device `response_code` for its transaction, consuming it: the
-     * second call with the same code returns null. The transaction is complete only
-     * when the user-agent comes back through this exchange (WP_094).
+     * Completes the same-device return leg of [txId] with its single-use `code`, in one
+     * atomic step: true only for the caller that presented the right code for the right
+     * transaction, false for everyone after (WP_094). A code belonging to another
+     * transaction is NEVER consumed — presenting it elsewhere must not burn it.
      */
-    fun consumeResponseCode(code: String): TransactionId?
+    fun consumeResponseCode(
+        txId: TransactionId,
+        code: String,
+    ): Boolean
 }
 
 /** How the user reaches the wallet: QR on another device, or a link on the same one. */
