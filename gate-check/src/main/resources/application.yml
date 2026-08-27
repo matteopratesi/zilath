@@ -1,5 +1,9 @@
 server:
   port: 8081
+  # Safe default: reachable only from this machine. Expose on the venue LAN explicitly
+  # (VARCO_GATE_BIND=0.0.0.0) and only behind the venue's own network: whoever can reach
+  # these pages can record receipts, so the network IS the trust boundary.
+  address: ${VARCO_GATE_BIND:127.0.0.1}
 
 varco:
   gate:

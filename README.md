@@ -108,7 +108,12 @@ VARCO_GATE_VENUE="Teatro di Prova" ./gradlew :gate-check:bootRun
 ```
 
 Receipts (JWS, `varco-gate-receipt+jwt`) and the venue signing key live under
-`VARCO_GATE_DATA_DIR` (default `./gate-data`). The `method` claim is the migration seam:
+`VARCO_GATE_DATA_DIR` (default `./gate-data`, created owner-only; forged lines in the
+receipts file are excluded on load). Trust model: the app binds to `127.0.0.1` by
+default; expose it on the venue LAN explicitly (`VARCO_GATE_BIND=0.0.0.0`) and only
+behind the venue's own network — whoever can reach the pages can record receipts, so
+the network is the trust boundary (there is no user login by design: it is a
+single-venue, door-side tool). The `method` claim is the migration seam:
 today `manual-inps-qr`; when private relying parties can receive wallet presentations,
 the same receipt is issued as `wallet-openid4vp` by the library flow — the venue's
 process and records do not change.

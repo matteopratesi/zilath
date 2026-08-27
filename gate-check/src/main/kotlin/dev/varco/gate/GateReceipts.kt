@@ -29,6 +29,7 @@ import com.nimbusds.jwt.SignedJWT
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.PosixFilePermissions
 import java.time.Clock
 import java.time.LocalDate
 import java.util.Date
@@ -55,6 +56,7 @@ class GateReceipts(
 ) {
     private val signingKey: ECKey = loadOrGenerateKey()
     private val receiptsFile: Path = dataDir.resolve(RECEIPTS_FILE)
+    private val verifier = ECDSAVerifier(signingKey.toECPublicKey())
 
     class Receipt(
         val id: String,
@@ -114,15 +116,19 @@ class GateReceipts(
 
     /** True when the JWS really was signed by this venue's key (spot checks, audits). */
     fun verifySignature(jws: String): Boolean =
-        runCatching { SignedJWT.parse(jws).verify(ECDSAVerifier(signingKey.toECPublicKey())) }
-            .getOrDefault(false)
+        runCatching { SignedJWT.parse(jws).verify(verifier) }.getOrDefault(false)
 
+    /** Only receipts signed by THIS venue's key are ever loaded: a line forged into the
+     *  file by anything with write access is silently excluded, never displayed. */
     private fun all(): List<Receipt> {
         if (!Files.exists(receiptsFile)) return emptyList()
         return Files
             .readAllLines(receiptsFile)
             .filter { it.isNotBlank() }
-            .mapNotNull { line -> runCatching { toReceipt(SignedJWT.parse(line), line) }.getOrNull() }
+            .mapNotNull { line ->
+                runCatching { SignedJWT.parse(line).takeIf { it.verify(verifier) }?.let { toReceipt(it, line) } }
+                    .getOrNull()
+            }
     }
 
     private fun toReceipt(
@@ -141,12 +147,32 @@ class GateReceipts(
     }
 
     private fun loadOrGenerateKey(): ECKey {
-        Files.createDirectories(dataDir)
+        createOwnerOnlyDirectory(dataDir)
         val keyFile = dataDir.resolve(KEY_FILE)
         if (Files.exists(keyFile)) return ECKey.parse(Files.readString(keyFile))
         val key = ECKeyGenerator(Curve.P_256).keyID(KEY_ID).generate()
-        Files.writeString(keyFile, key.toJSONString())
+        // Written atomically (temp file + move) with owner-only permissions: the private
+        // key must never be readable by other local principals, or they could mint
+        // receipts this tool would accept as authentic.
+        val temp = Files.createTempFile(dataDir, KEY_FILE, ".tmp")
+        restrictToOwner(temp, directory = false)
+        Files.writeString(temp, key.toJSONString())
+        Files.move(temp, keyFile)
         return key
+    }
+
+    private fun createOwnerOnlyDirectory(dir: Path) {
+        Files.createDirectories(dir)
+        restrictToOwner(dir, directory = true)
+    }
+
+    /** Best effort on non-POSIX filesystems (e.g. Windows): the attribute view is absent. */
+    private fun restrictToOwner(
+        path: Path,
+        directory: Boolean,
+    ) {
+        val permissions = if (directory) OWNER_ONLY_DIR else OWNER_ONLY_FILE
+        runCatching { Files.setPosixFilePermissions(path, PosixFilePermissions.fromString(permissions)) }
     }
 
     companion object {
@@ -158,5 +184,7 @@ class GateReceipts(
         private const val RECEIPTS_FILE = "gate-receipts.jsonl"
         private const val KEY_FILE = "gate-signing-key.json"
         private const val KEY_ID = "gate-signing"
+        private const val OWNER_ONLY_DIR = "rwx------"
+        private const val OWNER_ONLY_FILE = "rw-------"
     }
 }

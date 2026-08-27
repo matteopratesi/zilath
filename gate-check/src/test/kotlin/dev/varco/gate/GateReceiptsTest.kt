@@ -69,6 +69,44 @@ class GateReceiptsTest {
     }
 
     @Test
+    fun `a receipt forged into the file by someone else is never loaded`(
+        @TempDir dir: Path,
+    ) {
+        val receipts = GateReceipts(dir, "Teatro di Prova", clock)
+        val genuine = receipts.issue("Biglietto accompagnatore", entitled = true, operator = "MP")
+        // Same claims shape, but signed by a DIFFERENT key: only file write access needed.
+        val forged =
+            GateReceipts(
+                java.nio.file.Files
+                    .createTempDirectory("forger"),
+                "Teatro di Prova",
+                clock,
+            ).issue("Biglietto accompagnatore", entitled = true, operator = "EVIL")
+        java.nio.file.Files.writeString(
+            dir.resolve("gate-receipts.jsonl"),
+            forged.jws + System.lineSeparator(),
+            java.nio.file.StandardOpenOption.APPEND,
+        )
+        assertThat(receipts.today().map { it.id }).containsExactly(genuine.id)
+        assertThat(receipts.byId(forged.id)).isNull()
+    }
+
+    @Test
+    fun `the signing key is written with owner-only permissions on POSIX systems`(
+        @TempDir dir: Path,
+    ) {
+        GateReceipts(dir, "Teatro di Prova", clock)
+        val permissions =
+            java.nio.file.Files
+                .getPosixFilePermissions(dir.resolve("gate-signing-key.json"))
+        assertThat(permissions)
+            .containsExactlyInAnyOrder(
+                java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+            )
+    }
+
+    @Test
     fun `a tampered receipt fails signature verification`(
         @TempDir dir: Path,
     ) {
