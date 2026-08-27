@@ -141,22 +141,16 @@ class OpenId4VpVerificationFlow(
         if (transaction == null) return null
         // Single use: only the caller that observes the code still present wins, and the
         // return state is set in the same atomic step (WP_094). Expiry is a precondition
-        // of the SAME atomic update: a store that retains expired entries must never let
-        // a stale code complete the return leg and expose the outcome.
-        val before =
-            store.compareAndUpdate(transaction.id) { current ->
-                if (current.responseCode == code &&
+        // of that SAME step, and the decision is captured INSIDE it: re-evaluating the
+        // clock outside would race and could disown a code that was in fact consumed.
+        var consumed = false
+        store.compareAndUpdate(transaction.id) { current ->
+            val eligible =
+                current.responseCode == code &&
                     !current.isExpired(clock.instant(), config.transactionTimeToLive)
-                ) {
-                    current.copy(responseCode = null, returned = true)
-                } else {
-                    current
-                }
-            }
-        val consumed =
-            before != null &&
-                before.responseCode == code &&
-                !before.isExpired(clock.instant(), config.transactionTimeToLive)
+            consumed = eligible
+            if (eligible) current.copy(responseCode = null, returned = true) else current
+        }
         return transaction.id.takeIf { consumed }
     }
 

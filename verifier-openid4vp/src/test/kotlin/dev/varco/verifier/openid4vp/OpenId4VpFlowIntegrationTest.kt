@@ -352,25 +352,31 @@ class OpenId4VpFlowIntegrationTest {
         // consumption itself, not a side effect of the in-memory sweep.
         val retaining =
             object : TransactionStore {
+                // The interface contract makes compareAndUpdate atomic: even a test
+                // double must honor it, or the exactly-once code exchange is untested.
+                val lock = Any()
                 val entries = HashMap<TransactionId, Transaction>()
 
                 override fun put(transaction: Transaction) {
-                    entries[transaction.id] = transaction
+                    synchronized(lock) { entries[transaction.id] = transaction }
                 }
 
-                override fun get(id: TransactionId): Transaction? = entries[id]
+                override fun get(id: TransactionId): Transaction? = synchronized(lock) { entries[id] }
 
                 override fun compareAndUpdate(
                     id: TransactionId,
                     update: (Transaction) -> Transaction,
-                ): Transaction? = entries[id]?.also { entries[id] = update(it) }
+                ): Transaction? =
+                    synchronized(lock) {
+                        entries[id]?.also { entries[id] = update(it) }
+                    }
 
                 override fun remove(id: TransactionId) {
-                    entries.remove(id)
+                    synchronized(lock) { entries.remove(id) }
                 }
 
                 override fun findByResponseCode(code: String): Transaction? =
-                    entries.values.firstOrNull { it.responseCode == code }
+                    synchronized(lock) { entries.values.firstOrNull { it.responseCode == code } }
             }
         val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
         val started =
