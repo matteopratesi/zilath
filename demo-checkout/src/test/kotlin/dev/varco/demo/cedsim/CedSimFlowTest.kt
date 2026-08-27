@@ -176,14 +176,15 @@ class CedSimFlowTest {
         // WP_094: same-device outcomes stay pending until the user-agent comes back.
         assertThat(flow.awaitOutcome(txId)).isEqualTo(FlowOutcome.Pending)
         val code = redirect!!.substringAfter("response_code=")
-        // Presented on another transaction the code is refused AND left intact...
-        assertThat(
-            flow.consumeResponseCode(
-                dev.varco.verifier.openid4vp
-                    .TransactionId("other"),
-                code,
-            ),
-        ).isFalse()
+        // Presented on ANOTHER LIVE transaction the code is refused AND left intact —
+        // an unknown id would prove nothing, since there is no entry to update.
+        val other =
+            flow.start(
+                PresentationRequest.forVct(CedSim.VCT, CedSim.CLAIM_PATHS, CedSim.CREDENTIAL_QUERY_ID),
+                FlowMode.SAME_DEVICE,
+            )
+        assertThat(flow.awaitOutcome(other.id)).isEqualTo(FlowOutcome.Pending)
+        assertThat(flow.consumeResponseCode(other.id, code)).isFalse()
         // ...so its own return leg still completes, exactly once.
         assertThat(flow.consumeResponseCode(txId, code)).isTrue()
         assertThat(flow.consumeResponseCode(txId, code)).isFalse()
