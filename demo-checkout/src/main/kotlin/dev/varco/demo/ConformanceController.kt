@@ -17,10 +17,14 @@
 package dev.varco.demo
 
 import dev.varco.verifier.openid4vp.PresentationRequest
+import dev.varco.verifier.openid4vp.RelyingPartyConfiguration
+import dev.varco.verifier.openid4vp.RpEntityConfiguration
 import dev.varco.verifier.openid4vp.TransactionId
 import dev.varco.verifier.openid4vp.VerificationFlow
 import dev.varco.verifier.trust.FederationFetcher
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RestController
@@ -30,6 +34,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
+import java.time.Clock
 import javax.net.ssl.SSLContext
 import javax.net.ssl.X509TrustManager
 
@@ -37,8 +42,22 @@ import javax.net.ssl.X509TrustManager
 @RestController
 class ConformanceController(
     private val flow: VerificationFlow,
+    private val config: RelyingPartyConfiguration,
+    private val clock: Clock,
     @Value("\${varco.demo.pid-vct:urn:eu.europa.ec.eudi:pid:1}") private val pidVct: String,
 ) {
+    /** The RP entity configuration (VARCO-33): how a federation discovers and onboards us. */
+    @GetMapping("/.well-known/openid-federation")
+    fun entityConfiguration(): ResponseEntity<String> {
+        val federation =
+            config.federation
+                ?: return ResponseEntity.notFound().build()
+        return ResponseEntity
+            .ok()
+            .contentType(MediaType.parseMediaType(RpEntityConfiguration.MEDIA_TYPE))
+            .body(RpEntityConfiguration.build(config, federation, clock))
+    }
+
     @GetMapping("/conformance/start")
     fun start(): Map<String, String> {
         val started = flow.start(PresentationRequest.forTestPid(pidVct))

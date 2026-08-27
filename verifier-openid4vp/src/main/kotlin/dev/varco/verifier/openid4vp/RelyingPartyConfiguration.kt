@@ -68,6 +68,12 @@ data class RelyingPartyConfiguration(
     val transactionTimeToLive: Duration = DEFAULT_TIME_TO_LIVE,
     /** The wallet profile in force; the Italian IT-Wallet profile is the default. */
     val profile: WalletProfile = ItWalletProfile,
+    /**
+     * Federation-side identity (VARCO-33): required for the `openid_federation:` client
+     * id scheme — entity configuration endpoint, onboarding, JAR `trust_chain` header.
+     * Absent for the `x509_hash` scheme.
+     */
+    val federation: RpFederationConfig? = null,
 ) {
     companion object {
         const val DEFAULT_SCHEME = "openid4vp://"

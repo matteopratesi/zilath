@@ -108,6 +108,12 @@ internal fun buildRequestJwt(
     config.keys.requestSigningKey.x509CertChain
         ?.takeIf { it.isNotEmpty() }
         ?.let(headerBuilder::x509CertChain)
+    // openid_federation client id scheme: the RP trust chain travels in the JAR header so
+    // the wallet can validate the RP offline (spec v1.4.6, remote flow).
+    config.federation
+        ?.trustChain
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { headerBuilder.customParam("trust_chain", it) }
     val header = headerBuilder.build()
     val jwt = SignedJWT(header, claims)
     jwt.sign(ECDSASigner(config.keys.requestSigningKey))
