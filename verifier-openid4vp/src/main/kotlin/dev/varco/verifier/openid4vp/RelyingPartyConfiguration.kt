@@ -28,6 +28,11 @@ data class RpEndpoints(
     val requestUriBase: String,
     /** Base of the wallet response endpoint: the transaction id is appended as a path segment. */
     val responseUriBase: String,
+    /**
+     * Where the same-device flow brings the user back (`?response_code=...` is
+     * appended). Null when the RP offers the cross-device flow only.
+     */
+    val sameDeviceCallbackBase: String? = null,
 )
 
 data class RpKeys(

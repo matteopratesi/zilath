@@ -36,7 +36,10 @@ import kotlinx.serialization.json.putJsonObject
  * disclosed claims, and transactions expire from the [TransactionStore].
  */
 interface VerificationFlow {
-    fun start(request: PresentationRequest): StartedTransaction
+    fun start(
+        request: PresentationRequest,
+        mode: FlowMode = FlowMode.CROSS_DEVICE,
+    ): StartedTransaction
 
     /**
      * The signed request object (JAR) the wallet retrieves from `request_uri`,
@@ -51,7 +54,25 @@ interface VerificationFlow {
 
     /** Non-blocking snapshot of the transaction outcome, meant for checkout polling. */
     fun awaitOutcome(txId: TransactionId): FlowOutcome
+
+    /**
+     * The same-device `redirect_uri` for the wallet response acknowledgement (spec
+     * v1.4.6, remote flow): callback base + a fresh single-use `response_code`.
+     * Null for cross-device transactions and for transactions without a recorded
+     * outcome. Idempotent: repeated calls return the same code.
+     */
+    fun sameDeviceRedirectFor(txId: TransactionId): String?
+
+    /**
+     * Exchanges a same-device `response_code` for its transaction, consuming it: the
+     * second call with the same code returns null. The transaction is complete only
+     * when the user-agent comes back through this exchange (WP_094).
+     */
+    fun consumeResponseCode(code: String): TransactionId?
 }
+
+/** How the user reaches the wallet: QR on another device, or a link on the same one. */
+enum class FlowMode { CROSS_DEVICE, SAME_DEVICE }
 
 data class TransactionId(
     val value: String,

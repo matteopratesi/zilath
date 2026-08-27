@@ -30,6 +30,8 @@ data class OpenId4VpProperties(
     val requestUriBase: String = "",
     /** Public base URL of the response endpoint, e.g. `https://rp.example/openid4vp/response`. */
     val responseUriBase: String = "",
+    /** Same-device callback base, e.g. `https://rp.example/cb`; empty = cross-device only. */
+    val sameDeviceCallbackBase: String = "",
     /** JWK JSON of the EC P-256 request signing key (with kid). */
     val requestSigningKeyJwk: String = "",
     /** JWK JSON of the EC P-256 response encryption key (with kid). */

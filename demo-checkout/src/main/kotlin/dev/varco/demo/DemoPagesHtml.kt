@@ -71,6 +71,8 @@ internal fun eventPageHtml(): String =
         <hr>
         <p>Hai diritto al <strong>biglietto accompagnatore gratuito</strong>?</p>
         <p><a class="btn" href="/demo/entitled">Ho diritto al biglietto accompagnatore</a></p>
+        <p class="muted">Sei già sul telefono con il wallet?
+        <a href="/demo/entitled?flow=same-device">Prosegui su questo dispositivo</a>.</p>
         <p class="muted">La verifica avviene con la credenziale del tuo wallet: al teatro arriva solo
         un sì/no firmato. Nessun documento viene inviato, mostrato o conservato.</p>
         """.trimIndent(),

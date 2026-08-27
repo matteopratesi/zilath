@@ -59,11 +59,13 @@ class OpenId4VpController(
                     DirectPostBody(parameters.toSingleValueMap()),
                 )
         ) {
-            is FlowOutcome.Verified -> ResponseEntity.ok(emptyMap())
+            is FlowOutcome.Verified -> ResponseEntity.ok(ackBody(txId))
             is FlowOutcome.WalletErrorAcknowledged -> {
                 // OpenID4VP direct_post: wallet error responses are acknowledged with 200.
+                // In the same-device flow the ack still carries the redirect_uri, so the
+                // user lands back on the RP even after cancelling in the wallet (RPR-59).
                 logger.info("wallet error response acknowledged: {}", outcome.error)
-                ResponseEntity.ok(emptyMap())
+                ResponseEntity.ok(ackBody(txId))
             }
             is FlowOutcome.Rejected -> {
                 // detail is a server-side diagnostic: only the reason code reaches the wallet.
@@ -74,6 +76,10 @@ class OpenId4VpController(
             FlowOutcome.Pending -> badRequest("response not processable")
             FlowOutcome.Unknown -> ResponseEntity.notFound().build()
         }
+
+    /** Same-device transactions are acknowledged with their redirect_uri (spec v1.4.6). */
+    private fun ackBody(txId: String): Map<String, String> =
+        flow.sameDeviceRedirectFor(TransactionId(txId))?.let { mapOf("redirect_uri" to it) } ?: emptyMap()
 
     private fun badRequest(description: String): ResponseEntity<Map<String, String>> =
         ResponseEntity

@@ -65,7 +65,12 @@ class OpenId4VpAutoConfiguration {
         val config =
             RelyingPartyConfiguration(
                 clientId = properties.clientId,
-                endpoints = RpEndpoints(properties.requestUriBase, properties.responseUriBase),
+                endpoints =
+                    RpEndpoints(
+                        properties.requestUriBase,
+                        properties.responseUriBase,
+                        properties.sameDeviceCallbackBase.ifBlank { null },
+                    ),
                 keys =
                     RpKeys(
                         requestSigningKey = ECKey.parse(properties.requestSigningKeyJwk),

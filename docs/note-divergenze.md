@@ -30,9 +30,12 @@ still pending (tracked on the project board).
 
 ## Known gaps on our side (tracked as issues on the project board)
 
-1. **Same-device flow** (redirect_uri, `response_code`, status endpoint): explicitly out of
-   v0 scope (plan §0); accounts for most of the remaining conformance failures (RPR-19/28/29
-   -34/42-45/56-59/69-72/83/84).
+1. **Same-device flow** (VARCO-32): implemented in the library — `FlowMode.SAME_DEVICE`
+   transactions, wallet-response ack carrying `redirect_uri` with a single-use
+   `response_code` (also on wallet cancellation, RPR-59), `consumeResponseCode` exchange
+   for the return leg, callback base in `RpEndpoints`/starter properties, demo `/demo/cb`
+   endpoint plus a same-device link on the event page. A conformance re-run against the
+   PagoPA tool is still pending to confirm which RPR failures clear.
 2. **RP federation onboarding** (VARCO-33): the RP now publishes its entity configuration
    at `/.well-known/openid-federation` (`federation_entity` + `openid_credential_verifier`
    metadata, attested `request_uris`/`response_uris`, protocol JWKS by value) and the JAR
