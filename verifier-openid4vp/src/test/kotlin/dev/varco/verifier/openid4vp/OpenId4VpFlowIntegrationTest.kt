@@ -337,8 +337,10 @@ class OpenId4VpFlowIntegrationTest {
         val code = redirect.substringAfter("response_code=")
         // The user never comes back within the transaction TTL.
         clock.advance(config.transactionTimeToLive.plusSeconds(1))
-        // The stale code is not consumable, and the wallet outcome is never exposed.
-        assertThat(flow.consumeResponseCode(code)).isNull()
+        // The stale code is not consumable, and the wallet outcome is never exposed:
+        // Expired while the entry survives, Unknown once the store sweep removed it.
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
+        assertThat(flow.consumeResponseCode(code)).isNull()
+        assertThat(flow.awaitOutcome(started.id)).isIn(FlowOutcome.Expired, FlowOutcome.Unknown)
     }
 }
