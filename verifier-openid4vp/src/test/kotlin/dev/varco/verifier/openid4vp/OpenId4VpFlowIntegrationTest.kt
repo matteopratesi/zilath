@@ -345,4 +345,42 @@ class OpenId4VpFlowIntegrationTest {
         assertThat(flow.consumeResponseCode(code)).isNull()
         assertThat(flow.awaitOutcome(started.id)).isIn(FlowOutcome.Expired, FlowOutcome.Unknown)
     }
+
+    @Test
+    fun `a retaining store still refuses to consume an expired response code`() {
+        // A shared store may RETAIN expired entries: expiry must be a precondition of
+        // consumption itself, not a side effect of the in-memory sweep.
+        val retaining =
+            object : TransactionStore {
+                val entries = HashMap<TransactionId, Transaction>()
+
+                override fun put(transaction: Transaction) {
+                    entries[transaction.id] = transaction
+                }
+
+                override fun get(id: TransactionId): Transaction? = entries[id]
+
+                override fun compareAndUpdate(
+                    id: TransactionId,
+                    update: (Transaction) -> Transaction,
+                ): Transaction? = entries[id]?.also { entries[id] = update(it) }
+
+                override fun remove(id: TransactionId) {
+                    entries.remove(id)
+                }
+
+                override fun findByResponseCode(code: String): Transaction? =
+                    entries.values.firstOrNull { it.responseCode == code }
+            }
+        val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
+        val started =
+            retainingFlow.start(PresentationRequest.forTestPid("urn:varco:test:entitlement"), FlowMode.SAME_DEVICE)
+        retainingFlow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
+        val code =
+            checkNotNull(retainingFlow.sameDeviceRedirectFor(started.id)).substringAfter("response_code=")
+        clock.advance(config.transactionTimeToLive.plusSeconds(1))
+        // The retained entry is findable, but the stale code must not complete the flow.
+        assertThat(retainingFlow.consumeResponseCode(code)).isNull()
+        assertThat(retainingFlow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
+    }
 }
