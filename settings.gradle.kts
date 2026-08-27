@@ -13,4 +13,5 @@ include(
     "verifier-trust-itwallet",
     "verifier-spring-boot-starter",
     "demo-checkout",
+    "gate-check",
 )

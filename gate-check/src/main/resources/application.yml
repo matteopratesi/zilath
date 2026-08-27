@@ -1,0 +1,13 @@
+server:
+  port: 8081
+
+varco:
+  gate:
+    # Shown on every page and stamped (as issuer) into each signed receipt.
+    venue-name: ${VARCO_GATE_VENUE:Teatro di Prova}
+    # Entitlement types the operator can pick from, comma-separated. No free text
+    # anywhere in the flow: free text is where personal data would leak in.
+    entitlements: ${VARCO_GATE_ENTITLEMENTS:Biglietto accompagnatore,Tariffa ridotta titolare,Accesso prioritario}
+    # Where the signing key and the receipts file live. Keep it out of any backup
+    # that leaves the venue.
+    data-dir: ${VARCO_GATE_DATA_DIR:./gate-data}
