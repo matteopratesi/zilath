@@ -70,9 +70,12 @@ internal class EntityStatement(
         get() = objectClaimOrFail("metadata_policy")
 
     private fun objectClaimOrFail(name: String): Map<*, *>? {
-        if (claims.getClaim(name) == null) return null
-        return runCatching { claims.getJSONObjectClaim(name) }
-            .getOrElse { trustFail("entity statement claim $name of $subject is malformed") }
+        // Nimbus returns null both for an absent claim and for an explicit `null`:
+        // membership must be checked on the claims map, and a PRESENT claim must be a
+        // non-null JSON object — anything else fails the chain.
+        if (!claims.claims.containsKey(name)) return null
+        return runCatching { claims.getJSONObjectClaim(name) }.getOrNull()
+            ?: trustFail("entity statement claim $name of $subject is malformed")
     }
 
     val federationFetchEndpoint: String?

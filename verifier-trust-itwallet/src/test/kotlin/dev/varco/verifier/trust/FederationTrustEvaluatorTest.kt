@@ -142,6 +142,36 @@ class FederationTrustEvaluatorTest {
     }
 
     @Test
+    fun `an explicit null metadata_policy on a signed statement fails the chain`() {
+        // Built from a raw JSON payload: the claims-set builder may drop null members,
+        // and the whole point is a PRESENT "metadata_policy": null.
+        val now = dev.varco.verifier.core.TestVectors.NOW
+        val payload =
+            """{"iss":"${FederationFixtures.ANCHOR_ID}","sub":"${FederationFixtures.LEAF_ID}",""" +
+                """"iat":${now.minusSeconds(600).epochSecond},"exp":${now.plusSeconds(3600).epochSecond},""" +
+                """"jwks":{"keys":[${FederationFixtures.leafFederationKey.toPublicJWK().toJSONString()}]},""" +
+                """"metadata_policy":null}"""
+        val jws =
+            com.nimbusds.jose.JWSObject(
+                com.nimbusds.jose.JWSHeader
+                    .Builder(com.nimbusds.jose.JWSAlgorithm.ES256)
+                    .keyID(FederationFixtures.anchorKey.keyID)
+                    .type(com.nimbusds.jose.JOSEObjectType("entity-statement+jwt"))
+                    .build(),
+                com.nimbusds.jose.Payload(payload),
+            )
+        jws.sign(
+            com.nimbusds.jose.crypto
+                .ECDSASigner(FederationFixtures.anchorKey),
+        )
+        val chain = listOf(FederationFixtures.leafConfiguration(), jws.serialize())
+        val decision =
+            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+        assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+        assertThat((decision as TrustDecision.Untrusted).reason).contains("malformed")
+    }
+
+    @Test
     fun `a violated metadata_policy makes the chain untrusted`() {
         val chain =
             listOf(
