@@ -90,6 +90,13 @@ class OpenId4VpVerificationFlow(
     override fun awaitOutcome(txId: TransactionId): FlowOutcome {
         val transaction = store.get(txId) ?: return FlowOutcome.Unknown
         return when {
+            // Same-device: the transaction is complete only when the user-agent has come
+            // back through the response-code exchange (WP_094) — until then, pending.
+            transaction.mode == FlowMode.SAME_DEVICE &&
+                transaction.outcome != null &&
+                !transaction.returned &&
+                !transaction.isExpired(clock.instant(), config.transactionTimeToLive) ->
+                FlowOutcome.Pending
             // A recorded outcome survives expiry: the checkout must still observe it.
             transaction.outcome != null -> transaction.outcome
             transaction.isExpired(clock.instant(), config.transactionTimeToLive) -> FlowOutcome.Expired
@@ -116,7 +123,7 @@ class OpenId4VpVerificationFlow(
     private fun assignResponseCode(txId: TransactionId): String? {
         val fresh = randomToken(RESPONSE_CODE_BYTES)
         store.compareAndUpdate(txId) { current ->
-            if (current.responseCode == null) current.copy(responseCode = fresh) else current
+            if (current.responseCode == null && !current.returned) current.copy(responseCode = fresh) else current
         }
         return store.get(txId)?.responseCode
     }
@@ -124,10 +131,15 @@ class OpenId4VpVerificationFlow(
     override fun consumeResponseCode(code: String): TransactionId? {
         val transaction = if (code.isBlank()) null else store.findByResponseCode(code)
         if (transaction == null) return null
-        // Single use: only the caller that observes the code still present wins.
+        // Single use: only the caller that observes the code still present wins, and the
+        // return state is set in the same atomic step (WP_094).
         val before =
             store.compareAndUpdate(transaction.id) { current ->
-                if (current.responseCode == code) current.copy(responseCode = null) else current
+                if (current.responseCode == code) {
+                    current.copy(responseCode = null, returned = true)
+                } else {
+                    current
+                }
             }
         return transaction.id.takeIf { before?.responseCode == code }
     }

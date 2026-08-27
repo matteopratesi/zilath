@@ -58,6 +58,8 @@ data class Transaction(
     val mode: FlowMode = FlowMode.CROSS_DEVICE,
     /** Single-use same-device return code; cleared when consumed. */
     val responseCode: String? = null,
+    /** True once the user-agent came back through the response-code exchange (WP_094). */
+    val returned: Boolean = false,
 ) {
     fun isExpired(
         now: Instant,

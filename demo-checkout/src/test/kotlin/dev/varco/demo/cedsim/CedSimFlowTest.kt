@@ -173,9 +173,14 @@ class CedSimFlowTest {
         assertThat(redirect).startsWith("https://demo.varco.example/cb?response_code=")
         // Idempotent while unconsumed, single-use once exchanged.
         assertThat(flow.sameDeviceRedirectFor(txId)).isEqualTo(redirect)
+        // WP_094: same-device outcomes stay pending until the user-agent comes back.
+        assertThat(flow.awaitOutcome(txId)).isEqualTo(FlowOutcome.Pending)
         val code = redirect!!.substringAfter("response_code=")
         assertThat(flow.consumeResponseCode(code)).isEqualTo(txId)
         assertThat(flow.consumeResponseCode(code)).isNull()
+        // A consumed code is never re-minted, and the outcome is now observable.
+        assertThat(flow.sameDeviceRedirectFor(txId)).isNull()
+        assertThat(flow.awaitOutcome(txId)).isInstanceOf(FlowOutcome.Verified::class.java)
     }
 
     @Test

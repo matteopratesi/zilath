@@ -148,20 +148,11 @@ class DemoCheckoutController(
     fun sameDeviceCallback(
         @org.springframework.web.bind.annotation.RequestParam("response_code") responseCode: String,
     ): ResponseEntity<String> {
-        val txId =
-            flow.consumeResponseCode(responseCode)
-                ?: return notFoundPage()
+        val txId = flow.consumeResponseCode(responseCode) ?: return notFoundPage()
         return ResponseEntity
             .status(HttpStatus.FOUND)
-            .location(URI.create("/demo/ticket/${'$'}{txId.value}"))
-            .build<Void>()
-            .let {
-                ResponseEntity
-                    .status(
-                        HttpStatus.FOUND,
-                    ).location(URI.create("/demo/ticket/${'$'}{txId.value}"))
-                    .body("")
-            }
+            .location(URI.create("/demo/ticket/" + txId.value))
+            .build()
     }
 
     @GetMapping("/demo/receipt/{txId}", produces = [MediaType.TEXT_PLAIN_VALUE])
