@@ -157,14 +157,22 @@ internal fun validateChain(
         }
         trustedKeys = statement.federationJwks.ifEmpty { trustedKeys }
     }
-    // metadata_policy (VARCO-34): superiors constrain the leaf metadata. Policies are
-    // merged anchor-first and applied to the leaf; the credential keys come from the
-    // RESOLVED metadata, so a policy can restrict or replace what the leaf advertises.
+    // metadata_policy (VARCO-34): superiors constrain the leaf metadata. The immediate
+    // superior's statement metadata overrides the leaf's first; then the policies,
+    // merged anchor-first, are applied. The credential keys come from the RESOLVED
+    // metadata, so a superior can restrict or replace what the leaf advertises.
+    val effectiveMetadata = MetadataPolicy.overlay(leaf.metadata, statements[1].metadata)
     val policies = statements.drop(1).asReversed().mapNotNull { it.metadataPolicy }
-    val resolvedMetadata = MetadataPolicy.resolve(leaf.metadata, policies)
+    val resolvedMetadata = MetadataPolicy.resolve(effectiveMetadata, policies)
     val resolvedIssuer = resolvedMetadata["openid_credential_issuer"] as? Map<*, *>
+    // Fall back to the federation keys only when the resolved metadata says NOTHING
+    // about credential keys: a present-but-empty jwks is an explicit "no keys allowed".
     val credentialKeys =
-        jwksOf(resolvedIssuer?.get("jwks") as? Map<*, *>).ifEmpty { leaf.federationJwks }
+        if (resolvedIssuer?.containsKey("jwks") == true) {
+            jwksOf(resolvedIssuer["jwks"] as? Map<*, *>)
+        } else {
+            leaf.federationJwks
+        }
     if (credentialKeys.isEmpty()) trustFail("the leaf entity advertises no credential signing keys")
     return credentialKeys
 }

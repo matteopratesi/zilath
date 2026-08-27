@@ -51,14 +51,13 @@ internal object MetadataPolicy {
             for ((parameter, operators) in parameters) {
                 if (operators !is Map<*, *>) trustFail("metadata_policy operators for $parameter are not an object")
                 val cleaned = operators.entries.associate { (op, v) -> op.toString() to v }
-                // Fail closed on anything outside the supported operator set (OID-FED
-                // treats unknown critical operators as a resolution failure).
-                cleaned.keys
-                    .firstOrNull { it !in SUPPORTED_OPERATORS }
-                    ?.let { trustFail("unsupported metadata_policy operator $it on $parameter") }
-                typeResult[parameter.toString()] =
+                validateOperators(parameter.toString(), cleaned)
+                val merged =
                     typeResult[parameter.toString()]?.let { mergeOperators(parameter.toString(), it, cleaned) }
                         ?: cleaned
+                // Cross-operator restrictions must hold for the COMBINED policy too.
+                validateOperators(parameter.toString(), merged)
+                typeResult[parameter.toString()] = merged
             }
             result[type.toString()] = typeResult
         }
@@ -74,7 +73,14 @@ internal object MetadataPolicy {
         for ((operator, value) in subordinate) {
             merged[operator] =
                 when (operator) {
-                    "value", "default" -> equalOrFail(parameter, operator, merged[operator], value)
+                    // A present `value: null` is a real directive (remove the parameter):
+                    // presence is checked with containsKey, never by comparing to null.
+                    "value", "default" -> {
+                        if (merged.containsKey(operator) && merged[operator] != value) {
+                            trustFail("conflicting metadata_policy $operator for $parameter")
+                        }
+                        value
+                    }
                     "add", "superset_of" -> unionOf(merged[operator], value)
                     "one_of", "subset_of" -> intersectionOrFail(parameter, operator, merged[operator], value)
                     "essential" -> (merged[operator] == true) || (value == true)
@@ -84,22 +90,30 @@ internal object MetadataPolicy {
         return merged
     }
 
-    private fun equalOrFail(
+    private fun validateOperators(
         parameter: String,
-        operator: String,
-        superior: Any?,
-        subordinate: Any?,
-    ): Any? {
-        if (superior != null && superior != subordinate) {
-            trustFail("conflicting metadata_policy $operator for $parameter")
+        operators: Map<String, Any?>,
+    ) {
+        operators.keys
+            .firstOrNull { it !in SUPPORTED_OPERATORS }
+            ?.let { trustFail("unsupported metadata_policy operator $it on $parameter") }
+        ARRAY_OPERATORS
+            .firstOrNull { operators.containsKey(it) && operators[it] !is List<*> }
+            ?.let { trustFail("metadata_policy $it for $parameter must be an array") }
+        if (operators.containsKey("essential") && operators["essential"] !is Boolean) {
+            trustFail("metadata_policy essential for $parameter must be a boolean")
         }
-        return subordinate
+        // OID-FED §6.1.3: value combines only with essential; one_of never combines
+        // with the array-shaping operators.
+        if (operators.containsKey("value") && (operators.keys - setOf("value", "essential")).isNotEmpty()) {
+            trustFail("metadata_policy value for $parameter combines only with essential")
+        }
+        if (operators.containsKey("one_of") &&
+            operators.keys.any { it in setOf("add", "subset_of", "superset_of") }
+        ) {
+            trustFail("metadata_policy one_of for $parameter cannot combine with array operators")
+        }
     }
-
-    private fun unionOf(
-        superior: Any?,
-        subordinate: Any?,
-    ): List<Any?> = (asList(superior) + asList(subordinate)).distinct()
 
     private fun intersectionOrFail(
         parameter: String,
@@ -133,17 +147,22 @@ internal object MetadataPolicy {
         section: Map<String, Any?>,
     ): Map<String, Any?> {
         val result = section.toMutableMap()
-        if (operators.containsKey("value")) result[parameter] = operators["value"]
+        if (operators.containsKey("value")) {
+            // `value: null` means REMOVE the parameter, not set it to null.
+            val forced = operators["value"]
+            if (forced == null) result.remove(parameter) else result[parameter] = forced
+        }
         operators["add"]?.let { result[parameter] = unionOf(result[parameter], it) }
-        operators["default"]?.let { if (result[parameter] == null) result[parameter] = it }
+        operators["default"]?.let { if (!result.containsKey(parameter)) result[parameter] = it }
         checkValueConstraints(qualified, operators, result, parameter)
         operators["subset_of"]?.let { allowed ->
-            result[parameter]?.let { current ->
-                val kept = asList(current).intersect(asList(allowed).toSet()).toList()
-                if (kept.isEmpty()) result.remove(parameter) else result[parameter] = kept
+            if (result.containsKey(parameter)) {
+                // An empty intersection is a legal resolved value: keep [] (it still
+                // counts as present for `essential`).
+                result[parameter] = asList(result[parameter]).intersect(asList(allowed).toSet()).toList()
             }
         }
-        if (operators["essential"] == true && result[parameter] == null) {
+        if (operators["essential"] == true && !result.containsKey(parameter)) {
             trustFail("metadata parameter $qualified is essential but absent")
         }
         return result
@@ -169,13 +188,45 @@ internal object MetadataPolicy {
         }
     }
 
+    /**
+     * Overlays the immediate superior's subordinate-statement metadata onto the leaf's
+     * (OID-FED §6.1: statement metadata takes precedence, per parameter, and is applied
+     * BEFORE the merged policy).
+     */
+    fun overlay(
+        leaf: Map<*, *>?,
+        superior: Map<*, *>?,
+    ): Map<String, Any?> {
+        val result =
+            leaf
+                .orEmpty()
+                .entries
+                .associate { (k, v) -> k.toString() to v }
+                .toMutableMap()
+        for ((type, section) in superior.orEmpty()) {
+            if (section !is Map<*, *>) trustFail("subordinate statement metadata for $type is not an object")
+            val base = (result[type.toString()] as? Map<*, *>).orEmpty()
+            result[type.toString()] =
+                base.entries.associate { (k, v) -> k.toString() to v } +
+                section.entries.associate { (k, v) -> k.toString() to v }
+        }
+        return result
+    }
+
     private val SUPPORTED_OPERATORS =
         setOf("value", "add", "default", "one_of", "subset_of", "superset_of", "essential")
 
-    private fun asList(value: Any?): List<Any?> =
-        when (value) {
-            null -> emptyList()
-            is List<*> -> value
-            else -> listOf(value)
-        }
+    private val ARRAY_OPERATORS = setOf("add", "one_of", "subset_of", "superset_of")
 }
+
+private fun unionOf(
+    superior: Any?,
+    subordinate: Any?,
+): List<Any?> = (asList(superior) + asList(subordinate)).distinct()
+
+private fun asList(value: Any?): List<Any?> =
+    when (value) {
+        null -> emptyList()
+        is List<*> -> value
+        else -> listOf(value)
+    }

@@ -130,6 +130,77 @@ class MetadataPolicyTest {
     }
 
     @Test
+    fun `array operators require arrays and value combines only with essential`() {
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(metadata(), listOf(policy("a" to mapOf("add" to "ES256"))))
+            }.withMessageContaining("must be an array")
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata(),
+                    listOf(policy("a" to mapOf("value" to listOf("ES256"), "add" to listOf("RS256")))),
+                )
+            }.withMessageContaining("combines only with essential")
+        // Illegal combinations arising from the MERGE of two policies fail too.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata(),
+                    listOf(
+                        policy("a" to mapOf("one_of" to listOf("x"))),
+                        policy("a" to mapOf("add" to listOf("y"))),
+                    ),
+                )
+            }.withMessageContaining("cannot combine")
+    }
+
+    @Test
+    fun `a value null directive removes the parameter and survives merging`() {
+        val resolved =
+            MetadataPolicy.resolve(
+                metadata("a" to "leaf"),
+                listOf(policy("a" to mapOf("value" to null))),
+            )
+        assertThat(issuerSection(resolved).containsKey("a")).isFalse()
+        // A subordinate cannot silently override the anchor's value: null.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata("a" to "leaf"),
+                    listOf(
+                        policy("a" to mapOf("value" to null)),
+                        policy("a" to mapOf("value" to "sneaky")),
+                    ),
+                )
+            }.withMessageContaining("conflicting")
+    }
+
+    @Test
+    fun `an empty subset_of result stays present and satisfies essential`() {
+        val resolved =
+            MetadataPolicy.resolve(
+                metadata("algs" to listOf("RS256")),
+                listOf(
+                    policy("algs" to mapOf("subset_of" to listOf("ES256"), "essential" to true)),
+                ),
+            )
+        assertThat(issuerSection(resolved)["algs"]).isEqualTo(emptyList<Any?>())
+    }
+
+    @Test
+    fun `the immediate superior statement metadata overrides the leaf`() {
+        val overlaid =
+            MetadataPolicy.overlay(
+                mapOf("openid_credential_issuer" to mapOf("a" to "leaf", "b" to "kept")),
+                mapOf("openid_credential_issuer" to mapOf("a" to "superior")),
+            )
+        val section = overlaid["openid_credential_issuer"] as Map<*, *>
+        assertThat(section["a"]).isEqualTo("superior")
+        assertThat(section["b"]).isEqualTo("kept")
+    }
+
+    @Test
     fun `an unsupported operator fails closed`() {
         assertThatExceptionOfType(TrustFailure::class.java)
             .isThrownBy {

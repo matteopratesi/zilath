@@ -84,6 +84,64 @@ class FederationTrustEvaluatorTest {
     }
 
     @Test
+    fun `a policy resolving the jwks to empty does not fall back to federation keys`() {
+        val chain =
+            listOf(
+                FederationFixtures.leafConfiguration(),
+                FederationFixtures.signedStatement(
+                    FederationFixtures.anchorKey,
+                    FederationFixtures.ANCHOR_ID,
+                    FederationFixtures.LEAF_ID,
+                ) {
+                    claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey))
+                    claim(
+                        "metadata_policy",
+                        mapOf(
+                            "openid_credential_issuer" to
+                                mapOf("jwks" to mapOf("value" to mapOf("keys" to emptyList<Any>()))),
+                        ),
+                    )
+                },
+            )
+        val decision =
+            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+        assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+        assertThat((decision as TrustDecision.Untrusted).reason).contains("no credential signing keys")
+    }
+
+    @Test
+    fun `the superior statement metadata overrides the leaf before key selection`() {
+        val superiorKey =
+            com.nimbusds.jose.jwk.gen
+                .ECKeyGenerator(com.nimbusds.jose.jwk.Curve.P_256)
+                .keyID("superior-imposed")
+                .generate()
+        val chain =
+            listOf(
+                FederationFixtures.leafConfiguration(),
+                FederationFixtures.signedStatement(
+                    FederationFixtures.anchorKey,
+                    FederationFixtures.ANCHOR_ID,
+                    FederationFixtures.LEAF_ID,
+                ) {
+                    claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey))
+                    claim(
+                        "metadata",
+                        mapOf(
+                            "openid_credential_issuer" to
+                                mapOf("jwks" to FederationFixtures.jwksClaim(superiorKey)),
+                        ),
+                    )
+                },
+            )
+        val decision =
+            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+        assertThat(decision).isInstanceOf(TrustDecision.Trusted::class.java)
+        assertThat((decision as TrustDecision.Trusted).issuerKeys.map { it.keyID })
+            .containsExactly("superior-imposed")
+    }
+
+    @Test
     fun `a violated metadata_policy makes the chain untrusted`() {
         val chain =
             listOf(
