@@ -110,10 +110,27 @@ class RpEntityConfigurationTest {
 
     @Test
     fun `a federation-scheme client id must agree with the entity id`() {
-        val config = config("openid_federation:https://other.example")
         assertThatIllegalArgumentException()
-            .isThrownBy { RpEntityConfiguration.build(config, config.federation!!, clock) }
+            .isThrownBy { config("openid_federation:https://other.example") }
             .withMessageContaining("must agree")
+    }
+
+    @Test
+    fun `a federation-scheme client id without federation data is refused`() {
+        assertThatIllegalArgumentException()
+            .isThrownBy { config("openid_federation:https://rp.example").copy(federation = null) }
+            .withMessageContaining("requires a federation configuration")
+    }
+
+    @Test
+    fun `lookalike localhost hosts and hostless urls are not valid entity ids`() {
+        assertThatIllegalArgumentException()
+            .isThrownBy { federation(entityId = "http://localhost.attacker.example") }
+        assertThatIllegalArgumentException()
+            .isThrownBy { federation(entityId = "https://") }
+        // The exact localhost host, with a port, stays fine for development.
+        assertThat(federation(entityId = "http://localhost:8080").entityId)
+            .isEqualTo("http://localhost:8080")
     }
 
     @Test

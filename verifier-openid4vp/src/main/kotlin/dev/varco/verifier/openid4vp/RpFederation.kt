@@ -58,11 +58,15 @@ data class RpFederationConfig(
     val statementValidity: Duration = DEFAULT_STATEMENT_VALIDITY,
 ) {
     init {
-        // The spec mandates HTTPS entity ids; plain http is tolerated for localhost only,
-        // so the demo and local development do not need a TLS terminator.
-        require(entityId.startsWith("https://") || isLocalhostHttp(entityId)) {
-            "the federation entity id must be an HTTPS URL"
-        }
+        // The spec mandates HTTPS entity ids with a host; plain http is tolerated for the
+        // EXACT localhost hosts only (parsed, not prefix-matched: "http://localhost.evil"
+        // must not pass), so the demo and local development need no TLS terminator.
+        val uri = runCatching { java.net.URI(entityId) }.getOrNull()
+        val host = uri?.host
+        val allowed =
+            !host.isNullOrBlank() &&
+                (uri.scheme == "https" || (uri.scheme == "http" && host in LOCALHOST_HOSTS))
+        require(allowed) { "the federation entity id must be an HTTPS URL with a host" }
         require(federationKey.isPrivate) { "federationKey must contain private key material" }
         require(federationKey.curve == Curve.P_256) { "federationKey must be a P-256 key (IT-Wallet profile)" }
         require(!federationKey.keyID.isNullOrBlank()) { "federationKey must carry a kid" }
@@ -75,8 +79,7 @@ data class RpFederationConfig(
     companion object {
         val DEFAULT_STATEMENT_VALIDITY: Duration = Duration.ofDays(1)
 
-        private fun isLocalhostHttp(entityId: String): Boolean =
-            entityId.startsWith("http://localhost") || entityId.startsWith("http://127.0.0.1")
+        private val LOCALHOST_HOSTS = setOf("localhost", "127.0.0.1")
     }
 }
 
@@ -142,6 +145,10 @@ object RpEntityConfiguration {
                     "application_type" to "web",
                     "client_id" to entityId,
                     "client_name" to federation.organizationName,
+                    // Published as the endpoint BASES while actual URIs append the
+                    // transaction id: whether wallets match these lists exactly or by
+                    // prefix is only observable against a real federation — tracked with
+                    // the onboarding work (docs/note-divergenze.md, gap 2).
                     "request_uris" to listOf(config.endpoints.requestUriBase),
                     "response_uris" to listOf(config.endpoints.responseUriBase),
                     "encrypted_response_enc_values_supported" to listOf(RESPONSE_ENCRYPTION_ENC),
