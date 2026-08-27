@@ -54,6 +54,7 @@ class OpenId4VpFlowIntegrationTest {
                 RpEndpoints(
                     requestUriBase = "https://rp.example/openid4vp/request",
                     responseUriBase = "https://rp.example/openid4vp/response",
+                    sameDeviceCallbackBase = "https://rp.example/cb",
                 ),
             keys = RpKeys(requestSigningKey = signingKey, responseEncryptionKey = encryptionKey),
             trustEvaluator = TestVectors.trustIssuerEc(),
@@ -324,5 +325,20 @@ class OpenId4VpFlowIntegrationTest {
     fun `pending transaction reports pending`() {
         val started = startForPid()
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Pending)
+    }
+
+    @Test
+    fun `an unreturned same-device outcome expires instead of leaking`() {
+        val started = flow.start(PresentationRequest.forTestPid("urn:varco:test:entitlement"), FlowMode.SAME_DEVICE)
+        val outcome =
+            flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
+        assertThat(outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
+        val redirect = checkNotNull(flow.sameDeviceRedirectFor(started.id))
+        val code = redirect.substringAfter("response_code=")
+        // The user never comes back within the transaction TTL.
+        clock.advance(config.transactionTimeToLive.plusSeconds(1))
+        // The stale code is not consumable, and the wallet outcome is never exposed.
+        assertThat(flow.consumeResponseCode(code)).isNull()
+        assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
     }
 }

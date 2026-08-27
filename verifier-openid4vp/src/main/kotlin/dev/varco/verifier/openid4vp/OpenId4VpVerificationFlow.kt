@@ -91,12 +91,16 @@ class OpenId4VpVerificationFlow(
         val transaction = store.get(txId) ?: return FlowOutcome.Unknown
         return when {
             // Same-device: the transaction is complete only when the user-agent has come
-            // back through the response-code exchange (WP_094) — until then, pending.
+            // back through the response-code exchange (WP_094) — pending until then, and
+            // EXPIRED (never the wallet outcome) when the return leg never happened.
             transaction.mode == FlowMode.SAME_DEVICE &&
                 transaction.outcome != null &&
-                !transaction.returned &&
-                !transaction.isExpired(clock.instant(), config.transactionTimeToLive) ->
-                FlowOutcome.Pending
+                !transaction.returned ->
+                if (transaction.isExpired(clock.instant(), config.transactionTimeToLive)) {
+                    FlowOutcome.Expired
+                } else {
+                    FlowOutcome.Pending
+                }
             // A recorded outcome survives expiry: the checkout must still observe it.
             transaction.outcome != null -> transaction.outcome
             transaction.isExpired(clock.instant(), config.transactionTimeToLive) -> FlowOutcome.Expired
