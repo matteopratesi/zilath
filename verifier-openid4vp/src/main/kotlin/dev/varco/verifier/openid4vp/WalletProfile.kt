@@ -101,6 +101,22 @@ object ArfBaselineProfile : WalletProfile {
     }
 }
 
+/**
+ * The RP response-encryption key as published: public half, `alg` (so the wallet can pick
+ * it) and `use: "enc"` — verifiers are expected to advertise the key USE, and the same
+ * JWK is published in the federation entity configuration.
+ */
+internal fun publicEncryptionJwk(config: RelyingPartyConfiguration): com.nimbusds.jose.jwk.ECKey =
+    com.nimbusds.jose.jwk
+        .ECKey
+        .Builder(
+            config.keys.responseEncryptionKey
+                .toPublicJWK()
+                .toECKey(),
+        ).algorithm(com.nimbusds.jose.JWEAlgorithm.ECDH_ES)
+        .keyUse(com.nimbusds.jose.jwk.KeyUse.ENCRYPTION)
+        .build()
+
 /** The members every profile shares: RP encryption key, supported encodings and formats. */
 internal fun baselineClientMetadata(config: RelyingPartyConfiguration): Map<String, Any> =
     mapOf(
@@ -109,15 +125,7 @@ internal fun baselineClientMetadata(config: RelyingPartyConfiguration): Map<Stri
                 "keys" to
                     listOf(
                         // The wallet selects the response encryption key by its alg.
-                        com.nimbusds.jose.jwk
-                            .ECKey
-                            .Builder(
-                                config.keys.responseEncryptionKey
-                                    .toPublicJWK()
-                                    .toECKey(),
-                            ).algorithm(com.nimbusds.jose.JWEAlgorithm.ECDH_ES)
-                            .build()
-                            .toJSONObject(),
+                        publicEncryptionJwk(config).toJSONObject(),
                     ),
             ),
         "encrypted_response_enc_values_supported" to listOf(RESPONSE_ENCRYPTION_ENC, "A128GCM"),

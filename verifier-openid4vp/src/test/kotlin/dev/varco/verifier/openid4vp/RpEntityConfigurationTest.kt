@@ -84,7 +84,8 @@ class RpEntityConfigurationTest {
         assertThat(verifier["client_id"]).isEqualTo("https://rp.example")
         assertThat(verifier["request_uris"]).isEqualTo(listOf("https://rp.example/openid4vp/request"))
         assertThat(verifier["response_uris"]).isEqualTo(listOf("https://rp.example/openid4vp/response"))
-        assertThat(verifier["encrypted_response_enc_values_supported"]).isEqualTo(listOf("A256GCM"))
+        assertThat(verifier["encrypted_response_enc_values_supported"]).isEqualTo(listOf("A256GCM", "A128GCM"))
+        assertThat(verifier["authorization_encrypted_response_alg"]).isEqualTo("ECDH-ES")
 
         @Suppress("UNCHECKED_CAST")
         val formats = verifier["vp_formats_supported"] as Map<String, Any?>
@@ -93,6 +94,9 @@ class RpEntityConfigurationTest {
         @Suppress("UNCHECKED_CAST")
         val jwks = (verifier["jwks"] as Map<String, Any?>)["keys"] as List<Map<String, Any?>>
         assertThat(jwks.map { it["kid"] }).containsExactlyInAnyOrder("rp-sign", "rp-enc")
+        // A wallet resolving us through the federation must find the encryption key it is
+        // asked to use, flagged as such.
+        assertThat(jwks.single { it["kid"] == "rp-enc" }["use"]).isEqualTo("enc")
         // Public halves only: private parameters must never be published.
         assertThat(jwks).allSatisfy { key -> assertThat(key).doesNotContainKey("d") }
     }

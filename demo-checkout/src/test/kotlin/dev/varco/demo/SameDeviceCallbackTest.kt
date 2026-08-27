@@ -37,62 +37,108 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Clock
 
-/** The return-leg redirect must point at the REAL ticket URL (regression: a broken
- *  string interpolation once produced the literal `${'$'}{txId.value}` here). */
+/**
+ * The same-device return leg: an unknown session, a missing code and an error carried in
+ * the query must be told apart — and an error must never spend the code, which is what a
+ * stub flow can prove and an end-to-end call cannot.
+ */
 class SameDeviceCallbackTest {
-    private val config =
-        RelyingPartyConfiguration(
-            clientId = "https://demo.varco.example",
-            endpoints = RpEndpoints("https://demo.varco.example/req", "https://demo.varco.example/res"),
-            keys =
-                RpKeys(
-                    requestSigningKey = ECKeyGenerator(Curve.P_256).keyID("t-sign").generate(),
-                    responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("t-enc").generate(),
-                ),
-            trustEvaluator = TrustEvaluator { TrustDecision.Untrusted("test") },
-            statusChecker = StatusChecker { CredentialStatus.VALID },
-        )
+    private val known = TransactionId("tx-known")
 
-    private fun controllerWith(flow: VerificationFlow) =
-        DemoCheckoutController(
+    /** Records what the controller asks of the flow. */
+    private class RecordingFlow(
+        private val knownId: TransactionId,
+        private val consumes: Boolean,
+    ) : VerificationFlow {
+        var consumeCalls = 0
+            private set
+
+        override fun start(
+            request: PresentationRequest,
+            mode: FlowMode,
+        ): StartedTransaction = error("not used")
+
+        override fun requestJwtFor(txId: TransactionId): String? = null
+
+        override fun handleWalletResponse(
+            txId: TransactionId,
+            body: DirectPostBody,
+        ): FlowOutcome = FlowOutcome.Unknown
+
+        override fun awaitOutcome(txId: TransactionId): FlowOutcome =
+            if (txId == knownId) FlowOutcome.Pending else FlowOutcome.Unknown
+
+        override fun sameDeviceRedirectFor(txId: TransactionId): String? = null
+
+        override fun consumeResponseCode(
+            txId: TransactionId,
+            code: String,
+        ): Boolean {
+            consumeCalls++
+            return consumes && txId == knownId
+        }
+    }
+
+    private fun controllerWith(flow: VerificationFlow): DemoCheckoutController {
+        val config =
+            RelyingPartyConfiguration(
+                clientId = "https://demo.varco.example",
+                endpoints = RpEndpoints("https://demo.varco.example/req", "https://demo.varco.example/res"),
+                keys =
+                    RpKeys(
+                        requestSigningKey = ECKeyGenerator(Curve.P_256).keyID("t-sign").generate(),
+                        responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("t-enc").generate(),
+                    ),
+                trustEvaluator = TrustEvaluator { TrustDecision.Untrusted("test") },
+                statusChecker = StatusChecker { CredentialStatus.VALID },
+            )
+        return DemoCheckoutController(
             flow = flow,
             receipts = VerificationReceipts(config, Clock.systemUTC()),
             clock = Clock.systemUTC(),
             pidVct = "urn:eudi:pid:it:1",
             credentialMode = "pid",
         )
-
-    private fun flowStub(consumed: TransactionId?) =
-        object : VerificationFlow {
-            override fun start(
-                request: PresentationRequest,
-                mode: FlowMode,
-            ): StartedTransaction = error("not used")
-
-            override fun requestJwtFor(txId: TransactionId): String? = null
-
-            override fun handleWalletResponse(
-                txId: TransactionId,
-                body: DirectPostBody,
-            ): FlowOutcome = FlowOutcome.Unknown
-
-            override fun awaitOutcome(txId: TransactionId): FlowOutcome = FlowOutcome.Unknown
-
-            override fun sameDeviceRedirectFor(txId: TransactionId): String? = null
-
-            override fun consumeResponseCode(code: String): TransactionId? = consumed
-        }
-
-    @Test
-    fun `a valid response code redirects to the ticket of its transaction`() {
-        val response = controllerWith(flowStub(TransactionId("tx-42"))).sameDeviceCallback("code")
-        assertThat(response.statusCode.value()).isEqualTo(302)
-        assertThat(response.headers.location.toString()).isEqualTo("/demo/ticket/tx-42")
     }
 
     @Test
-    fun `an unknown or replayed response code lands on the not-found page`() {
-        val response = controllerWith(flowStub(null)).sameDeviceCallback("nope")
-        assertThat(response.statusCode.value()).isEqualTo(404)
+    fun `a valid code on its own transaction redirects to the ticket`() {
+        val flow = RecordingFlow(known, consumes = true)
+        val response = controllerWith(flow).sameDeviceCallback(known.value, "a-code", null)
+        assertThat(response.statusCode.value()).isEqualTo(302)
+        assertThat(response.headers.location.toString()).isEqualTo("/demo/ticket/tx-known")
+    }
+
+    @Test
+    fun `an error in the query is a bad request and never spends the code`() {
+        val flow = RecordingFlow(known, consumes = true)
+        val response = controllerWith(flow).sameDeviceCallback(known.value, "a-code", "server_error")
+        assertThat(response.statusCode.value()).isEqualTo(400)
+        assertThat(flow.consumeCalls).isZero()
+    }
+
+    @Test
+    fun `an unknown session is unauthorized, and the code is left alone`() {
+        val flow = RecordingFlow(known, consumes = true)
+        val response = controllerWith(flow).sameDeviceCallback("someone-elses-tx", "a-code", null)
+        assertThat(response.statusCode.value()).isEqualTo(401)
+        assertThat(flow.consumeCalls).isZero()
+    }
+
+    @Test
+    fun `a missing code is unauthorized`() {
+        val flow = RecordingFlow(known, consumes = true)
+        assertThat(controllerWith(flow).sameDeviceCallback(known.value, null, null).statusCode.value())
+            .isEqualTo(401)
+        assertThat(controllerWith(flow).sameDeviceCallback(known.value, "  ", null).statusCode.value())
+            .isEqualTo(401)
+    }
+
+    @Test
+    fun `a code the flow refuses is a bad request`() {
+        val flow = RecordingFlow(known, consumes = false)
+        val response = controllerWith(flow).sameDeviceCallback(known.value, "stale", null)
+        assertThat(response.statusCode.value()).isEqualTo(400)
+        assertThat(response.body).contains("invalid_response_code")
     }
 }

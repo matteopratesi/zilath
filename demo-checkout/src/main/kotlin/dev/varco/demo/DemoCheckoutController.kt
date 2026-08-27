@@ -143,17 +143,31 @@ class DemoCheckoutController(
         }
     }
 
-    /** Same-device return leg: the wallet redirects here with the single-use code. */
-    @GetMapping("/demo/cb")
+    /**
+     * Same-device return leg: the wallet redirects the user-agent here with the
+     * single-use code. The order of the checks matters — an unknown session and an
+     * invalid code are told apart, and an error carried in the query never consumes
+     * the code (spec v1.4.6, remote flow; RP-side status semantics).
+     */
+    @GetMapping("/demo/cb/{txId}")
     fun sameDeviceCallback(
-        @org.springframework.web.bind.annotation.RequestParam("response_code") responseCode: String,
-    ): ResponseEntity<String> {
-        val txId = flow.consumeResponseCode(responseCode) ?: return notFoundPage()
-        return ResponseEntity
-            .status(HttpStatus.FOUND)
-            .location(URI.create("/demo/ticket/" + txId.value))
-            .build()
-    }
+        @PathVariable txId: String,
+        @org.springframework.web.bind.annotation.RequestParam(name = "response_code", required = false)
+        responseCode: String?,
+        @org.springframework.web.bind.annotation.RequestParam(required = false) error: String?,
+    ): ResponseEntity<String> =
+        when {
+            error != null -> ResponseEntity.badRequest().body(callbackErrorHtml(error))
+            responseCode.isNullOrBlank() -> unauthorizedPage()
+            flow.awaitOutcome(TransactionId(txId)) == FlowOutcome.Unknown -> unauthorizedPage()
+            !flow.consumeResponseCode(TransactionId(txId), responseCode) ->
+                ResponseEntity.badRequest().body(callbackErrorHtml("invalid_response_code"))
+            else ->
+                ResponseEntity
+                    .status(HttpStatus.FOUND)
+                    .location(URI.create("/demo/ticket/" + txId))
+                    .build()
+        }
 
     @GetMapping("/demo/receipt/{txId}", produces = [MediaType.TEXT_PLAIN_VALUE])
     fun receipt(
@@ -189,6 +203,9 @@ class DemoCheckoutController(
 }
 
 private fun notFoundPage(): ResponseEntity<String> = ResponseEntity.status(HttpStatus.NOT_FOUND).body(notFoundHtml())
+
+private fun unauthorizedPage(): ResponseEntity<String> =
+    ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(callbackErrorHtml("unauthorized_session"))
 
 /** Renders a QR PNG without pulling the zxing `javase` artifact in. */
 internal fun qrPng(payload: String): ByteArray {

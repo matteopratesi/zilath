@@ -169,6 +169,18 @@ internal fun notEntitledHtml(txId: String): String =
         """.trimIndent(),
     )
 
+/** Return-leg failure: shown when the user comes back with a stale or invalid code. */
+internal fun callbackErrorHtml(reason: String): String =
+    page(
+        "Ritorno non valido",
+        """
+        <h1>Il rientro dal wallet non è valido</h1>
+        <p class="muted">Motivo: <code>${htmlEscape(reason)}</code>. Il collegamento di
+        ritorno vale una volta sola e scade con la transazione.</p>
+        <p><a class="btn" href="/demo">Riprova dall'evento</a></p>
+        """.trimIndent(),
+    )
+
 internal fun notFoundHtml(): String =
     page(
         "Transazione sconosciuta",

@@ -170,14 +170,24 @@ class CedSimFlowTest {
         assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
         val txId = lastTransactionId()
         val redirect = flow.sameDeviceRedirectFor(txId)
-        assertThat(redirect).startsWith("https://demo.varco.example/cb?response_code=")
+        assertThat(redirect).startsWith("https://demo.varco.example/cb/${txId.value}?response_code=")
         // Idempotent while unconsumed, single-use once exchanged.
         assertThat(flow.sameDeviceRedirectFor(txId)).isEqualTo(redirect)
         // WP_094: same-device outcomes stay pending until the user-agent comes back.
         assertThat(flow.awaitOutcome(txId)).isEqualTo(FlowOutcome.Pending)
         val code = redirect!!.substringAfter("response_code=")
-        assertThat(flow.consumeResponseCode(code)).isEqualTo(txId)
-        assertThat(flow.consumeResponseCode(code)).isNull()
+        // Presented on ANOTHER LIVE transaction the code is refused AND left intact —
+        // an unknown id would prove nothing, since there is no entry to update.
+        val other =
+            flow.start(
+                PresentationRequest.forVct(CedSim.VCT, CedSim.CLAIM_PATHS, CedSim.CREDENTIAL_QUERY_ID),
+                FlowMode.SAME_DEVICE,
+            )
+        assertThat(flow.awaitOutcome(other.id)).isEqualTo(FlowOutcome.Pending)
+        assertThat(flow.consumeResponseCode(other.id, code)).isFalse()
+        // ...so its own return leg still completes, exactly once.
+        assertThat(flow.consumeResponseCode(txId, code)).isTrue()
+        assertThat(flow.consumeResponseCode(txId, code)).isFalse()
         // A consumed code is never re-minted, and the outcome is now observable.
         assertThat(flow.sameDeviceRedirectFor(txId)).isNull()
         assertThat(flow.awaitOutcome(txId)).isInstanceOf(FlowOutcome.Verified::class.java)

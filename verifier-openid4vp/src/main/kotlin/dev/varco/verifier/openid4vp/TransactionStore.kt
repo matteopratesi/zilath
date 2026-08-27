@@ -41,9 +41,6 @@ interface TransactionStore {
     ): Transaction?
 
     fun remove(id: TransactionId)
-
-    /** The transaction currently holding [code] as its same-device response code. */
-    fun findByResponseCode(code: String): Transaction?
 }
 
 enum class TransactionState { CREATED, PRESENTED, VERIFIED, REJECTED }
@@ -95,11 +92,6 @@ class InMemoryTransactionStore(
 
     override fun remove(id: TransactionId) {
         transactions.remove(id)
-    }
-
-    override fun findByResponseCode(code: String): Transaction? {
-        sweepExpired()
-        return transactions.values.firstOrNull { it.responseCode == code }
     }
 
     private fun sweepExpired() {

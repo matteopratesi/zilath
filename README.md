@@ -2,15 +2,26 @@
 
 [![build](https://github.com/matteopratesi/varco-verifier/actions/workflows/build.yml/badge.svg)](https://github.com/matteopratesi/varco-verifier/actions/workflows/build.yml)
 
-A Kotlin/JVM library that lets any JVM application act as an **OpenID4VP relying party with
-the Italian IT-Wallet profile**: request a credential from the user's wallet (cross-device
-QR flow), receive and cryptographically verify it (SD-JWT VC), and get back a minimal
-yes/no outcome — **without ever storing anything**.
+A Kotlin/JVM library that lets any JVM application act as an **OpenID4VP relying party**
+for European digital identity wallets: request a credential from the user's wallet
+(cross-device QR or same-device link), receive and cryptographically verify it
+(SD-JWT VC), and get back a minimal yes/no outcome — **without ever storing the
+credential**. What a verification leaves behind is the transaction's own bookkeeping
+(nonce, outcome, expiry) and the signed receipt: never the presented document, never a
+claim value.
+
+Wallet behavior is a pluggable **profile**: the Italian **IT-Wallet** profile is the
+default and the most complete (signed JAR, encrypted `direct_post.jwt`, OpenID
+Federation trust), and an **ARF baseline** profile targets EUDI wallets in any member
+state. The European Disability Card — the launch use case — is itself an EU instrument
+(Directive (EU) 2024/2841, mutual recognition from June 2028).
 
 Born for accessibility rights: letting a person with a disability prove an entitlement
 (companion ticket, priority access) online without ever sending health documents to anyone.
 
-> Working name. Status: pre-alpha, milestone M0.1 (project skeleton).
+> Working name. Status: pre-alpha — the cross-device flow completes end to end against
+> the official PagoPA conformance tool (see [docs/conformance](docs/conformance/)), and
+> the API is not frozen yet.
 > Target spec: IT-Wallet v1.4.6 — see [docs/spec-version.md](docs/spec-version.md).
 
 ## Modules
@@ -19,7 +30,7 @@ Born for accessibility rights: letting a person with a disability prove an entit
 |---|---|
 | `verifier-core` | Pure JVM credential verification (SD-JWT VC). No framework, no network I/O. |
 | `verifier-openid4vp` | Relying-party flow: transactions, request JWT, `direct_post`, replay protection. |
-| `verifier-trust-itwallet` | OpenID Federation trust chain evaluation, IT-Wallet profile. |
+| `verifier-trust-itwallet` | OpenID Federation trust chain evaluation, `metadata_policy`. |
 | `verifier-spring-boot-starter` | Spring Boot auto-configuration and endpoints. |
 | `demo-checkout` | Demo app: fake event checkout unlocking a companion ticket. |
 | `gate-check` | Self-hosted gate tool for venues: guided CED check, signed outcome-only receipts. |
