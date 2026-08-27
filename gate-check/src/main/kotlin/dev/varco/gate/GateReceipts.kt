@@ -28,6 +28,7 @@ import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFilePermissions
 import java.time.Clock
@@ -151,13 +152,18 @@ class GateReceipts(
         val keyFile = dataDir.resolve(KEY_FILE)
         if (Files.exists(keyFile)) return ECKey.parse(Files.readString(keyFile))
         val key = ECKeyGenerator(Curve.P_256).keyID(KEY_ID).generate()
-        // Written atomically (temp file + move) with owner-only permissions: the private
-        // key must never be readable by other local principals, or they could mint
-        // receipts this tool would accept as authentic.
+        // Written atomically (temp file + ATOMIC_MOVE) with owner-only permissions: the
+        // private key must never be readable by other local principals, or they could
+        // mint receipts this tool would accept as authentic — and a crash mid-write must
+        // never leave a half-written key for the next startup to choke on.
         val temp = Files.createTempFile(dataDir, KEY_FILE, ".tmp")
-        restrictToOwner(temp, directory = false)
-        Files.writeString(temp, key.toJSONString())
-        Files.move(temp, keyFile)
+        try {
+            restrictToOwner(temp, directory = false)
+            Files.writeString(temp, key.toJSONString())
+            Files.move(temp, keyFile, StandardCopyOption.ATOMIC_MOVE)
+        } finally {
+            Files.deleteIfExists(temp)
+        }
         return key
     }
 

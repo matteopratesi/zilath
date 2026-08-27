@@ -95,6 +95,9 @@ class GateReceiptsTest {
     fun `the signing key is written with owner-only permissions on POSIX systems`(
         @TempDir dir: Path,
     ) {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            dir.fileSystem.supportedFileAttributeViews().contains("posix"),
+        )
         GateReceipts(dir, "Teatro di Prova", clock)
         val permissions =
             java.nio.file.Files
