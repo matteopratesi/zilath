@@ -82,7 +82,13 @@ internal object MetadataPolicy {
                         value
                     }
                     "add", "superset_of" -> unionOf(merged[operator], value)
-                    "one_of", "subset_of" -> intersectionOrFail(parameter, operator, merged[operator], value)
+                    // one_of merges to the intersection and an empty result is a policy
+                    // error; subset_of also merges to the intersection but [] is legal.
+                    "one_of" -> intersectionOrFail(parameter, operator, merged[operator], value)
+                    "subset_of" ->
+                        merged[operator]
+                            ?.let { asList(it).intersect(asList(value).toSet()).toList() }
+                            ?: asList(value)
                     "essential" -> (merged[operator] == true) || (value == true)
                     else -> trustFail("unsupported metadata_policy operator $operator on $parameter")
                 }
@@ -103,15 +109,54 @@ internal object MetadataPolicy {
         if (operators.containsKey("essential") && operators["essential"] !is Boolean) {
             trustFail("metadata_policy essential for $parameter must be a boolean")
         }
-        // OID-FED §6.1.3: value combines only with essential; one_of never combines
-        // with the array-shaping operators.
-        if (operators.containsKey("value") && (operators.keys - setOf("value", "essential")).isNotEmpty()) {
-            trustFail("metadata_policy value for $parameter combines only with essential")
+        if (operators.containsKey("default") && operators["default"] == null) {
+            trustFail("metadata_policy default for $parameter must not be null")
         }
+        // OID-FED §6.1.3.1: one_of combines only with value, default and essential.
         if (operators.containsKey("one_of") &&
             operators.keys.any { it in setOf("add", "subset_of", "superset_of") }
         ) {
             trustFail("metadata_policy one_of for $parameter cannot combine with array operators")
+        }
+        // subset_of MAY combine with superset_of only when subset_of ⊇ superset_of.
+        if (operators.containsKey("subset_of") &&
+            operators.containsKey("superset_of") &&
+            !asList(operators["subset_of"]).containsAll(asList(operators["superset_of"]))
+        ) {
+            trustFail("metadata_policy subset_of for $parameter must be a superset of superset_of")
+        }
+        if (operators.containsKey("value")) validateValueCombinations(parameter, operators)
+    }
+
+    /** OID-FED §6.1.3.1.1: `value` combines with the others under relationship checks. */
+    private fun validateValueCombinations(
+        parameter: String,
+        operators: Map<String, Any?>,
+    ) {
+        val value = operators["value"]
+        if (value == null && operators["essential"] == true) {
+            trustFail("metadata_policy value null for $parameter cannot be essential")
+        }
+        if (value == null && operators.containsKey("default")) {
+            trustFail("metadata_policy value null for $parameter cannot combine with default")
+        }
+        operators["one_of"]?.let {
+            if (value !in asList(it)) trustFail("metadata_policy value for $parameter is not among one_of")
+        }
+        operators["subset_of"]?.let {
+            if (!asList(it).containsAll(asList(value))) {
+                trustFail("metadata_policy value for $parameter must be a subset of subset_of")
+            }
+        }
+        operators["superset_of"]?.let {
+            if (!asList(value).containsAll(asList(it))) {
+                trustFail("metadata_policy value for $parameter must be a superset of superset_of")
+            }
+        }
+        operators["add"]?.let {
+            if (!asList(value).containsAll(asList(it))) {
+                trustFail("metadata_policy add for $parameter must be a subset of value")
+            }
         }
     }
 
@@ -154,7 +199,13 @@ internal object MetadataPolicy {
         }
         operators["add"]?.let { result[parameter] = unionOf(result[parameter], it) }
         operators["default"]?.let { if (!result.containsKey(parameter)) result[parameter] = it }
-        checkValueConstraints(qualified, operators, result, parameter)
+        // Application order per OID-FED §6.1.3.1: the one_of check, then the subset_of
+        // filter, then the superset_of check runs on the FILTERED value.
+        operators["one_of"]?.let { allowed ->
+            result[parameter]?.let { current ->
+                if (current !in asList(allowed)) trustFail("metadata parameter $qualified violates one_of")
+            }
+        }
         operators["subset_of"]?.let { allowed ->
             if (result.containsKey(parameter)) {
                 // An empty intersection is a legal resolved value: keep [] (it still
@@ -162,29 +213,25 @@ internal object MetadataPolicy {
                 result[parameter] = asList(result[parameter]).intersect(asList(allowed).toSet()).toList()
             }
         }
-        if (operators["essential"] == true && !result.containsKey(parameter)) {
-            trustFail("metadata parameter $qualified is essential but absent")
-        }
+        checkAfterShaping(qualified, parameter, operators, result)
         return result
     }
 
-    private fun checkValueConstraints(
+    private fun checkAfterShaping(
         qualified: String,
+        parameter: String,
         operators: Map<String, Any?>,
         result: Map<String, Any?>,
-        parameter: String,
     ) {
-        operators["one_of"]?.let { allowed ->
-            result[parameter]?.let { current ->
-                if (current !in asList(allowed)) trustFail("metadata parameter $qualified violates one_of")
-            }
-        }
         operators["superset_of"]?.let { required ->
             result[parameter]?.let { current ->
                 if (!asList(current).containsAll(asList(required))) {
                     trustFail("metadata parameter $qualified violates superset_of")
                 }
             }
+        }
+        if (operators["essential"] == true && !result.containsKey(parameter)) {
+            trustFail("metadata parameter $qualified is essential but absent")
         }
     }
 

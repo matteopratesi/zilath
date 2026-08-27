@@ -60,13 +60,20 @@ internal class EntityStatement(
     val credentialIssuerJwks: List<JWK>
         get() = jwksOf(metadataSection("openid_credential_issuer")?.get("jwks") as? Map<*, *>)
 
-    /** The full `metadata` claim, if any. */
+    /** The full `metadata` claim, if any. Absent is fine; malformed fails the chain. */
     val metadata: Map<*, *>?
-        get() = runCatching { claims.getJSONObjectClaim("metadata") }.getOrNull()
+        get() = objectClaimOrFail("metadata")
 
-    /** The `metadata_policy` claim of a subordinate statement, if any. */
+    /** The `metadata_policy` of a subordinate statement, if any. A malformed one must
+     *  fail the chain, never be silently ignored: it is a SIGNED superior directive. */
     val metadataPolicy: Map<*, *>?
-        get() = runCatching { claims.getJSONObjectClaim("metadata_policy") }.getOrNull()
+        get() = objectClaimOrFail("metadata_policy")
+
+    private fun objectClaimOrFail(name: String): Map<*, *>? {
+        if (claims.getClaim(name) == null) return null
+        return runCatching { claims.getJSONObjectClaim(name) }
+            .getOrElse { trustFail("entity statement claim $name of $subject is malformed") }
+    }
 
     val federationFetchEndpoint: String?
         get() = metadataSection("federation_entity")?.get("federation_fetch_endpoint") as? String

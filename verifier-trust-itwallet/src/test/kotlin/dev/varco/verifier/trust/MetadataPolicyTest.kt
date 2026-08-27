@@ -120,28 +120,64 @@ class MetadataPolicyTest {
         assertThatExceptionOfType(TrustFailure::class.java)
             .isThrownBy {
                 MetadataPolicy.resolve(
-                    metadata("algs" to listOf("ES256")),
+                    metadata("mode" to "x"),
                     listOf(
-                        policy("algs" to mapOf("subset_of" to listOf("ES256"))),
-                        policy("algs" to mapOf("subset_of" to listOf("ES384"))),
+                        policy("mode" to mapOf("one_of" to listOf("x"))),
+                        policy("mode" to mapOf("one_of" to listOf("y"))),
                     ),
                 )
             }.withMessageContaining("intersection")
+        // Two subset_of merging to an empty intersection is LEGAL: it resolves to [].
+        val emptied =
+            MetadataPolicy.resolve(
+                metadata("algs" to listOf("ES256")),
+                listOf(
+                    policy("algs" to mapOf("subset_of" to listOf("ES256"))),
+                    policy("algs" to mapOf("subset_of" to listOf("ES384"))),
+                ),
+            )
+        assertThat(issuerSection(emptied)["algs"]).isEqualTo(emptyList<Any?>())
     }
 
     @Test
-    fun `array operators require arrays and value combines only with essential`() {
+    fun `operator values are type-checked and default null is refused`() {
         assertThatExceptionOfType(TrustFailure::class.java)
             .isThrownBy {
                 MetadataPolicy.resolve(metadata(), listOf(policy("a" to mapOf("add" to "ES256"))))
             }.withMessageContaining("must be an array")
         assertThatExceptionOfType(TrustFailure::class.java)
             .isThrownBy {
+                MetadataPolicy.resolve(metadata(), listOf(policy("a" to mapOf("default" to null))))
+            }.withMessageContaining("must not be null")
+    }
+
+    @Test
+    fun `value combines with other operators only under the spec relationships`() {
+        // Legal: the forced value satisfies every companion operator.
+        val resolved =
+            MetadataPolicy.resolve(
+                metadata("algs" to listOf("RS256")),
+                listOf(
+                    policy(
+                        "algs" to
+                            mapOf(
+                                "value" to listOf("ES256", "ES384"),
+                                "add" to listOf("ES384"),
+                                "subset_of" to listOf("ES256", "ES384", "ES512"),
+                                "superset_of" to listOf("ES256"),
+                            ),
+                    ),
+                ),
+            )
+        assertThat(issuerSection(resolved)["algs"]).isEqualTo(listOf("ES256", "ES384"))
+        // Illegal: add outside value.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
                 MetadataPolicy.resolve(
                     metadata(),
                     listOf(policy("a" to mapOf("value" to listOf("ES256"), "add" to listOf("RS256")))),
                 )
-            }.withMessageContaining("combines only with essential")
+            }.withMessageContaining("subset of value")
         // Illegal combinations arising from the MERGE of two policies fail too.
         assertThatExceptionOfType(TrustFailure::class.java)
             .isThrownBy {
@@ -153,6 +189,27 @@ class MetadataPolicyTest {
                     ),
                 )
             }.withMessageContaining("cannot combine")
+    }
+
+    @Test
+    fun `incompatible subset_of and superset_of operands fail at validation`() {
+        // The CodeRabbit counterexample: without the operand check, ["ES256","RS256"]
+        // with subset_of ["ES256"] and superset_of ["RS256"] would resolve to ["ES256"].
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata("algs" to listOf("ES256", "RS256")),
+                    listOf(
+                        policy(
+                            "algs" to
+                                mapOf(
+                                    "subset_of" to listOf("ES256"),
+                                    "superset_of" to listOf("RS256"),
+                                ),
+                        ),
+                    ),
+                )
+            }.withMessageContaining("superset of superset_of")
     }
 
     @Test
