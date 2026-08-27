@@ -134,6 +134,22 @@ class RpEntityConfigurationTest {
     }
 
     @Test
+    fun `authority hints must be valid entity ids and the validity must be positive`() {
+        assertThatIllegalArgumentException()
+            .isThrownBy {
+                federation().copy(authorityHints = listOf("http://anchor.example"))
+            }.withMessageContaining("authority hint")
+        assertThatIllegalArgumentException()
+            .isThrownBy {
+                federation().copy(authorityHints = listOf("https://anchor.example#frag"))
+            }.withMessageContaining("authority hint")
+        assertThatIllegalArgumentException()
+            .isThrownBy {
+                federation().copy(statementValidity = java.time.Duration.ZERO)
+            }.withMessageContaining("must be positive")
+    }
+
+    @Test
     fun `entity ids with a query or a fragment are refused`() {
         assertThatIllegalArgumentException()
             .isThrownBy { federation(entityId = "https://rp.example?tenant=a") }

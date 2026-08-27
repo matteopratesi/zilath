@@ -70,10 +70,20 @@ data class RpFederationConfig(
                 uri.fragment == null &&
                 (uri.scheme == "https" || (uri.scheme == "http" && host in LOCALHOST_HOSTS))
         require(allowed) { "the federation entity id must be an HTTPS URL with a host, no query, no fragment" }
+        require(statementValidity > Duration.ZERO) { "statementValidity must be positive (exp must follow iat)" }
         require(federationKey.isPrivate) { "federationKey must contain private key material" }
         require(federationKey.curve == Curve.P_256) { "federationKey must be a P-256 key (IT-Wallet profile)" }
         require(!federationKey.keyID.isNullOrBlank()) { "federationKey must carry a kid" }
         require(authorityHints.isNotEmpty()) { "authorityHints must name at least one superior" }
+        authorityHints.forEach { hint ->
+            val hintUri = runCatching { java.net.URI(hint) }.getOrNull()
+            require(
+                hintUri?.scheme == "https" &&
+                    !hintUri.host.isNullOrBlank() &&
+                    hintUri.query == null &&
+                    hintUri.fragment == null,
+            ) { "authority hint is not a valid entity id: $hint" }
+        }
     }
 
     /** Nimbus keys serialize their private parameters: never let them reach a log. */
