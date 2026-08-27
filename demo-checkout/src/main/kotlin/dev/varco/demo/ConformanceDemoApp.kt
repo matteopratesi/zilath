@@ -26,6 +26,7 @@ import dev.varco.verifier.core.TrustEvaluator
 import dev.varco.verifier.openid4vp.OpenId4VpVerificationFlow
 import dev.varco.verifier.openid4vp.RelyingPartyConfiguration
 import dev.varco.verifier.openid4vp.RpEndpoints
+import dev.varco.verifier.openid4vp.RpFederationConfig
 import dev.varco.verifier.openid4vp.RpKeys
 import dev.varco.verifier.openid4vp.VerificationFlow
 import dev.varco.verifier.openid4vp.VerificationReceipts
@@ -93,6 +94,7 @@ class ConformanceDemoApp {
         @Value("\${varco.demo.public-base-url:http://localhost:8080}") baseUrl: String,
         @Value("\${varco.demo.wallet-scheme:openid4vp://}") walletScheme: String,
         @Value("\${varco.demo.rp-pem-path:}") rpPemPath: String,
+        @Value("\${varco.demo.trust-anchor-id}") anchorId: String,
     ): RelyingPartyConfiguration {
         val signingKey = loadOrGenerateSigningKey(rpPemPath)
         return RelyingPartyConfiguration(
@@ -110,6 +112,16 @@ class ConformanceDemoApp {
             trustEvaluator = trustEvaluator,
             statusChecker = statusChecker,
             walletAuthorizationScheme = walletScheme,
+            // The demo publishes its entity configuration regardless of the client id
+            // scheme in use: the federation onboarding side must be demonstrable
+            // (VARCO-33) even while the conformance wallet mandates x509_hash.
+            federation =
+                RpFederationConfig(
+                    entityId = baseUrl,
+                    federationKey = ECKeyGenerator(Curve.P_256).keyID("demo-rp-fed").generate(),
+                    authorityHints = listOf(anchorId),
+                    organizationName = "Varco demo checkout",
+                ),
         )
     }
 

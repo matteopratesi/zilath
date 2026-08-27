@@ -68,7 +68,27 @@ data class RelyingPartyConfiguration(
     val transactionTimeToLive: Duration = DEFAULT_TIME_TO_LIVE,
     /** The wallet profile in force; the Italian IT-Wallet profile is the default. */
     val profile: WalletProfile = ItWalletProfile,
+    /**
+     * Federation-side identity (VARCO-33): required for the `openid_federation:` client
+     * id scheme — entity configuration endpoint, onboarding, JAR `trust_chain` header.
+     * Absent for the `x509_hash` scheme.
+     */
+    val federation: RpFederationConfig? = null,
 ) {
+    init {
+        // Under the openid_federation scheme the wallet resolves us through the trust
+        // chain and checks client_id against our entity configuration `sub` (WP_086):
+        // a config without federation identity, or with a mismatched one, can never work.
+        if (clientId.startsWith(OPENID_FEDERATION_PREFIX)) {
+            requireNotNull(federation) {
+                "the openid_federation client id scheme requires a federation configuration"
+            }
+            require(clientId.removePrefix(OPENID_FEDERATION_PREFIX) == federation.entityId) {
+                "client_id and federation entityId must agree under the openid_federation scheme"
+            }
+        }
+    }
+
     companion object {
         const val DEFAULT_SCHEME = "openid4vp://"
         val DEFAULT_TIME_TO_LIVE: Duration = Duration.ofMinutes(5)

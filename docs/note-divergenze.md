@@ -33,9 +33,13 @@ still pending (tracked on the project board).
 1. **Same-device flow** (redirect_uri, `response_code`, status endpoint): explicitly out of
    v0 scope (plan §0); accounts for most of the remaining conformance failures (RPR-19/28/29
    -34/42-45/56-59/69-72/83/84).
-2. **RP federation onboarding**: no entity configuration endpoint yet, so `request_uris` /
-   `response_uris` attestation and wallet-side RP metadata checks fail (RPR-82/85/86/95,
-   RPR-01/03 metadata-based URL checks).
+2. **RP federation onboarding** (VARCO-33): the RP now publishes its entity configuration
+   at `/.well-known/openid-federation` (`federation_entity` + `openid_credential_verifier`
+   metadata, attested `request_uris`/`response_uris`, protocol JWKS by value) and the JAR
+   carries the RP `trust_chain` header when the federation provides one. What remains is
+   the onboarding itself — registration under a superior and the fetch endpoints a real
+   federation requires — which needs a counterpart (IPZS test environment or the AgID
+   registration procedure, still unpublished).
 3. **`metadata_policy` operators** from subordinate statements are not applied by
    `FederationTrustEvaluator` yet.
 4. Status list token **signature** is not verified yet (needs the status provider inside the

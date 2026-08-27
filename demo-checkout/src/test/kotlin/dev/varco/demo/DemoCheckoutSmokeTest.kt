@@ -47,6 +47,23 @@ class DemoCheckoutSmokeTest {
     }
 
     @Test
+    fun `the entity configuration is served at the well-known path`() {
+        val body =
+            mockMvc
+                .perform(get("/.well-known/openid-federation"))
+                .andExpect(status().isOk)
+                .andExpect(content().contentTypeCompatibleWith("application/entity-statement+jwt"))
+                .andReturn()
+                .response.contentAsString
+        val claims =
+            com.nimbusds.jwt.SignedJWT
+                .parse(body)
+                .jwtClaimsSet
+        assertThat(claims.subject).isEqualTo("http://localhost:8080")
+        assertThat(claims.getJSONObjectClaim("metadata")).containsKey("openid_credential_verifier")
+    }
+
+    @Test
     fun `the event page offers the companion ticket`() {
         mockMvc
             .perform(get("/demo"))
