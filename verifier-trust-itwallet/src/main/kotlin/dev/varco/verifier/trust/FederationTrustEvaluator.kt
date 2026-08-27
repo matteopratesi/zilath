@@ -37,11 +37,10 @@ import java.time.Clock
  *    `authority_hints` up to the configured anchor, via the injectable [FederationFetcher].
  *
  * On success the decision carries the keys the issuer signs credentials with:
- * the `jwks` of its `openid_credential_issuer` metadata, falling back to the leaf's
- * federation keys when that metadata carries no dedicated set.
- *
- * Known gap (tracked): `metadata_policy` operators from subordinate statements are
- * NOT applied yet; policies constraining issuer metadata are ignored.
+ * the `jwks` of its `openid_credential_issuer` metadata AFTER applying the
+ * `metadata_policy` of the superior statements (merged anchor-first, OID-FED §6.1),
+ * falling back to the leaf's federation keys when that metadata carries no dedicated
+ * set. A policy conflict or violation fails the evaluation.
  */
 class FederationTrustEvaluator(
     private val anchor: TrustAnchorConfig,

@@ -40,7 +40,8 @@ still pending (tracked on the project board).
    the onboarding itself — registration under a superior and the fetch endpoints a real
    federation requires — which needs a counterpart (IPZS test environment or the AgID
    registration procedure, still unpublished).
-3. **`metadata_policy` operators** from subordinate statements are not applied by
-   `FederationTrustEvaluator` yet.
+3. **`metadata_policy` operators** (VARCO-34): applied — `value`, `add`, `default`,
+   `one_of`, `subset_of`, `superset_of`, `essential` are merged anchor-first and resolved
+   against the leaf metadata; the credential keys come from the resolved metadata.
 4. Status list token **signature** is not verified yet (needs the status provider inside the
    trust chain; noted in `OAuthStatusListChecker`).

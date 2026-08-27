@@ -60,6 +60,24 @@ internal class EntityStatement(
     val credentialIssuerJwks: List<JWK>
         get() = jwksOf(metadataSection("openid_credential_issuer")?.get("jwks") as? Map<*, *>)
 
+    /** The full `metadata` claim, if any. Absent is fine; malformed fails the chain. */
+    val metadata: Map<*, *>?
+        get() = objectClaimOrFail("metadata")
+
+    /** The `metadata_policy` of a subordinate statement, if any. A malformed one must
+     *  fail the chain, never be silently ignored: it is a SIGNED superior directive. */
+    val metadataPolicy: Map<*, *>?
+        get() = objectClaimOrFail("metadata_policy")
+
+    private fun objectClaimOrFail(name: String): Map<*, *>? {
+        // Nimbus returns null both for an absent claim and for an explicit `null`:
+        // membership must be checked on the claims map, and a PRESENT claim must be a
+        // non-null JSON object — anything else fails the chain.
+        if (!claims.claims.containsKey(name)) return null
+        return runCatching { claims.getJSONObjectClaim(name) }.getOrNull()
+            ?: trustFail("entity statement claim $name of $subject is malformed")
+    }
+
     val federationFetchEndpoint: String?
         get() = metadataSection("federation_entity")?.get("federation_fetch_endpoint") as? String
 
@@ -149,7 +167,22 @@ internal fun validateChain(
         }
         trustedKeys = statement.federationJwks.ifEmpty { trustedKeys }
     }
-    val credentialKeys = leaf.credentialIssuerJwks.ifEmpty { leaf.federationJwks }
+    // metadata_policy (VARCO-34): superiors constrain the leaf metadata. The immediate
+    // superior's statement metadata overrides the leaf's first; then the policies,
+    // merged anchor-first, are applied. The credential keys come from the RESOLVED
+    // metadata, so a superior can restrict or replace what the leaf advertises.
+    val effectiveMetadata = MetadataPolicy.overlay(leaf.metadata, statements[1].metadata)
+    val policies = statements.drop(1).asReversed().mapNotNull { it.metadataPolicy }
+    val resolvedMetadata = MetadataPolicy.resolve(effectiveMetadata, policies)
+    val resolvedIssuer = resolvedMetadata["openid_credential_issuer"] as? Map<*, *>
+    // Fall back to the federation keys only when the resolved metadata says NOTHING
+    // about credential keys: a present-but-empty jwks is an explicit "no keys allowed".
+    val credentialKeys =
+        if (resolvedIssuer?.containsKey("jwks") == true) {
+            jwksOf(resolvedIssuer["jwks"] as? Map<*, *>)
+        } else {
+            leaf.federationJwks
+        }
     if (credentialKeys.isEmpty()) trustFail("the leaf entity advertises no credential signing keys")
     return credentialKeys
 }
