@@ -52,6 +52,61 @@ class FederationTrustEvaluatorTest {
     }
 
     @Test
+    fun `a metadata_policy on the anchor statement replaces the leaf credential keys`() {
+        val policyKey =
+            com.nimbusds.jose.jwk.gen
+                .ECKeyGenerator(com.nimbusds.jose.jwk.Curve.P_256)
+                .keyID("policy-forced")
+                .generate()
+        val chain =
+            listOf(
+                FederationFixtures.leafConfiguration(),
+                FederationFixtures.signedStatement(
+                    FederationFixtures.anchorKey,
+                    FederationFixtures.ANCHOR_ID,
+                    FederationFixtures.LEAF_ID,
+                ) {
+                    claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey))
+                    claim(
+                        "metadata_policy",
+                        mapOf(
+                            "openid_credential_issuer" to
+                                mapOf("jwks" to mapOf("value" to FederationFixtures.jwksClaim(policyKey))),
+                        ),
+                    )
+                },
+            )
+        val decision =
+            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+        assertThat(decision).isInstanceOf(TrustDecision.Trusted::class.java)
+        assertThat((decision as TrustDecision.Trusted).issuerKeys.map { it.keyID })
+            .containsExactly("policy-forced")
+    }
+
+    @Test
+    fun `a violated metadata_policy makes the chain untrusted`() {
+        val chain =
+            listOf(
+                FederationFixtures.leafConfiguration(includeCredentialKeys = false),
+                FederationFixtures.signedStatement(
+                    FederationFixtures.anchorKey,
+                    FederationFixtures.ANCHOR_ID,
+                    FederationFixtures.LEAF_ID,
+                ) {
+                    claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey))
+                    claim(
+                        "metadata_policy",
+                        mapOf("openid_credential_issuer" to mapOf("jwks" to mapOf("essential" to true))),
+                    )
+                },
+            )
+        val decision =
+            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+        assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+        assertThat((decision as TrustDecision.Untrusted).reason).contains("essential")
+    }
+
+    @Test
     fun `resolves and trusts a leaf directly under the anchor`() {
         val decision = evaluator(FederationFixtures.directFederation()).evaluate(inputFor())
         assertTrustedWithIssuerKey(decision)
