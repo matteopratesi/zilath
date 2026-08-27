@@ -22,6 +22,7 @@ Born for accessibility rights: letting a person with a disability prove an entit
 | `verifier-trust-itwallet` | OpenID Federation trust chain evaluation, IT-Wallet profile. |
 | `verifier-spring-boot-starter` | Spring Boot auto-configuration and endpoints. |
 | `demo-checkout` | Demo app: fake event checkout unlocking a companion ticket. |
+| `gate-check` | Self-hosted gate tool for venues: guided CED check, signed outcome-only receipts. |
 
 ## Build
 
@@ -91,6 +92,31 @@ VARCO_DEMO_CREDENTIAL_MODE=ced-sim ./gradlew :demo-checkout:bootRun
 ```
 
 For the full conformance run against this RP, see [docs/conformance](docs/conformance/).
+
+## Gate check — the tool that helps today
+
+`gate-check` is a tiny self-hosted web app for the venue's entrance, usable **now**,
+before wallet verification opens to private relying parties: the operator follows a
+guided flow (person shows the European Disability Card, operator verifies its QR on the
+INPS service — exactly what the State expects), and the tool records **only a signed
+outcome receipt**: venue, entitlement, outcome, operator, timestamp. Never a name, a
+document, a photo, a percentage. No free-text field exists, on purpose.
+
+```sh
+VARCO_GATE_VENUE="Teatro di Prova" ./gradlew :gate-check:bootRun
+# then open http://localhost:8081/gate
+```
+
+Receipts (JWS, `varco-gate-receipt+jwt`) and the venue signing key live under
+`VARCO_GATE_DATA_DIR` (default `./gate-data`, created owner-only; forged lines in the
+receipts file are excluded on load). Trust model: the app binds to `127.0.0.1` by
+default; expose it on the venue LAN explicitly (`VARCO_GATE_BIND=0.0.0.0`) and only
+behind the venue's own network — whoever can reach the pages can record receipts, so
+the network is the trust boundary (there is no user login by design: it is a
+single-venue, door-side tool). The `method` claim is the migration seam:
+today `manual-inps-qr`; when private relying parties can receive wallet presentations,
+the same receipt is issued as `wallet-openid4vp` by the library flow — the venue's
+process and records do not change.
 
 ## License
 
