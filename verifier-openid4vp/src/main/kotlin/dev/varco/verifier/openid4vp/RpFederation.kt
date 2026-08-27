@@ -65,8 +65,11 @@ data class RpFederationConfig(
         val host = uri?.host
         val allowed =
             !host.isNullOrBlank() &&
+                // OpenID Federation entity identifiers carry no query and no fragment.
+                uri.query == null &&
+                uri.fragment == null &&
                 (uri.scheme == "https" || (uri.scheme == "http" && host in LOCALHOST_HOSTS))
-        require(allowed) { "the federation entity id must be an HTTPS URL with a host" }
+        require(allowed) { "the federation entity id must be an HTTPS URL with a host, no query, no fragment" }
         require(federationKey.isPrivate) { "federationKey must contain private key material" }
         require(federationKey.curve == Curve.P_256) { "federationKey must be a P-256 key (IT-Wallet profile)" }
         require(!federationKey.keyID.isNullOrBlank()) { "federationKey must carry a kid" }

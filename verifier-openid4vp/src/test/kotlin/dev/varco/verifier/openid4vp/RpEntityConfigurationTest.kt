@@ -134,6 +134,14 @@ class RpEntityConfigurationTest {
     }
 
     @Test
+    fun `entity ids with a query or a fragment are refused`() {
+        assertThatIllegalArgumentException()
+            .isThrownBy { federation(entityId = "https://rp.example?tenant=a") }
+        assertThatIllegalArgumentException()
+            .isThrownBy { federation(entityId = "https://rp.example#fragment") }
+    }
+
+    @Test
     fun `an x509_hash client id can still publish an entity configuration`() {
         val config = config("x509_hash:AbC123")
         val jwt = SignedJWT.parse(RpEntityConfiguration.build(config, config.federation!!, clock))
