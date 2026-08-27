@@ -76,11 +76,14 @@ class OpenId4VpVerificationFlow(
         val walletError = body.parameters["error"]
         val outcome =
             when {
+                // OpenID4VP §8.2: an authorization ERROR response is acknowledged, always.
+                // It grants nothing, so its state does not matter — and `record` below
+                // refuses to clobber an outcome that was already reached.
+                walletError != null ->
+                    FlowOutcome.WalletErrorAcknowledged(walletError, body.parameters["error_description"])
                 before.isExpired(clock.instant(), config.transactionTimeToLive) -> FlowOutcome.Expired
                 before.state != TransactionState.CREATED ->
                     FlowOutcome.Rejected(RejectionReason.REPLAY, "transaction nonce already consumed")
-                walletError != null ->
-                    FlowOutcome.WalletErrorAcknowledged(walletError, body.parameters["error_description"])
                 else -> verifyResponse(before, body)
             }
         record(txId, before, outcome)
@@ -124,7 +127,9 @@ class OpenId4VpVerificationFlow(
                 !transaction.isExpired(clock.instant(), config.transactionTimeToLive)
         if (!eligible) return null
         val code = transaction.responseCode ?: assignResponseCode(txId)
-        return code?.let { "$callbackBase?response_code=$it" }
+        // The session id travels as the last path segment, the code as the query: the
+        // callback can then reject an unknown session apart from an invalid code.
+        return code?.let { "$callbackBase/${txId.value}?response_code=$it" }
     }
 
     /** Idempotent under concurrency: whoever sets the code first wins. */
@@ -161,6 +166,7 @@ class OpenId4VpVerificationFlow(
         runCatching {
             val payload = config.profile.decodeWalletResponse(body, config)
             checkState(payload, transaction)
+            checkEchoedNonce(payload, transaction)
             val compact = extractPresentation(payload, transaction.request.credentialQueryId)
             val context =
                 VerificationContext(

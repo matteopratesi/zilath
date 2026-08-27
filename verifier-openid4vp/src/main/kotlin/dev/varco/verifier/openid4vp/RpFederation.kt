@@ -173,6 +173,11 @@ object RpEntityConfiguration {
                                     "kb-jwt_alg_values" to listOf("ES256"),
                                 ),
                         ),
+                    "authorization_encrypted_response_alg" to RESPONSE_ENCRYPTION_ALG,
+                    "encrypted_response_enc_values_supported" to listOf(RESPONSE_ENCRYPTION_ENC, "A128GCM"),
+                    // The SAME published JWKs as the request object's client_metadata:
+                    // a wallet resolving us through the federation must find the very key
+                    // it is asked to encrypt to (matching kid, and use "enc").
                     "jwks" to
                         mapOf(
                             "keys" to
@@ -180,9 +185,7 @@ object RpEntityConfiguration {
                                     config.keys.requestSigningKey
                                         .toPublicJWK()
                                         .toJSONObject(),
-                                    config.keys.responseEncryptionKey
-                                        .toPublicJWK()
-                                        .toJSONObject(),
+                                    publicEncryptionJwk(config).toJSONObject(),
                                 ),
                         ),
                 ),

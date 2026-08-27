@@ -170,7 +170,7 @@ class CedSimFlowTest {
         assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
         val txId = lastTransactionId()
         val redirect = flow.sameDeviceRedirectFor(txId)
-        assertThat(redirect).startsWith("https://demo.varco.example/cb?response_code=")
+        assertThat(redirect).startsWith("https://demo.varco.example/cb/${txId.value}?response_code=")
         // Idempotent while unconsumed, single-use once exchanged.
         assertThat(flow.sameDeviceRedirectFor(txId)).isEqualTo(redirect)
         // WP_094: same-device outcomes stay pending until the user-agent comes back.

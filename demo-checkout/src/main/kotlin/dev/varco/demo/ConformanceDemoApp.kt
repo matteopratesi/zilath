@@ -23,9 +23,11 @@ import dev.varco.verifier.core.CredentialStatus
 import dev.varco.verifier.core.CredentialVerifier
 import dev.varco.verifier.core.StatusChecker
 import dev.varco.verifier.core.TrustEvaluator
+import dev.varco.verifier.openid4vp.OPENID_FEDERATION_PREFIX
 import dev.varco.verifier.openid4vp.OpenId4VpVerificationFlow
 import dev.varco.verifier.openid4vp.RelyingPartyConfiguration
 import dev.varco.verifier.openid4vp.RpEndpoints
+import dev.varco.verifier.openid4vp.RpEntityConfiguration
 import dev.varco.verifier.openid4vp.RpFederationConfig
 import dev.varco.verifier.openid4vp.RpKeys
 import dev.varco.verifier.openid4vp.VerificationFlow
@@ -95,34 +97,44 @@ class ConformanceDemoApp {
         @Value("\${varco.demo.wallet-scheme:openid4vp://}") walletScheme: String,
         @Value("\${varco.demo.rp-pem-path:}") rpPemPath: String,
         @Value("\${varco.demo.trust-anchor-id}") anchorId: String,
+        @Value("\${varco.demo.client-id-scheme:x509-hash}") clientIdScheme: String,
+        clock: Clock,
     ): RelyingPartyConfiguration {
         val signingKey = loadOrGenerateSigningKey(rpPemPath)
-        return RelyingPartyConfiguration(
-            clientId = clientIdFor(signingKey, baseUrl),
-            endpoints =
-                RpEndpoints(
-                    requestUriBase = "$baseUrl/openid4vp/request",
-                    responseUriBase = "$baseUrl/openid4vp/response",
-                    sameDeviceCallbackBase = "$baseUrl/demo/cb",
-                ),
-            keys =
-                RpKeys(
-                    requestSigningKey = signingKey,
-                    responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("demo-rp-enc").generate(),
-                ),
-            trustEvaluator = trustEvaluator,
-            statusChecker = statusChecker,
-            walletAuthorizationScheme = walletScheme,
-            // The demo publishes its entity configuration regardless of the client id
-            // scheme in use: the federation onboarding side must be demonstrable
-            // (VARCO-33) even while the conformance wallet mandates x509_hash.
-            federation =
-                RpFederationConfig(
-                    entityId = baseUrl,
-                    federationKey = ECKeyGenerator(Curve.P_256).keyID("demo-rp-fed").generate(),
-                    authorityHints = listOf(anchorId),
-                    organizationName = "Varco demo checkout",
-                ),
+        val base =
+            RelyingPartyConfiguration(
+                clientId = clientIdFor(signingKey, baseUrl, clientIdScheme),
+                endpoints =
+                    RpEndpoints(
+                        requestUriBase = "$baseUrl/openid4vp/request",
+                        responseUriBase = "$baseUrl/openid4vp/response",
+                        sameDeviceCallbackBase = "$baseUrl/demo/cb",
+                    ),
+                keys =
+                    RpKeys(
+                        requestSigningKey = signingKey,
+                        responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("demo-rp-enc").generate(),
+                    ),
+                trustEvaluator = trustEvaluator,
+                statusChecker = statusChecker,
+                walletAuthorizationScheme = walletScheme,
+                // The demo publishes its entity configuration regardless of the client id
+                // scheme in use: the federation onboarding side must be demonstrable
+                // (VARCO-33) even while the conformance wallet mandates x509_hash.
+                federation =
+                    RpFederationConfig(
+                        entityId = baseUrl,
+                        federationKey = ECKeyGenerator(Curve.P_256).keyID("demo-rp-fed").generate(),
+                        authorityHints = listOf(anchorId),
+                        organizationName = "Varco demo checkout",
+                    ),
+            )
+        // The demo is its own federation: it travels with its self-signed entity
+        // configuration as the chain, so a wallet can resolve the RP offline. A real
+        // deployment carries the chain issued by its superior instead.
+        val federation = checkNotNull(base.federation)
+        return base.copy(
+            federation = federation.copy(trustChain = listOf(RpEntityConfiguration.build(base, federation, clock))),
         )
     }
 
@@ -168,18 +180,33 @@ class ConformanceDemoApp {
             ).build()
     }
 
+    /**
+     * `openid-federation`: the RP is identified by its federation entity id, and wallets
+     * resolve it through the entity configuration. `x509-hash` (default): identified by
+     * the hash of its certificate, as the conformance wallet expects by default.
+     */
     private fun clientIdFor(
         signingKey: com.nimbusds.jose.jwk.ECKey,
         baseUrl: String,
+        scheme: String,
     ): String {
-        val leafCertificate = signingKey.x509CertChain?.firstOrNull() ?: return baseUrl
-        val digest =
-            java.security.MessageDigest
-                .getInstance("SHA-256")
-                .digest(leafCertificate.decode())
-        return "x509_hash:" +
-            com.nimbusds.jose.util.Base64URL
-                .encode(digest)
+        val leafCertificate = signingKey.x509CertChain?.firstOrNull()
+        return when {
+            scheme == FEDERATION_SCHEME -> OPENID_FEDERATION_PREFIX + baseUrl
+            leafCertificate == null -> baseUrl
+            else ->
+                "x509_hash:" +
+                    com.nimbusds.jose.util.Base64URL
+                        .encode(
+                            java.security.MessageDigest
+                                .getInstance("SHA-256")
+                                .digest(leafCertificate.decode()),
+                        ).toString()
+        }
+    }
+
+    private companion object {
+        const val FEDERATION_SCHEME = "openid-federation"
     }
 }
 

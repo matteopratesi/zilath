@@ -155,6 +155,21 @@ internal fun extractPresentation(
     return presentation ?: flowReject(RejectionReason.MALFORMED, "vp_token has no presentation for the query")
 }
 
+/**
+ * A `nonce` echoed in the response payload must match the transaction's. The binding that
+ * matters is the one inside the key-binding JWT (checked by the credential verifier); this
+ * is defence in depth against a response assembled for a different request.
+ */
+internal fun checkEchoedNonce(
+    payload: JsonObject,
+    transaction: Transaction,
+) {
+    val nonce = (payload["nonce"] as? JsonPrimitive)?.content ?: return
+    if (nonce != transaction.nonce) {
+        flowReject(RejectionReason.MALFORMED, "response nonce does not match the transaction")
+    }
+}
+
 /** The `state` echoed by the wallet must match the transaction. */
 internal fun checkState(
     payload: JsonObject,
