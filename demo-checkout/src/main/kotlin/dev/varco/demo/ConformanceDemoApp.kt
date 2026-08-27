@@ -103,6 +103,7 @@ class ConformanceDemoApp {
                 RpEndpoints(
                     requestUriBase = "$baseUrl/openid4vp/request",
                     responseUriBase = "$baseUrl/openid4vp/response",
+                    sameDeviceCallbackBase = "$baseUrl/demo/cb",
                 ),
             keys =
                 RpKeys(

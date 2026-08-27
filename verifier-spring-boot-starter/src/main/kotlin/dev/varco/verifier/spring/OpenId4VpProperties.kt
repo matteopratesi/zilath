@@ -36,6 +36,9 @@ data class OpenId4VpProperties(
     val responseEncryptionKeyJwk: String = "",
     val walletAuthorizationScheme: String = "openid4vp://",
     val transactionTimeToLiveSeconds: Long = DEFAULT_TTL_SECONDS,
+    /** Same-device callback base, e.g. `https://rp.example/cb`; empty = cross-device only.
+     *  Appended LAST to preserve positional-constructor compatibility for existing callers. */
+    val sameDeviceCallbackBase: String = "",
 ) {
     /** The JWK properties carry private key material: never let them reach a log. */
     override fun toString(): String =

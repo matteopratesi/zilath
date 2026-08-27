@@ -37,10 +37,16 @@ class OpenId4VpVerificationFlow(
     private val store: TransactionStore,
     private val clock: Clock,
 ) : VerificationFlow {
-    override fun start(request: PresentationRequest): StartedTransaction {
+    override fun start(
+        request: PresentationRequest,
+        mode: FlowMode,
+    ): StartedTransaction {
+        require(mode == FlowMode.CROSS_DEVICE || config.endpoints.sameDeviceCallbackBase != null) {
+            "same-device transactions need RpEndpoints.sameDeviceCallbackBase"
+        }
         val id = TransactionId(randomToken(TRANSACTION_ID_BYTES))
         val nonce = randomToken(NONCE_BYTES)
-        store.put(Transaction(id, nonce, TransactionState.CREATED, clock.instant(), request))
+        store.put(Transaction(id, nonce, TransactionState.CREATED, clock.instant(), request, mode = mode))
         val requestUri = "${config.endpoints.requestUriBase}/${id.value}"
         return StartedTransaction(id, requestUri, qrPayloadOf(config, requestUri))
     }
@@ -84,11 +90,68 @@ class OpenId4VpVerificationFlow(
     override fun awaitOutcome(txId: TransactionId): FlowOutcome {
         val transaction = store.get(txId) ?: return FlowOutcome.Unknown
         return when {
+            // Same-device: the transaction is complete only when the user-agent has come
+            // back through the response-code exchange (WP_094) — pending until then, and
+            // EXPIRED (never the wallet outcome) when the return leg never happened.
+            transaction.mode == FlowMode.SAME_DEVICE &&
+                transaction.outcome != null &&
+                !transaction.returned ->
+                if (transaction.isExpired(clock.instant(), config.transactionTimeToLive)) {
+                    FlowOutcome.Expired
+                } else {
+                    FlowOutcome.Pending
+                }
             // A recorded outcome survives expiry: the checkout must still observe it.
             transaction.outcome != null -> transaction.outcome
             transaction.isExpired(clock.instant(), config.transactionTimeToLive) -> FlowOutcome.Expired
             else -> FlowOutcome.Pending
         }
+    }
+
+    override fun sameDeviceRedirectFor(txId: TransactionId): String? {
+        val callbackBase = config.endpoints.sameDeviceCallbackBase
+        val transaction = store.get(txId)
+        // The redirect exists only for a same-device transaction whose response has
+        // been processed: the ack to the wallet is the only place it belongs. After the
+        // return leg no further redirect exists, and an expired transaction gets no
+        // code either — its callback could never complete the flow.
+        val eligible =
+            callbackBase != null &&
+                transaction != null &&
+                transaction.mode == FlowMode.SAME_DEVICE &&
+                transaction.outcome != null &&
+                !transaction.returned &&
+                !transaction.isExpired(clock.instant(), config.transactionTimeToLive)
+        if (!eligible) return null
+        val code = transaction.responseCode ?: assignResponseCode(txId)
+        return code?.let { "$callbackBase?response_code=$it" }
+    }
+
+    /** Idempotent under concurrency: whoever sets the code first wins. */
+    private fun assignResponseCode(txId: TransactionId): String? {
+        val fresh = randomToken(RESPONSE_CODE_BYTES)
+        store.compareAndUpdate(txId) { current ->
+            if (current.responseCode == null && !current.returned) current.copy(responseCode = fresh) else current
+        }
+        return store.get(txId)?.responseCode
+    }
+
+    override fun consumeResponseCode(code: String): TransactionId? {
+        val transaction = if (code.isBlank()) null else store.findByResponseCode(code)
+        if (transaction == null) return null
+        // Single use: only the caller that observes the code still present wins, and the
+        // return state is set in the same atomic step (WP_094). Expiry is a precondition
+        // of that SAME step, and the decision is captured INSIDE it: re-evaluating the
+        // clock outside would race and could disown a code that was in fact consumed.
+        var consumed = false
+        store.compareAndUpdate(transaction.id) { current ->
+            val eligible =
+                current.responseCode == code &&
+                    !current.isExpired(clock.instant(), config.transactionTimeToLive)
+            consumed = eligible
+            if (eligible) current.copy(responseCode = null, returned = true) else current
+        }
+        return transaction.id.takeIf { consumed }
     }
 
     private fun verifyResponse(
@@ -152,6 +215,9 @@ class OpenId4VpVerificationFlow(
 
         /** 32 random bytes -> 43 base64url chars, above the 32-char minimum of the profile. */
         private const val NONCE_BYTES = 32
+
+        /** The same-device response_code is a bearer return ticket: same entropy as the nonce. */
+        private const val RESPONSE_CODE_BYTES = 32
 
         /** Convenience factory wiring the default in-memory store. */
         fun withInMemoryStore(

@@ -41,6 +41,9 @@ interface TransactionStore {
     ): Transaction?
 
     fun remove(id: TransactionId)
+
+    /** The transaction currently holding [code] as its same-device response code. */
+    fun findByResponseCode(code: String): Transaction?
 }
 
 enum class TransactionState { CREATED, PRESENTED, VERIFIED, REJECTED }
@@ -52,6 +55,11 @@ data class Transaction(
     val createdAt: Instant,
     val request: PresentationRequest,
     val outcome: FlowOutcome? = null,
+    val mode: FlowMode = FlowMode.CROSS_DEVICE,
+    /** Single-use same-device return code; cleared when consumed. */
+    val responseCode: String? = null,
+    /** True once the user-agent came back through the response-code exchange (WP_094). */
+    val returned: Boolean = false,
 ) {
     fun isExpired(
         now: Instant,
@@ -87,6 +95,11 @@ class InMemoryTransactionStore(
 
     override fun remove(id: TransactionId) {
         transactions.remove(id)
+    }
+
+    override fun findByResponseCode(code: String): Transaction? {
+        sweepExpired()
+        return transactions.values.firstOrNull { it.responseCode == code }
     }
 
     private fun sweepExpired() {

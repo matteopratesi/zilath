@@ -18,6 +18,7 @@ package dev.varco.demo
 
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import dev.varco.verifier.openid4vp.FlowMode
 import dev.varco.verifier.openid4vp.FlowOutcome
 import dev.varco.verifier.openid4vp.PresentationRequest
 import dev.varco.verifier.openid4vp.TransactionId
@@ -54,7 +55,9 @@ class DemoCheckoutController(
     fun eventPage(): String = eventPageHtml()
 
     @GetMapping("/demo/entitled")
-    fun startEntitledPurchase(): ResponseEntity<Void> {
+    fun startEntitledPurchase(
+        @org.springframework.web.bind.annotation.RequestParam(defaultValue = "cross-device") flow: String,
+    ): ResponseEntity<Void> {
         val request =
             if (credentialMode == CED_SIM_MODE) {
                 PresentationRequest.forVct(
@@ -65,7 +68,8 @@ class DemoCheckoutController(
             } else {
                 PresentationRequest.forTestPid(pidVct)
             }
-        val transaction = flow.start(request)
+        val mode = if (flow == SAME_DEVICE_PARAM) FlowMode.SAME_DEVICE else FlowMode.CROSS_DEVICE
+        val transaction = this.flow.start(request, mode)
         registry.register(transaction, request)
         return ResponseEntity
             .status(HttpStatus.FOUND)
@@ -139,6 +143,18 @@ class DemoCheckoutController(
         }
     }
 
+    /** Same-device return leg: the wallet redirects here with the single-use code. */
+    @GetMapping("/demo/cb")
+    fun sameDeviceCallback(
+        @org.springframework.web.bind.annotation.RequestParam("response_code") responseCode: String,
+    ): ResponseEntity<String> {
+        val txId = flow.consumeResponseCode(responseCode) ?: return notFoundPage()
+        return ResponseEntity
+            .status(HttpStatus.FOUND)
+            .location(URI.create("/demo/ticket/" + txId.value))
+            .build()
+    }
+
     @GetMapping("/demo/receipt/{txId}", produces = [MediaType.TEXT_PLAIN_VALUE])
     fun receipt(
         @PathVariable txId: String,
@@ -165,14 +181,14 @@ class DemoCheckoutController(
         registry.receiptFor(txId) { request -> receipts.issue(TransactionId(txId), request, verified) }
     }
 
-    private fun notFoundPage(): ResponseEntity<String> =
-        ResponseEntity.status(HttpStatus.NOT_FOUND).body(notFoundHtml())
-
     companion object {
         private val REGISTRY_TIME_TO_LIVE: java.time.Duration = java.time.Duration.ofMinutes(15)
         private const val CED_SIM_MODE = "ced-sim"
+        private const val SAME_DEVICE_PARAM = "same-device"
     }
 }
+
+private fun notFoundPage(): ResponseEntity<String> = ResponseEntity.status(HttpStatus.NOT_FOUND).body(notFoundHtml())
 
 /** Renders a QR PNG without pulling the zxing `javase` artifact in. */
 internal fun qrPng(payload: String): ByteArray {

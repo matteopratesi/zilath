@@ -54,6 +54,7 @@ class OpenId4VpFlowIntegrationTest {
                 RpEndpoints(
                     requestUriBase = "https://rp.example/openid4vp/request",
                     responseUriBase = "https://rp.example/openid4vp/response",
+                    sameDeviceCallbackBase = "https://rp.example/cb",
                 ),
             keys = RpKeys(requestSigningKey = signingKey, responseEncryptionKey = encryptionKey),
             trustEvaluator = TestVectors.trustIssuerEc(),
@@ -324,5 +325,68 @@ class OpenId4VpFlowIntegrationTest {
     fun `pending transaction reports pending`() {
         val started = startForPid()
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Pending)
+    }
+
+    @Test
+    fun `an unreturned same-device outcome expires instead of leaking`() {
+        val started = flow.start(PresentationRequest.forTestPid("urn:varco:test:entitlement"), FlowMode.SAME_DEVICE)
+        val outcome =
+            flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
+        assertThat(outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
+        val redirect = checkNotNull(flow.sameDeviceRedirectFor(started.id))
+        val code = redirect.substringAfter("response_code=")
+        // The user never comes back within the transaction TTL.
+        clock.advance(config.transactionTimeToLive.plusSeconds(1))
+        // No new code is minted for an expired transaction.
+        assertThat(flow.sameDeviceRedirectFor(started.id)).isNull()
+        // The stale code is not consumable, and the wallet outcome is never exposed:
+        // Expired while the entry survives, Unknown once the store sweep removed it.
+        assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
+        assertThat(flow.consumeResponseCode(code)).isNull()
+        assertThat(flow.awaitOutcome(started.id)).isIn(FlowOutcome.Expired, FlowOutcome.Unknown)
+    }
+
+    @Test
+    fun `a retaining store still refuses to consume an expired response code`() {
+        // A shared store may RETAIN expired entries: expiry must be a precondition of
+        // consumption itself, not a side effect of the in-memory sweep.
+        val retaining =
+            object : TransactionStore {
+                // The interface contract makes compareAndUpdate atomic: even a test
+                // double must honor it, or the exactly-once code exchange is untested.
+                val lock = Any()
+                val entries = HashMap<TransactionId, Transaction>()
+
+                override fun put(transaction: Transaction) {
+                    synchronized(lock) { entries[transaction.id] = transaction }
+                }
+
+                override fun get(id: TransactionId): Transaction? = synchronized(lock) { entries[id] }
+
+                override fun compareAndUpdate(
+                    id: TransactionId,
+                    update: (Transaction) -> Transaction,
+                ): Transaction? =
+                    synchronized(lock) {
+                        entries[id]?.also { entries[id] = update(it) }
+                    }
+
+                override fun remove(id: TransactionId) {
+                    synchronized(lock) { entries.remove(id) }
+                }
+
+                override fun findByResponseCode(code: String): Transaction? =
+                    synchronized(lock) { entries.values.firstOrNull { it.responseCode == code } }
+            }
+        val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
+        val started =
+            retainingFlow.start(PresentationRequest.forTestPid("urn:varco:test:entitlement"), FlowMode.SAME_DEVICE)
+        retainingFlow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
+        val code =
+            checkNotNull(retainingFlow.sameDeviceRedirectFor(started.id)).substringAfter("response_code=")
+        clock.advance(config.transactionTimeToLive.plusSeconds(1))
+        // The retained entry is findable, but the stale code must not complete the flow.
+        assertThat(retainingFlow.consumeResponseCode(code)).isNull()
+        assertThat(retainingFlow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
     }
 }
