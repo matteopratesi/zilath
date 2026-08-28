@@ -34,8 +34,20 @@ but you would lose the ability to prove it again. Keep the domain renewed.
 ### 2. Create a Central Portal user token
 
 Account → *Generate User Token*. It gives a username and a password, which are **not** your
-account credentials and can be revoked separately. Keep them in the keychain, not in a file
-in this repo.
+account credentials and can be revoked and regenerated without touching the account.
+
+The Portal hands them over as an XML snippet for `~/.m2/settings.xml`. **Ignore the XML.**
+That file is Maven's, this build is Gradle, and nothing here reads it — creating it would
+put two credentials in cleartext on disk for no benefit. Take the two values out and put
+them in the keychain instead. These prompt for the value, so it stays out of shell history:
+
+```sh
+security add-generic-password -a "$USER" -s zilath-central-user -w
+security add-generic-password -a "$USER" -s zilath-central-pass -w
+```
+
+Then close the page without saving the snippet anywhere. If the values are ever lost they
+cannot be recovered — regenerate the token, which takes seconds.
 
 ### 3. Create and publish a signing key
 
@@ -131,6 +143,9 @@ in a CI variable that prints on failure.
    user token from step 2:
 
    ```sh
+   TOKEN_USER=$(security find-generic-password -s zilath-central-user -w)
+   TOKEN_PASS=$(security find-generic-password -s zilath-central-pass -w)
+
    curl -sS -X POST https://central.sonatype.com/api/v1/publisher/upload \
      -H "Authorization: Bearer $(printf '%s:%s' "$TOKEN_USER" "$TOKEN_PASS" | base64)" \
      -F bundle=@build/central/zilath-central-bundle.zip
