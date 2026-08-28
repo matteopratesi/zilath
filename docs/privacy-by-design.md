@@ -58,9 +58,12 @@ the wallet's POST and your application's read of `awaitOutcome`, because those a
 separate HTTP exchanges.
 
 The outcome is retained whole, so for a rejection what persists is the reason code **and
-`detail`**, for the same lifetime. That matters if you supply your own `TrustEvaluator` or
-`StatusChecker`: the string your implementation puts in `Untrusted(reason)` becomes that
-`detail` and is stored with the transaction. Keep personal data out of it.
+`detail`**, for the same lifetime. Almost every `detail` is a fixed string from this
+library, with one exception worth knowing: if you supply your own `TrustEvaluator`, the
+text your implementation puts in `TrustDecision.Untrusted(reason)` is passed straight
+through and stored with the transaction. Keep personal data out of it. A custom
+`StatusChecker` cannot do this — it returns an enum, and the `detail` for a status failure
+is written here.
 
 So: the presentation is not retained, the claims and the diagnostic text briefly are. With
 the default `InMemoryTransactionStore` they live in the process heap and expire with the
@@ -126,6 +129,17 @@ An honest list is more useful than a short one.
    it denies someone an entitlement they hold. Give the fetcher a pinned, TLS-verified
    client until this is closed. It is tracked, and it is fixed before the first stable
    release.
+
+   Two things to get right in that fetcher regardless of the signature gap. **Set
+   aggressive connect and read timeouts**: the URI comes from the credential, so a slow or
+   unreachable status endpoint stalls a checkout, and TLS does nothing to bound that wait —
+   the failure then degrades to `UNKNOWN`, which is a rejection, so a hanging endpoint
+   turns into denied entitlements. **And decide what your fetcher is allowed to reach**: it
+   dereferences a URL that arrived inside a credential. The verification order limits this
+   — trust chain and issuer signature are checked before the status call, so the URI comes
+   from an issuer you already trust — but a fetcher able to reach arbitrary hosts is one
+   compromised issuer away from being a request-forgery tool inside your network. An
+   allow-list of expected status hosts costs nothing.
 6. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
 
 ## 6. What you still have to do
