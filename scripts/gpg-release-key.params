@@ -1,0 +1,18 @@
+# Parametri della chiave di firma dei rilasci Zilath.
+# gpg chiedera' la passphrase via pinentry: non e' in questo file, ed e' giusto cosi'.
+#
+# RSA 4096 e non Ed25519: qui la proprieta' che conta e' che la firma sia verificabile
+# da qualunque strumento incontri l'artefatto, per sempre. RSA e' noioso e universale.
+# Sola firma, nessuna sottochiave di cifratura: questa chiave fa un mestiere solo.
+# Scadenza 3 anni: le firme fatte finche' e' valida restano valide anche dopo, e una
+# chiave scaduta fa fallire il bundle PRIMA dell'upload, che e' il momento giusto.
+%echo Generazione chiave di firma Zilath
+Key-Type: RSA
+Key-Length: 4096
+Key-Usage: sign
+Name-Real: Matteo Pratesi
+Name-Email: pratesi.matteo@gmail.com
+Name-Comment: Zilath release signing
+Expire-Date: 3y
+%commit
+%echo fatto

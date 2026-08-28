@@ -58,7 +58,7 @@ Generate it **yourself**, in your own terminal — the passphrase is the whole p
 key, and a signing key whose passphrase someone else chose is not your signature.
 
 ```sh
-gpg --batch --gen-key gpg-release-key.params   # prompts for the passphrase, and only that
+gpg --batch --gen-key scripts/gpg-release-key.params   # prompts for the passphrase, and only that
 gpg --list-secret-keys --keyid-format=long     # note the key id and the fingerprint
 gpg --send-keys --keyserver keys.openpgp.org <KEY_ID>
 ```
@@ -91,7 +91,7 @@ on failure.
 
 #### Back up two files, in two different places
 
-```
+```text
 ~/.gnupg/private-keys-v1.d/          the private key material
 ~/.gnupg/openpgp-revocs.d/<FP>.rev   the revocation certificate, created automatically
 ```
@@ -102,8 +102,15 @@ agent-specific (this installation uses `keyboxd`, which already changed where pu
 live).
 
 ```sh
-gpg --armor --export-secret-keys <KEY_ID> > zilath-signing-key.asc
+umask 077
+gpg --armor --export-secret-keys <FINGERPRINT> > /Volumes/<encrypted-media>/zilath-signing-key.asc
 ```
+
+Write it straight to the encrypted medium, never into this checkout and never into your
+home directory "for a second". A secret key sitting in a git working tree is how secret
+keys end up in commits. `scripts/../backup-signing-key.sh` in the working notes does this
+plus a restore test; the point either way is that the file is never in a directory git
+watches.
 
 The **revocation certificate** is the file everyone forgets, and it is the one that decides
 what happens on the bad day. With it you can announce that the key is dead even if you no
@@ -131,7 +138,7 @@ revocation certificate.
 
    ```sh
    export ZILATH_SIGNING_KEY="$(gpg --armor --export-secret-keys <FINGERPRINT>)"
-   export ZILATH_SIGNING_PASSWORD="$(security find-generic-password -s zilath-signing-pass -w)"
+   export ZILATH_SIGNING_PASSWORD="$(security find-generic-password -a "$USER" -s zilath-signing-pass -w)"
    ```
 
    Without `ZILATH_SIGNING_KEY` the build simply does not sign, and `centralBundle` refuses
@@ -156,46 +163,41 @@ revocation certificate.
    reversible.
 
    ```sh
-   unzip -l build/central/zilath-central-bundle.zip
+   ./scripts/verify-bundle.sh 0.2.0     # the version you are releasing
    ```
 
-   ```sh
-   BUNDLE=build/central/zilath-central-bundle.zip
-   FILES=$(unzip -Z1 "$BUNDLE")
+   It checks three things and **exits non-zero** if any fails, because a check that only
+   prints its findings is one that eventually gets scrolled past:
 
-   # 1. Nothing from an earlier release. Set OLD_VERSION to the last one published.
-   OLD_VERSION=0.1.0
-   printf '%s\n' "$FILES" | grep -c -- "$OLD_VERSION"       # must print 0
+   - every artifact belongs to the version being released — asserted positively against the
+     expected version, not by excluding one old version somebody remembered;
+   - every artifact has its `.asc`, `.md5` and `.sha1`, derived from the bundle itself so a
+     new artifact type is covered without editing the script;
+   - nothing from `demo-checkout`, `gate-check` or the test fixtures got in.
 
-   # 2. Every deployable file carries .asc, .md5 and .sha1. Sonatype requires all three,
-   #    and this checks whatever is actually in the bundle — jars, poms and .module alike —
-   #    rather than the extensions someone remembered to list.
-   printf '%s\n' "$FILES" | grep -v '/$' | grep -vE '\.(asc|md5|sha1|sha256|sha512)$' | while read -r f; do
-     for ext in asc md5 sha1; do
-       printf '%s\n' "$FILES" | grep -qxF "$f.$ext" || echo "MISSING  $f.$ext"
-     done
-   done                                                      # must print nothing
-
-   # 3. No demo applications, no test fixtures.
-   printf '%s\n' "$FILES" | grep -E 'demo-checkout|gate-check|test-fixtures'   # must print nothing
-   ```
-
-   The second check is the one that matters: it derives the list of files needing sidecars
-   from the bundle itself, so a new artifact type added later is covered without anyone
-   remembering to update this file. (`grep -v '/$'` drops the directory entries `unzip -Z1`
-   also lists — without it the check reports six missing files that were never files.)
+   On a bundle that is fine it prints one line. On a bundle that is not, it prints what is
+   wrong and refuses — and nothing it reports is fixable after an upload. To eyeball the
+   contents yourself as well: `unzip -l build/central/zilath-central-bundle.zip`.
 
 6. **Upload.** Either drop the zip in the Portal's *Publish* page, or use the API with the
    user token from step 2:
 
    ```sh
-   TOKEN_USER=$(security find-generic-password -s zilath-central-user -w)
-   TOKEN_PASS=$(security find-generic-password -s zilath-central-pass -w)
+   TOKEN_USER=$(security find-generic-password -a "$USER" -s zilath-central-user -w)
+   TOKEN_PASS=$(security find-generic-password -a "$USER" -s zilath-central-pass -w)
 
-   curl -sS -X POST https://central.sonatype.com/api/v1/publisher/upload \
+   DEPLOYMENT_ID=$(curl -sS --fail-with-body -X POST \
+     https://central.sonatype.com/api/v1/publisher/upload \
      -H "Authorization: Bearer $(printf '%s:%s' "$TOKEN_USER" "$TOKEN_PASS" | base64)" \
-     -F bundle=@build/central/zilath-central-bundle.zip
+     -F bundle=@build/central/zilath-central-bundle.zip)
+
+   [ -n "$DEPLOYMENT_ID" ] || { echo "upload failed: no deployment id"; }
+   echo "$DEPLOYMENT_ID"
    ```
+
+   `--fail-with-body` matters: without it `curl` exits 0 on an HTTP 401 or 500 and prints
+   the error into your variable, so a failed upload looks like a successful one until you
+   go looking for a release that was never staged.
 
    The Portal validates the bundle and leaves it in a staged state. **Validation passing is
    not publication.** Review the staged deployment, then release it deliberately.
