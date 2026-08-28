@@ -100,7 +100,10 @@ class OpenId4VpAutoConfiguration {
 
     /**
      * Publishes the wallet-facing endpoints, but only once a [VerificationFlow] exists.
-     * Declare your own controller bean to take over the routes.
+     *
+     * To take the routes over you must declare a bean OF TYPE [OpenId4VpController]:
+     * `@ConditionalOnMissingBean` matches on that type, so a controller of your own class
+     * does not suppress this one and both would map the same paths.
      */
     @Bean
     @ConditionalOnBean(VerificationFlow::class)

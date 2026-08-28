@@ -66,9 +66,13 @@ sealed interface TrustDecision {
     ) : TrustDecision
 
     /**
-     * The issuer is not trusted, or trust could not be established. [reason] is for logs;
-     * it distinguishes "chain does not reach the anchor" from "anchor unreachable", a
-     * difference that matters when diagnosing but not when deciding.
+     * The issuer is not trusted, or trust could not be established.
+     *
+     * [reason] is diagnostic detail, not a log-only string: `SdJwtVcCredentialVerifier`
+     * passes it straight through as the `detail` of [VerificationResult.Rejected], so it
+     * travels with the result. The Spring endpoint keeps it server-side and returns only
+     * the reason code, but any other caller holding a [VerificationResult] can read it —
+     * so keep it free of anything that must not leave the process.
      */
     data class Untrusted(
         val reason: String? = null,

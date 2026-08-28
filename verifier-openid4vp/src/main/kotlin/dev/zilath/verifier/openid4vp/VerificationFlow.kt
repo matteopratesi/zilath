@@ -62,9 +62,10 @@ interface VerificationFlow {
      * yields [RejectionReason.REPLAY] rather than a second success. The returned outcome is
      * also what [awaitOutcome] will report from now on.
      *
-     * Note for the endpoint on top of this: OpenID4VP requires HTTP 200 even when the
-     * result is [FlowOutcome.Rejected] or [FlowOutcome.WalletErrorAcknowledged] — the
-     * status code acknowledges receipt, it does not carry the verdict.
+     * Note for the endpoint on top of this: a [FlowOutcome.WalletErrorAcknowledged] must
+     * be answered with HTTP 200, because OpenID4VP wants the error acknowledged rather
+     * than re-reported. The status code an endpoint returns is in any case addressed to
+     * the WALLET; the verdict the checkout acts on comes from [awaitOutcome].
      */
     fun handleWalletResponse(
         txId: TransactionId,

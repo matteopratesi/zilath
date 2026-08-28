@@ -70,10 +70,16 @@ data class RpKeys(
  * Everything one relying party is: who it says it is, where wallets reach it, what it
  * signs and decrypts with, and whom it trusts.
  *
- * Immutable and safe to share across transactions — the per-transaction state lives in the
+ * Safe to share across transactions — the per-transaction state lives in the
  * [TransactionStore]. Its `init` block enforces the coherence rules that would otherwise
  * surface as unexplained wallet failures at runtime, so an invalid configuration fails at
  * construction rather than at the first presentation.
+ *
+ * One caveat on immutability: the list properties of [RpFederationConfig]
+ * (`authorityHints`, `contacts`, `trustChain`) are held by reference, NOT defensively
+ * copied. Mutating a list you passed in changes what later JARs and entity configurations
+ * are built from, and the `init` validation will not run again. Pass lists you do not keep
+ * a handle on.
  */
 data class RelyingPartyConfiguration(
     /** The RP identifier: also the audience the key binding JWT must be addressed to. */

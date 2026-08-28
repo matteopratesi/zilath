@@ -45,11 +45,14 @@ class OpenId4VpController(
     /**
      * Receives the wallet's encrypted `direct_post.jwt` response.
      *
-     * Answers HTTP 200 whenever the submission was well-formed and reached its transaction
-     * — including when the credential was REJECTED and when the wallet reported an error.
-     * The status code acknowledges receipt to the wallet; it is not the verdict, which the
-     * checkout reads from [VerificationFlow.awaitOutcome]. Returning 4xx on a rejection
-     * would also hand a wallet-side prober a cheap oracle.
+     * HTTP 200 for a verified presentation and for an acknowledged wallet error (the ack
+     * OpenID4VP requires, carrying the same-device `redirect_uri` when there is one);
+     * HTTP 400 with the [dev.zilath.verifier.core.RejectionReason] name for a rejection,
+     * an expired transaction or an unprocessable one; HTTP 404 for an unknown transaction.
+     *
+     * What the wallet gets back is only ever the coarse reason code — `detail` stays
+     * server-side, in the log. The verdict the CHECKOUT acts on is not this status code:
+     * it comes from [VerificationFlow.awaitOutcome].
      */
     @PostMapping(
         "/openid4vp/response/{txId}",
