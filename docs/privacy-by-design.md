@@ -26,9 +26,15 @@ A single verification, end to end:
 | Step | What is handled | Where it goes |
 |---|---|---|
 | Request | A DCQL query naming the credential type and the claim paths you ask for | Signed into the request object (JAR) the wallet fetches |
-| Response | The wallet's `direct_post.jwt`: a JWE containing the SD-JWT VC presentation and its key-binding JWT | Decrypted in memory with the RP key |
+| Response | The wallet's response, carrying the SD-JWT VC presentation and its key-binding JWT. **Encrypted only on profiles that require it** — see below | Decrypted or parsed in memory; never written |
 | Verification | Issuer signature, trust chain, key binding (`nonce`, `aud`, `sd_hash`), disclosure digests, validity window, revocation status | Nothing written anywhere |
 | Result | `Verified(claims)` with only the disclosed claims, or `Rejected(reason)` | Returned to your application; recorded on the transaction |
+
+**Whether the response is encrypted depends on the profile you select.** `ItWalletProfile`,
+the default, mandates `direct_post.jwt`: the response is a JWE (ECDH-ES + A256GCM) and is
+unreadable to anything between wallet and verifier. `ArfBaselineProfile` uses plain
+`direct_post`, so on that profile the presentation is protected by TLS alone, exactly like
+any other form post. If you switch profiles, this is the property you are switching.
 
 The credential itself — the issuer-signed JWT, the disclosures, the key-binding JWT — is
 never written down. It exists as a local variable for the duration of one call and is
@@ -51,9 +57,14 @@ verification the outcome carries the **disclosed claims** — they have to survi
 the wallet's POST and your application's read of `awaitOutcome`, because those are two
 separate HTTP exchanges.
 
-So: the presentation is not retained, the claims briefly are. With the default
-`InMemoryTransactionStore` they live in the process heap and expire with the transaction
-time to live. They are never written to disk by this library.
+The outcome is retained whole, so for a rejection what persists is the reason code **and
+`detail`**, for the same lifetime. That matters if you supply your own `TrustEvaluator` or
+`StatusChecker`: the string your implementation puts in `Untrusted(reason)` becomes that
+`detail` and is stored with the transaction. Keep personal data out of it.
+
+So: the presentation is not retained, the claims and the diagnostic text briefly are. With
+the default `InMemoryTransactionStore` they live in the process heap and expire with the
+transaction time to live. They are never written to disk by this library.
 
 **If you plug in a shared store** — Redis, a database, anything that outlives the
 process — you are putting those claims on that infrastructure, and it becomes part of your
@@ -66,7 +77,8 @@ A receipt is a signed JWT carrying: the issuer (your client id), the transaction
 `jti`, the issue time, `outcome` (`verified` or `rejected`), `entitled` (a boolean), the
 claim paths that were **requested**, and a SHA-256 hash of the request. It records that a
 verification happened and how it came out. **It contains no claim values**, so it is the
-thing a venue archives instead of a copy of someone's medical paperwork.
+thing a venue archives instead of a copy of someone's medical paperwork — under the
+retention rules in §6, because a receipt linked to a person is still personal data.
 
 The `gate-check` module issues the same kind of outcome-only receipt for in-person checks.
 
@@ -82,9 +94,10 @@ The `gate-check` module issues the same kind of outcome-only receipt for in-pers
   the endpoint into a probe for what a person's credential says.
 - **Diagnostic detail stays server-side at the HTTP boundary.** The Spring endpoint returns
   the reason code to the wallet and keeps `detail` in the log.
-- **Responses are encrypted, not merely signed.** The IT-Wallet profile requires
-  `direct_post.jwt` with ECDH-ES and A256GCM, so the presentation is not readable by
-  anything between wallet and verifier.
+- **On the IT-Wallet profile, responses are encrypted and not merely signed.**
+  `direct_post.jwt` with ECDH-ES and A256GCM: the presentation is unreadable to anything
+  between wallet and verifier. This is a property of that profile, not of the library —
+  `ArfBaselineProfile` posts in the clear over TLS.
 
 ## 5. Known limits
 
@@ -105,10 +118,14 @@ An honest list is more useful than a short one.
    mitigation the format provides, but the fetch itself is observable. Consider caching if
    your volumes make the timing meaningful.
 5. **The status list token's signature is not verified yet.** The token is parsed, not
-   validated, so its contents are trusted on the strength of TLS and of the fact that the
-   URI comes from an already signature-verified credential. Whoever can serve that URI can
-   therefore report a revoked credential as valid. This is an integrity gap rather than a
-   confidentiality one, it is tracked, and it is fixed before the first stable release.
+   validated. Note where the trust boundary actually sits: `StatusListFetcher` is YOUR
+   implementation, so this library enforces no TLS, no certificate validation and no check
+   on the endpoint's identity — whatever your fetcher returns is believed. Whoever can serve
+   or tamper with that response can make a revoked credential look valid, **and can equally
+   make a valid one look revoked** — which on this project is the worse of the two, because
+   it denies someone an entitlement they hold. Give the fetcher a pinned, TLS-verified
+   client until this is closed. It is tracked, and it is fixed before the first stable
+   release.
 6. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
 
 ## 6. What you still have to do
@@ -124,9 +141,19 @@ Zilath handles the cryptography and the minimisation. It does not handle your ob
 - **Do not ask for more claims than the entitlement needs.** The DCQL query is yours to
   write, and the library will faithfully request whatever you put in it. The smallest query
   that answers your question is the one to send.
-- **Keep receipts, not documents.** If you are still receiving medical certificates by
-  email, that is the practice to end — verification at the gate plus a signed receipt is
-  both lighter and more defensible than an attachment from two months ago.
+- **Keep receipts instead of documents — but keep them as personal data.** A receipt
+  carries no claim values, and that is not the same as being anonymous. The moment you
+  file it against an order, a name or a seat, it says that this person holds an
+  accessibility entitlement, and the `requested_claims` paths say which health-related
+  attribute you asked about. By the same reasoning as above (C-184/20), that is
+  special-category data. So: a defined retention period tied to the event and its
+  accounting obligations, access limited to who needs it, deletion when the period ends —
+  and no receipt archive that quietly becomes a register of who is disabled.
+
+  Said plainly, because the temptation is real: receipts exist so you can prove a check
+  happened if someone contests it, not so you can build a list. If you are still receiving
+  medical certificates by email, that is the practice to end — a signed receipt is lighter
+  and far more defensible than an attachment from two months ago.
 
 ## 7. Verifying these claims
 
