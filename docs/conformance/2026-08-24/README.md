@@ -18,6 +18,6 @@
 
 1. Generate the RP certificate: `openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout rp-key.pem -out rp-cert.pem -days 30 -nodes -subj "/CN=localhost"` then `cat rp-cert.pem rp-key.pem > rp-combined.pem`.
 2. Start the app:
-   `VARCO_TRUST_ANCHOR_ID=https://localhost:3001 VARCO_TRUST_ANCHOR_TOFU=true VARCO_INSECURE_TLS=true VARCO_PID_VCT=urn:eudi:pid:it:1 VARCO_RP_PEM_PATH=<path>/rp-combined.pem ./gradlew :demo-checkout:bootRun`
+   `ZILATH_TRUST_ANCHOR_ID=https://localhost:3001 ZILATH_TRUST_ANCHOR_TOFU=true ZILATH_INSECURE_TLS=true ZILATH_PID_VCT=urn:eudi:pid:it:1 ZILATH_RP_PEM_PATH=<path>/rp-combined.pem ./gradlew :demo-checkout:bootRun`
 3. Run the tool (Node >= 22):
    `npx @pagopa/it-wallet-conformance-tool@1.2.1 test:presentation --presentation-authorize-script <script printing the authorizeUrl from GET /conformance/start> --wallet-version V1_4 --unsafe-tls`

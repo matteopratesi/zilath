@@ -11,7 +11,7 @@ kotlin {
 }
 
 springBoot {
-    mainClass.set("dev.varco.demo.ConformanceDemoAppKt")
+    mainClass.set("dev.zilath.demo.ConformanceDemoAppKt")
 }
 
 dependencies {
@@ -39,7 +39,7 @@ tasks.register<JavaExec>("cedWallet") {
     group = "demo"
     description = "Simulated-CED demo wallet (args: init [dir] | run <txId> [baseUrl] [keysDir])"
     classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("dev.varco.demo.cedsim.DemoWalletSimulator")
+    mainClass.set("dev.zilath.demo.cedsim.DemoWalletSimulator")
     // Relative key paths must resolve against the repository root, not the module dir.
     workingDir = rootDir
 }

@@ -5,7 +5,7 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
 }
 
-rootProject.name = "varco-verifier"
+rootProject.name = "zilath"
 
 include(
     "verifier-core",

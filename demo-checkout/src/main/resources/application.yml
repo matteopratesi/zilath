@@ -1,21 +1,21 @@
 server:
   port: 8080
 
-varco:
+zilath:
   demo:
     # The OpenID Federation trust anchor issuers are validated against.
     # For conformance runs: the PagoPA tool's local anchor (see docs/conformance).
-    trust-anchor-id: ${VARCO_TRUST_ANCHOR_ID:https://localhost:3001}
-    trust-anchor-jwks-path: ${VARCO_TRUST_ANCHOR_JWKS_PATH:}
+    trust-anchor-id: ${ZILATH_TRUST_ANCHOR_ID:https://localhost:3001}
+    trust-anchor-jwks-path: ${ZILATH_TRUST_ANCHOR_JWKS_PATH:}
     # TOFU bootstrap of the anchor keys: conformance runs only (ephemeral local anchor).
-    trust-anchor-tofu: ${VARCO_TRUST_ANCHOR_TOFU:false}
+    trust-anchor-tofu: ${ZILATH_TRUST_ANCHOR_TOFU:false}
     # TLS trust checks disabled ONLY for the tool's local self-signed anchor server.
-    insecure-tls: ${VARCO_INSECURE_TLS:false}
-    public-base-url: ${VARCO_PUBLIC_BASE_URL:http://localhost:8080}
-    wallet-scheme: ${VARCO_WALLET_SCHEME:openid4vp://}
-    pid-vct: ${VARCO_PID_VCT:urn:eu.europa.ec.eudi:pid:1}
+    insecure-tls: ${ZILATH_INSECURE_TLS:false}
+    public-base-url: ${ZILATH_PUBLIC_BASE_URL:http://localhost:8080}
+    wallet-scheme: ${ZILATH_WALLET_SCHEME:openid4vp://}
+    pid-vct: ${ZILATH_PID_VCT:urn:eu.europa.ec.eudi:pid:1}
     # PEM with a self-signed certificate + EC P-256 private key: enables the x509_hash
     # client id scheme required by the conformance wallet.
-    rp-pem-path: ${VARCO_RP_PEM_PATH:}
+    rp-pem-path: ${ZILATH_RP_PEM_PATH:}
     # pid (default) | ced-sim: which credential the demo checkout asks for.
-    credential-mode: ${VARCO_DEMO_CREDENTIAL_MODE:pid}
+    credential-mode: ${ZILATH_DEMO_CREDENTIAL_MODE:pid}
