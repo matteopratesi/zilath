@@ -191,7 +191,7 @@ revocation certificate.
      -H "Authorization: Bearer $(printf '%s:%s' "$TOKEN_USER" "$TOKEN_PASS" | base64)" \
      -F bundle=@build/central/zilath-central-bundle.zip)
 
-   [ -n "$DEPLOYMENT_ID" ] || { echo "upload failed: no deployment id"; }
+   [ -n "$DEPLOYMENT_ID" ] || { echo "upload failed: no deployment id" >&2; exit 1; }
    echo "$DEPLOYMENT_ID"
    ```
 

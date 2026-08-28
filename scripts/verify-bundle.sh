@@ -67,6 +67,11 @@ EOF
 
 echo
 COUNT=$(printf '%s\n' "$DEPLOYABLE" | grep -c . || true)
+
+# A bundle with no artifacts passes every check above, because there is nothing for them
+# to fail on. It is the quietest way a verification can say yes.
+[ "$COUNT" -gt 0 ] || note "the bundle contains no deployable artifact at all"
+
 if [ "$problems" -eq 0 ]; then
     echo "OK — $COUNT artifacts, all of $VERSION, all signed and checksummed."
     exit 0

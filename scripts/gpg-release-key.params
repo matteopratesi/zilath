@@ -1,12 +1,19 @@
-# Parametri della chiave di firma dei rilasci Zilath.
-# gpg chiedera' la passphrase via pinentry: non e' in questo file, ed e' giusto cosi'.
+# Parameters for the Zilath release signing key.
 #
-# RSA 4096 e non Ed25519: qui la proprieta' che conta e' che la firma sia verificabile
-# da qualunque strumento incontri l'artefatto, per sempre. RSA e' noioso e universale.
-# Sola firma, nessuna sottochiave di cifratura: questa chiave fa un mestiere solo.
-# Scadenza 3 anni: le firme fatte finche' e' valida restano valide anche dopo, e una
-# chiave scaduta fa fallire il bundle PRIMA dell'upload, che e' il momento giusto.
-%echo Generazione chiave di firma Zilath
+#   gpg --batch --gen-key scripts/gpg-release-key.params
+#
+# gpg asks for the passphrase through pinentry. It is deliberately NOT in this file:
+# a signing key whose passphrase lives next to it in a repository is not a secret.
+#
+# RSA 4096 rather than Ed25519: what matters for a release signature is that it verifies
+# in whatever tool meets the artifact, years from now. RSA is boring and universal.
+# Sign-only, no encryption subkey — this key has one job.
+# Three years: signatures made while the key is valid stay valid afterwards, and an expired
+# key fails the bundle BEFORE an upload, which is the right moment to find out.
+#
+# Change Name-Real and Name-Email before running. They go on a public keyserver and stay
+# there; the values below are the project author's.
+%echo Generating the Zilath release signing key
 Key-Type: RSA
 Key-Length: 4096
 Key-Usage: sign
@@ -15,4 +22,4 @@ Name-Email: pratesi.matteo@gmail.com
 Name-Comment: Zilath release signing
 Expire-Date: 3y
 %commit
-%echo fatto
+%echo done
