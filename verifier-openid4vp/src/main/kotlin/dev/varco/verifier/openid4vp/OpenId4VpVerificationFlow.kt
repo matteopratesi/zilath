@@ -172,7 +172,7 @@ class OpenId4VpVerificationFlow(
             val context =
                 VerificationContext(
                     expectedNonce = transaction.nonce,
-                    expectedAudience = config.clientId,
+                    expectedAudiences = acceptedAudiencesFor(config.clientId),
                     clock = clock,
                     trustEvaluator = config.trustEvaluator,
                     statusChecker = config.statusChecker,

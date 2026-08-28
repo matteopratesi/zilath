@@ -31,6 +31,9 @@ import java.util.Date
 /** The `openid_federation` client id prefix (IT-Wallet v1.4.6 §remote flow). */
 const val OPENID_FEDERATION_PREFIX = "openid_federation:"
 
+/** The `x509_hash` client id prefix (IT-Wallet v1.4.6 §remote flow). */
+const val X509_HASH_PREFIX = "x509_hash:"
+
 /**
  * Federation-side identity of the RP (VARCO-33): what is needed to publish the entity
  * configuration at `/.well-known/openid-federation` and to onboard into a federation.
