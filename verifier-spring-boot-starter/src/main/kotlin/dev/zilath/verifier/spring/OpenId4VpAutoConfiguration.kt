@@ -43,10 +43,15 @@ import java.time.Duration
 @AutoConfiguration
 @EnableConfigurationProperties(OpenId4VpProperties::class)
 class OpenId4VpAutoConfiguration {
+    /** The SD-JWT VC verifier. Declare your own [CredentialVerifier] bean to replace it. */
     @Bean
     @ConditionalOnMissingBean
     fun credentialVerifier(): CredentialVerifier = SdJwtVcCredentialVerifier()
 
+    /**
+     * The clock every expiry and key-binding freshness check reads. UTC by default;
+     * override with your own [Clock] bean — a fixed one is how tests move time.
+     */
     @Bean
     @ConditionalOnMissingBean
     fun verificationClock(): Clock = Clock.systemUTC()
@@ -54,6 +59,15 @@ class OpenId4VpAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(VerificationFlow::class)
     @ConditionalOnBean(TrustEvaluator::class, StatusChecker::class)
+    /**
+     * The relying-party flow, assembled from `zilath.openid4vp.*`.
+     *
+     * Deliberately conditional on three things at once: the `client-id` property, and
+     * [TrustEvaluator] and [StatusChecker] beans the application must supply. If any is
+     * missing the flow is simply not created — and so is the controller, so no wallet-facing
+     * endpoint is ever exposed by an application that has not said whom it trusts. A
+     * half-configured verifier that answers requests would be worse than none.
+     */
     @ConditionalOnProperty(prefix = "zilath.openid4vp", name = ["client-id"])
     fun verificationFlow(
         properties: OpenId4VpProperties,
@@ -84,6 +98,13 @@ class OpenId4VpAutoConfiguration {
         return OpenId4VpVerificationFlow.withInMemoryStore(config, verifier, clock)
     }
 
+    /**
+     * Publishes the wallet-facing endpoints, but only once a [VerificationFlow] exists.
+     *
+     * To take the routes over you must declare a bean OF TYPE [OpenId4VpController]:
+     * `@ConditionalOnMissingBean` matches on that type, so a controller of your own class
+     * does not suppress this one and both would map the same paths.
+     */
     @Bean
     @ConditionalOnBean(VerificationFlow::class)
     @ConditionalOnMissingBean

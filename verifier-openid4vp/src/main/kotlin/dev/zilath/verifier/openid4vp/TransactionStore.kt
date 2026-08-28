@@ -27,8 +27,14 @@ import java.util.concurrent.ConcurrentHashMap
  * store, but nothing here ever contains credential data — only nonces and outcomes.
  */
 interface TransactionStore {
+    /** Stores [transaction], replacing any entry with the same id. */
     fun put(transaction: Transaction)
 
+    /**
+     * Returns the stored transaction, or null if it is absent OR already expired —
+     * implementations are free to expire lazily on read, so a non-null result is a
+     * transaction still within its time to live.
+     */
     fun get(id: TransactionId): Transaction?
 
     /**
@@ -40,11 +46,35 @@ interface TransactionStore {
         update: (Transaction) -> Transaction,
     ): Transaction?
 
+    /** Drops the transaction if present. Idempotent. */
     fun remove(id: TransactionId)
 }
 
+/**
+ * Where a transaction is in its lifecycle. Only [CREATED] accepts a wallet response
+ * carrying a PRESENTATION: in any other state the nonce has already been spent and the
+ * submission is rejected as a replay.
+ *
+ * Wallet ERROR responses are the documented exception — they are acknowledged whatever the
+ * state, because an error grants nothing and OpenID4VP requires the acknowledgement
+ * (§8.2). An already recorded outcome is never overwritten by one.
+ */
 enum class TransactionState { CREATED, PRESENTED, VERIFIED, REJECTED }
 
+/**
+ * One in-flight verification.
+ *
+ * The presentation itself is NEVER stored: it is verified and dropped inside
+ * [dev.zilath.verifier.core.CredentialVerifier.verify]. What does live here until the
+ * transaction is consumed or expires is [outcome], and for a success that carries the
+ * DISCLOSED CLAIMS — they have to survive somewhere between the wallet's POST and the
+ * checkout's poll of [VerificationFlow.awaitOutcome].
+ *
+ * So this is short-lived, but it is not empty. With the default in-memory store the claims
+ * stay in the process for at most the transaction time to live. Anyone plugging in a SHARED
+ * store (Redis and the like) is putting those claims on that infrastructure, and must treat
+ * it accordingly — encryption at rest, no persistence to disk, no backups.
+ */
 data class Transaction(
     val id: TransactionId,
     val nonce: String,
@@ -58,6 +88,10 @@ data class Transaction(
     /** True once the user-agent came back through the response-code exchange (WP_094). */
     val returned: Boolean = false,
 ) {
+    /**
+     * Whether [now] is strictly after `createdAt + timeToLive`. The boundary instant
+     * itself still counts as valid.
+     */
     fun isExpired(
         now: Instant,
         timeToLive: Duration,

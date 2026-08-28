@@ -41,6 +41,16 @@ class VerificationReceipts(
     private val config: RelyingPartyConfiguration,
     private val clock: Clock,
 ) {
+    /**
+     * Issues a signed receipt for [txId] and returns it in compact JWS serialization.
+     *
+     * [request] contributes only the REQUESTED claim paths and a hash of the DCQL query —
+     * what was asked, never what was answered. [verified] is the whole outcome: a receipt
+     * for a rejection is as legitimate as one for a success, and neither says why.
+     *
+     * Safe to keep and to hand to an auditor. That is the point: it is what a venue
+     * archives instead of a copy of someone's medical paperwork.
+     */
     fun issue(
         txId: TransactionId,
         request: PresentationRequest,

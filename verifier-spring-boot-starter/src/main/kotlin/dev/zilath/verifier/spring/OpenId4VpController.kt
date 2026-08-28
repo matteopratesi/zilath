@@ -42,7 +42,18 @@ class OpenId4VpController(
         flow.requestJwtFor(TransactionId(txId))?.let { ResponseEntity.ok(it) }
             ?: ResponseEntity.notFound().build()
 
-    /** Receives the wallet's encrypted `direct_post.jwt` response. */
+    /**
+     * Receives the wallet's encrypted `direct_post.jwt` response.
+     *
+     * HTTP 200 for a verified presentation and for an acknowledged wallet error (the ack
+     * OpenID4VP requires, carrying the same-device `redirect_uri` when there is one);
+     * HTTP 400 with the [dev.zilath.verifier.core.RejectionReason] name for a rejection,
+     * an expired transaction or an unprocessable one; HTTP 404 for an unknown transaction.
+     *
+     * What the wallet gets back is only ever the coarse reason code — `detail` stays
+     * server-side, in the log. The verdict the CHECKOUT acts on is not this status code:
+     * it comes from [VerificationFlow.awaitOutcome].
+     */
     @PostMapping(
         "/openid4vp/response/{txId}",
         consumes = [MediaType.APPLICATION_FORM_URLENCODED_VALUE],

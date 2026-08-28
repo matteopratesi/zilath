@@ -106,6 +106,16 @@ data class RpFederationConfig(
  * public halves of the request-signing and response-encryption keys.
  */
 object RpEntityConfiguration {
+    /**
+     * Returns the entity configuration as a signed JWS, ready to be served verbatim at
+     * `/.well-known/openid-federation` with content type `application/entity-statement+jwt`.
+     *
+     * Self-issued and short-lived: `iss` equals `sub` equals the entity id, and validity
+     * comes from [RpFederationConfig.statementValidity], so callers should rebuild it
+     * rather than cache it indefinitely. Throws [IllegalArgumentException] if `client_id`
+     * and the federation entity id disagree under the `openid_federation` scheme — a
+     * mismatch a wallet would reject on every presentation (WP_086).
+     */
     fun build(
         config: RelyingPartyConfiguration,
         federation: RpFederationConfig,
