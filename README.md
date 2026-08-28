@@ -1,4 +1,4 @@
-# zilath
+# Zilath
 
 [![build](https://github.com/matteopratesi/zilath/actions/workflows/build.yml/badge.svg)](https://github.com/matteopratesi/zilath/actions/workflows/build.yml)
 
@@ -19,9 +19,14 @@ state. The European Disability Card — the launch use case — is itself an EU 
 Born for accessibility rights: letting a person with a disability prove an entitlement
 (companion ticket, priority access) online without ever sending health documents to anyone.
 
-> Working name. Status: pre-alpha — the cross-device flow completes end to end against
-> the official PagoPA conformance tool (see [docs/conformance](docs/conformance/)), and
-> the API is not frozen yet.
+> *Zilath* was the chief magistrate of an Etruscan city: the office that ascertained a
+> claim and made it binding. That is the whole job of this library — it verifies what a
+> public authority has already attested. It never issues a credential, and it never
+> decides who qualifies.
+>
+> Status: pre-alpha — the cross-device flow completes end to end against the official
+> PagoPA conformance tool (see [docs/conformance](docs/conformance/)), and the API is
+> not frozen yet.
 > Target spec: IT-Wallet v1.4.6 — see [docs/spec-version.md](docs/spec-version.md).
 
 ## Modules
