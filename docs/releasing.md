@@ -87,8 +87,12 @@ in a CI variable that prints on failure.
 
    The result is `build/central/zilath-central-bundle.zip`, containing the four library
    modules — `verifier-core`, `verifier-openid4vp`, `verifier-trust-itwallet`,
-   `verifier-spring-boot-starter` — each with its jar, sources jar, Dokka javadoc jar, POM
-   and signatures. The demo applications are not published.
+   `verifier-spring-boot-starter` — each with its jar, sources jar, Dokka javadoc jar, POM,
+   signatures and checksums. The demo applications are not published.
+
+   The staging tree is emptied first, automatically. It has to be: it survives between
+   builds, so a bundle built on top of it would otherwise carry artifacts from an earlier
+   release straight into an upload that cannot be taken back.
 
 5. **Look inside the bundle before uploading.** This is the last moment at which anything is
    reversible.
@@ -97,8 +101,19 @@ in a CI variable that prints on failure.
    unzip -l build/central/zilath-central-bundle.zip
    ```
 
-   Check that every artifact has a matching `.asc`, that the version is the one you meant,
-   and that nothing from `demo-checkout` or `gate-check` is in there.
+   Four things to check, in this order:
+
+   - **only one version is present** — `unzip -l ... | grep -c <old-version>` must be `0`;
+   - **every artifact has a `.asc`**, and also a `.md5` and a `.sha1`: Sonatype requires all
+     three for each deployed file, and a missing one fails validation;
+   - **nothing from `demo-checkout` or `gate-check`** is in there;
+   - **no test fixtures jar** — those are deliberately not published.
+
+   ```sh
+   # every jar/pom should appear four times: itself, .asc, .md5, .sha1
+   unzip -l build/central/zilath-central-bundle.zip | grep -cE '\.(jar|pom)$'
+   unzip -l build/central/zilath-central-bundle.zip | grep -cE '\.(jar|pom)\.asc$'
+   ```
 
 6. **Upload.** Either drop the zip in the Portal's *Publish* page, or use the API with the
    user token from step 2:

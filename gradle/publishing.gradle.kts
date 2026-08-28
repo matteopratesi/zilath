@@ -36,6 +36,17 @@ val moduleDescriptions =
 /** Where every module stages its artifacts, so one bundle can carry them all. */
 val stagingDir = rootProject.layout.buildDirectory.dir("staging-deploy")
 
+/**
+ * The staging tree survives between builds, so without this a bundle would carry whatever
+ * earlier releases left behind — and be uploaded to a place where nothing can be taken back.
+ * Every publish task depends on it, so it runs once, first.
+ */
+val cleanStagingRepository =
+    tasks.register<Delete>("cleanStagingRepository") {
+        description = "Empties the staging tree so a bundle can only contain this release."
+        delete(stagingDir)
+    }
+
 configure(subprojects.filter { it.name in publishedModules }) {
     apply(plugin = "maven-publish")
     apply(plugin = "signing")
@@ -117,6 +128,10 @@ configure(subprojects.filter { it.name in publishedModules }) {
             }
         }
 
+        tasks.named("publishMavenPublicationToStagingRepository") {
+            dependsOn(cleanStagingRepository)
+        }
+
         extensions.configure<SigningExtension> {
             // Signing is required by Central and irrelevant to everyday development, so the
             // key comes from the environment and its absence disables signing instead of
@@ -159,8 +174,11 @@ tasks.register<Zip>("centralBundle") {
     }
 
     from(stagingDir)
-    // Central computes its own checksums; shipping ours only adds files it has to reconcile.
-    exclude("**/*.md5", "**/*.sha1", "**/*.sha256", "**/*.sha512")
+    // Checksums stay in: Sonatype's requirements say .md5 and .sha1 are REQUIRED for every
+    // deployed file, and their documented bundle layout shows them alongside the .asc.
+    // What that layout does NOT show is maven-metadata.xml — Central builds its own — so it
+    // is the one thing excluded here. If the Portal ever objects, drop this exclusion.
+    exclude("**/maven-metadata.xml*")
     archiveFileName.set("zilath-central-bundle.zip")
     destinationDirectory.set(rootProject.layout.buildDirectory.dir("central"))
 }
