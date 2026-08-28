@@ -71,16 +71,23 @@ signatures made while the key was valid stay valid, and an expired key fails the
 The user id goes on a public keyserver and stays there. Decide the name and email before
 generating, not after.
 
-Store the private key where the release build reads it from:
+Store **only the passphrase** in the keychain:
 
 ```sh
-gpg --armor --export-secret-keys <KEY_ID> | \
-  security add-generic-password -a "$USER" -s zilath-signing -w -
-security add-generic-password -a "$USER" -s zilath-signing-pass -w   # the passphrase
+security add-generic-password -a "$USER" -s zilath-signing-pass -w
 ```
 
-**Never** put it in the repo, in an environment file, or in a CI variable that prints on
-failure.
+The key itself does not go in the keychain. It is already on this machine, in the GnuPG
+keyring, protected by that passphrase — copying it into a second store would mean two
+things to guard, two things to rotate and two things to leak, for no gain. The release step
+exports it into an environment variable that lives for one shell.
+
+Note that `gpg --armor --export-secret-keys` emits the key **still protected by the
+passphrase**: that is why the build needs both `ZILATH_SIGNING_KEY` and
+`ZILATH_SIGNING_PASSWORD`, and why the exported blob on its own is not enough to sign with.
+
+**Never** put the key in the repo, in an environment file, or in a CI variable that prints
+on failure.
 
 #### Back up two files, in two different places
 
@@ -123,7 +130,7 @@ revocation certificate.
 3. **Export the signing key for this shell only.**
 
    ```sh
-   export ZILATH_SIGNING_KEY="$(security find-generic-password -s zilath-signing -w)"
+   export ZILATH_SIGNING_KEY="$(gpg --armor --export-secret-keys <FINGERPRINT>)"
    export ZILATH_SIGNING_PASSWORD="$(security find-generic-password -s zilath-signing-pass -w)"
    ```
 
