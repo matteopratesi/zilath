@@ -50,6 +50,25 @@ internal const val WALLET_AUDIENCE = "https://self-issued.me/v2"
 
 private val secureRandom = SecureRandom()
 
+/**
+ * The forms of THIS verifier's identifier a key binding may be addressed to: the
+ * `client_id` as sent, plus — when it carries a Client Identifier Prefix — the same
+ * identifier without it.
+ *
+ * OpenID4VP 1.0 (App. B.3.6) says the audience is the Client Identifier, prefix included,
+ * and its example shows exactly that; the IT-Wallet rules say it must match the "Relying
+ * Party unique entity identifier", which reads as the stripped form. Wallets exist on
+ * both readings, so both are accepted — never a third party's identifier, only ours
+ * written two ways. Tracked upstream: pagopa/wallet-conformance-test#221.
+ */
+internal fun acceptedAudiencesFor(clientId: String): Set<String> {
+    val prefix = CLIENT_ID_PREFIXES.firstOrNull { clientId.startsWith(it) }
+    val stripped = prefix?.let { clientId.removePrefix(it) }?.takeIf { it.isNotBlank() }
+    return setOfNotNull(clientId, stripped)
+}
+
+private val CLIENT_ID_PREFIXES = listOf(OPENID_FEDERATION_PREFIX, X509_HASH_PREFIX)
+
 /** Internal short-circuit carrying a rejection out of the response pipeline. */
 internal class FlowRejection(
     val reason: RejectionReason,

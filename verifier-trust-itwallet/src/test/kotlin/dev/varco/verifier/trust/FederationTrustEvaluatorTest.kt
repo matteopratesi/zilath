@@ -325,7 +325,7 @@ class FederationTrustEvaluatorTest {
         val context =
             VerificationContext(
                 expectedNonce = TestVectors.NONCE,
-                expectedAudience = TestVectors.AUDIENCE,
+                expectedAudiences = setOf(TestVectors.AUDIENCE),
                 clock = clock,
                 trustEvaluator = evaluator(FederationFixtures.directFederation()),
                 statusChecker = StatusChecker { CredentialStatus.VALID },

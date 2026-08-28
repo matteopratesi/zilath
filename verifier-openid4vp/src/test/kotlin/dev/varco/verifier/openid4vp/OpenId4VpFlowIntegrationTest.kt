@@ -68,12 +68,14 @@ class OpenId4VpFlowIntegrationTest {
      * its signature, then answers with an SD-JWT VC presentation encrypted to the RP key
      * advertised in `client_metadata` (IT-Wallet `direct_post.jwt` profile).
      */
+    @Suppress("LongParameterList") // test factory: independent, defaulted axes
     private fun walletBody(
         started: StartedTransaction,
         nonceOverride: String? = null,
         stateOverride: String? = null,
         vpTokenAsPlainString: Boolean = false,
         encryptTo: JWK? = null,
+        audienceOverride: String? = null,
     ): DirectPostBody {
         val jar = checkNotNull(flow.requestJwtFor(started.id)) { "request JWT not available" }
         val jwt = SignedJWT.parse(jar)
@@ -83,7 +85,7 @@ class OpenId4VpFlowIntegrationTest {
         val compact =
             TestVectors.vector(
                 nonce = nonceOverride ?: claims.getStringClaim("nonce"),
-                audience = config.clientId,
+                audience = audienceOverride ?: config.clientId,
             )
         val payload =
             buildJsonObject {
@@ -385,5 +387,62 @@ class OpenId4VpFlowIntegrationTest {
         // The retained entry is findable, but the stale code must not complete the flow.
         assertThat(retainingFlow.consumeResponseCode(started.id, code)).isFalse()
         assertThat(retainingFlow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
+    }
+
+    @Test
+    fun `both forms of our own identifier are accepted as key binding audience`() {
+        // A verifier identified with a Client Identifier Prefix: OpenID4VP says the
+        // audience carries the prefix, the IT-Wallet rules read as the stripped form.
+        // Wallets exist on both readings (pagopa/wallet-conformance-test#221).
+        val prefixed =
+            config.copy(
+                clientId = OPENID_FEDERATION_PREFIX + TestVectors.AUDIENCE,
+                federation =
+                    RpFederationConfig(
+                        entityId = TestVectors.AUDIENCE,
+                        federationKey = ECKeyGenerator(Curve.P_256).keyID("fed").generate(),
+                        authorityHints = listOf("https://ta.example"),
+                        organizationName = "Test RP",
+                    ),
+            )
+        val prefixedFlow = OpenId4VpVerificationFlow.withInMemoryStore(prefixed, SdJwtVcCredentialVerifier(), clock)
+
+        fun present(audience: String): FlowOutcome {
+            val started = prefixedFlow.start(PresentationRequest.forTestPid("urn:varco:test:entitlement"))
+            val jar = SignedJWT.parse(checkNotNull(prefixedFlow.requestJwtFor(started.id)))
+            val claims = jar.jwtClaimsSet
+            val compact = TestVectors.vector(nonce = claims.getStringClaim("nonce"), audience = audience)
+            val payload =
+                buildJsonObject {
+                    put("vp_token", buildJsonObject { put("pid", buildJsonArray { add(JsonPrimitive(compact)) }) })
+                    put("state", JsonPrimitive(claims.getStringClaim("state")))
+                }
+            val advertised = advertisedEncryptionKey(claims.getJSONObjectClaim("client_metadata"))
+            val jwe =
+                JWEObject(
+                    JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM),
+                    com.nimbusds.jose.Payload(payload.toString()),
+                )
+            jwe.encrypt(ECDHEncrypter(advertised.toECKey()))
+            return prefixedFlow.handleWalletResponse(started.id, DirectPostBody(mapOf("response" to jwe.serialize())))
+        }
+
+        assertThat(present(prefixed.clientId)).isInstanceOf(FlowOutcome.Verified::class.java)
+        assertThat(present(TestVectors.AUDIENCE)).isInstanceOf(FlowOutcome.Verified::class.java)
+        // ...but only OUR identifier: another verifier's is still refused.
+        val foreign = present("https://someone-else.example/varco")
+        assertThat(foreign).isInstanceOf(FlowOutcome.Rejected::class.java)
+        assertThat((foreign as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.AUDIENCE_MISMATCH)
+    }
+
+    @Test
+    fun `the accepted audience forms follow the client id prefix`() {
+        assertThat(acceptedAudiencesFor(TestVectors.AUDIENCE)).containsExactly(TestVectors.AUDIENCE)
+        assertThat(acceptedAudiencesFor(OPENID_FEDERATION_PREFIX + "https://rp.example"))
+            .containsExactlyInAnyOrder("openid_federation:https://rp.example", "https://rp.example")
+        assertThat(acceptedAudiencesFor("x509_hash:AbC123"))
+            .containsExactlyInAnyOrder("x509_hash:AbC123", "AbC123")
+        // A prefix with nothing after it yields no second form to accept.
+        assertThat(acceptedAudiencesFor(OPENID_FEDERATION_PREFIX)).containsExactly(OPENID_FEDERATION_PREFIX)
     }
 }

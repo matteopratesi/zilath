@@ -50,14 +50,27 @@ sealed interface RawPresentation {
 data class VerificationContext(
     /** The nonce this transaction challenged the wallet with. */
     val expectedNonce: String,
-    /** The relying party identifier the key binding must be addressed to. */
-    val expectedAudience: String,
+    /**
+     * The relying party identifiers the key binding may be addressed to — normally one.
+     * A set, because the specifications disagree on whether the audience carries the
+     * Client Identifier Prefix (OpenID4VP 1.0 App. B.3.6 says it does and its example
+     * shows it; the IT-Wallet rules say "Relying Party unique entity identifier", which
+     * reads as the stripped form). Every entry must be a form of the SAME verifier:
+     * accepting our own identifier written two ways binds the presentation to us exactly
+     * as one entry would. Reported upstream: pagopa/wallet-conformance-test#221.
+     */
+    val expectedAudiences: Set<String>,
     val clock: Clock,
     val trustEvaluator: TrustEvaluator,
     val statusChecker: StatusChecker,
     /** Maximum accepted distance between the key binding `iat` and now, in both directions. */
     val keyBindingMaxAge: Duration = DEFAULT_KEY_BINDING_MAX_AGE,
 ) {
+    init {
+        require(expectedAudiences.isNotEmpty()) { "at least one expected audience is required" }
+        require(expectedAudiences.none { it.isBlank() }) { "an expected audience must not be blank" }
+    }
+
     companion object {
         val DEFAULT_KEY_BINDING_MAX_AGE: Duration = Duration.ofMinutes(5)
     }

@@ -34,7 +34,7 @@ class SdJwtVcCredentialVerifierTest {
         status: StatusChecker = StatusChecker { CredentialStatus.VALID },
     ) = VerificationContext(
         expectedNonce = nonce,
-        expectedAudience = audience,
+        expectedAudiences = setOf(audience),
         clock = clock,
         trustEvaluator = trust,
         statusChecker = status,

@@ -46,5 +46,12 @@ still pending (tracked on the project board).
 3. **`metadata_policy` operators** (VARCO-34): applied — `value`, `add`, `default`,
    `one_of`, `subset_of`, `superset_of`, `essential` are merged anchor-first and resolved
    against the leaf metadata; the credential keys come from the resolved metadata.
-4. Status list token **signature** is not verified yet (needs the status provider inside the
+4. **KB-JWT audience** (VARCO-52): the two specifications disagree on whether the audience
+   carries the Client Identifier Prefix. OpenID4VP 1.0 (App. B.3.6) says it is the Client
+   Identifier and its example keeps the prefix; the IT-Wallet rules say it must match the
+   "Relying Party unique entity identifier", which reads as the stripped form — and the
+   conformance tool implements OpenID4VP in its wallet and the profile wording in RPR-105/
+   106, so it contradicts itself. Reported: pagopa/wallet-conformance-test#221. Until it is
+   settled the verifier accepts BOTH forms of its own identifier (never a third party's).
+5. Status list token **signature** is not verified yet (needs the status provider inside the
    trust chain; noted in `OAuthStatusListChecker`).

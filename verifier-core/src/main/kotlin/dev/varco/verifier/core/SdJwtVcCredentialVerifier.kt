@@ -101,7 +101,7 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         compact: String,
         ctx: VerificationContext,
     ) {
-        if (ctx.expectedAudience !in kbClaims.audience.orEmpty()) {
+        if (kbClaims.audience.orEmpty().none { it in ctx.expectedAudiences }) {
             reject(RejectionReason.AUDIENCE_MISMATCH, "key binding not addressed to this verifier")
         }
         val nonce = runCatching { kbClaims.getStringClaim("nonce") }.getOrNull()
