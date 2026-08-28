@@ -42,7 +42,15 @@ class OpenId4VpController(
         flow.requestJwtFor(TransactionId(txId))?.let { ResponseEntity.ok(it) }
             ?: ResponseEntity.notFound().build()
 
-    /** Receives the wallet's encrypted `direct_post.jwt` response. */
+    /**
+     * Receives the wallet's encrypted `direct_post.jwt` response.
+     *
+     * Answers HTTP 200 whenever the submission was well-formed and reached its transaction
+     * — including when the credential was REJECTED and when the wallet reported an error.
+     * The status code acknowledges receipt to the wallet; it is not the verdict, which the
+     * checkout reads from [VerificationFlow.awaitOutcome]. Returning 4xx on a rejection
+     * would also hand a wallet-side prober a cheap oracle.
+     */
     @PostMapping(
         "/openid4vp/response/{txId}",
         consumes = [MediaType.APPLICATION_FORM_URLENCODED_VALUE],

@@ -35,6 +35,11 @@ data class RpEndpoints(
     val sameDeviceCallbackBase: String? = null,
 )
 
+/**
+ * The two key pairs the relying party needs. Both carry PRIVATE material, so an instance
+ * must never be logged or serialized — [toString] is overridden to print only the kids,
+ * and that override is a safety measure, not a formatting choice.
+ */
 data class RpKeys(
     /** EC P-256 key (with kid) signing the request objects. */
     val requestSigningKey: ECKey,
@@ -61,6 +66,15 @@ data class RpKeys(
             "responseEncryptionKey=kid:${responseEncryptionKey.keyID})"
 }
 
+/**
+ * Everything one relying party is: who it says it is, where wallets reach it, what it
+ * signs and decrypts with, and whom it trusts.
+ *
+ * Immutable and safe to share across transactions — the per-transaction state lives in the
+ * [TransactionStore]. Its `init` block enforces the coherence rules that would otherwise
+ * surface as unexplained wallet failures at runtime, so an invalid configuration fails at
+ * construction rather than at the first presentation.
+ */
 data class RelyingPartyConfiguration(
     /** The RP identifier: also the audience the key binding JWT must be addressed to. */
     val clientId: String,

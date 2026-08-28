@@ -27,6 +27,18 @@ import java.time.Duration
  * after [verify] returns (project red line: verify, never store).
  */
 interface CredentialVerifier {
+    /**
+     * Validates [presentation] against [ctx] and reports the outcome.
+     *
+     * A credential that fails any check is NOT an error: it comes back as
+     * [VerificationResult.Rejected] with a [RejectionReason]. Implementations throw only
+     * when the pipeline itself breaks, and even then the flow layer maps it to
+     * [RejectionReason.INTERNAL_ERROR] — so a caller never has to tell "invalid credential"
+     * apart from "bug" by catching exceptions.
+     *
+     * Nothing is retained: the presentation, its disclosures and its key binding exist only
+     * for the duration of the call.
+     */
     fun verify(
         presentation: RawPresentation,
         ctx: VerificationContext,
@@ -76,11 +88,26 @@ data class VerificationContext(
     }
 }
 
+/** The outcome of a single verification. Exhaustive: there is no third state. */
 sealed interface VerificationResult {
+    /**
+     * Every check passed. [claims] holds only what the holder chose to disclose — never
+     * the whole credential, and never anything the DCQL query did not ask for.
+     */
     data class Verified(
         val claims: DisclosedClaims,
     ) : VerificationResult
 
+    /**
+     * A check failed. [reason] is the stable, machine-readable outcome; [detail] is a
+     * short human-readable hint for LOGS ONLY.
+     *
+     * Two rules for [detail], both deliberate: it never carries a claim value or any part
+     * of the presentation, and it is not meant for the person at the other end. Telling a
+     * holder which check failed turns the verifier into an oracle for probing credentials,
+     * and the surrounding UI has no need for it — the answer the flow owes its caller is
+     * yes or no.
+     */
     data class Rejected(
         val reason: RejectionReason,
         val detail: String? = null,
@@ -92,6 +119,13 @@ data class DisclosedClaims(
     val claims: JsonObject,
 )
 
+/**
+ * Why a presentation was rejected.
+ *
+ * The set is deliberately coarse-grained and free of credential content: it exists to be
+ * logged and counted, not to explain to a holder what to fix. Treat it as an open enum —
+ * new members may be added as profiles grow, so handle the unknown case as a rejection.
+ */
 enum class RejectionReason {
     INVALID_ISSUER_SIGNATURE,
     UNTRUSTED_ISSUER,

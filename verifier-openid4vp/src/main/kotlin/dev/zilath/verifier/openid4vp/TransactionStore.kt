@@ -27,8 +27,14 @@ import java.util.concurrent.ConcurrentHashMap
  * store, but nothing here ever contains credential data — only nonces and outcomes.
  */
 interface TransactionStore {
+    /** Stores [transaction], replacing any entry with the same id. */
     fun put(transaction: Transaction)
 
+    /**
+     * Returns the stored transaction, or null if it is absent OR already expired —
+     * implementations are free to expire lazily on read, so a non-null result is a
+     * transaction still within its time to live.
+     */
     fun get(id: TransactionId): Transaction?
 
     /**
@@ -40,11 +46,23 @@ interface TransactionStore {
         update: (Transaction) -> Transaction,
     ): Transaction?
 
+    /** Drops the transaction if present. Idempotent. */
     fun remove(id: TransactionId)
 }
 
+/**
+ * Where a transaction is in its lifecycle. Only [CREATED] accepts a wallet response:
+ * everything else means the nonce has already been spent.
+ */
 enum class TransactionState { CREATED, PRESENTED, VERIFIED, REJECTED }
 
+/**
+ * One in-flight verification.
+ *
+ * Deliberately holds no credential data: a nonce, a state, the request that was made and
+ * the outcome that came back. Even in a shared store, the worst an attacker who reads it
+ * learns is that someone was asked for a credential — never what was presented.
+ */
 data class Transaction(
     val id: TransactionId,
     val nonce: String,
@@ -58,6 +76,7 @@ data class Transaction(
     /** True once the user-agent came back through the response-code exchange (WP_094). */
     val returned: Boolean = false,
 ) {
+    /** Whether [timeToLive] has elapsed since [createdAt] at instant [now]. */
     fun isExpired(
         now: Instant,
         timeToLive: Duration,

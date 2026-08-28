@@ -21,10 +21,18 @@ import com.nimbusds.jose.jwk.JWK
 /**
  * Decides whether the issuer of a credential is trusted and, if so, with which keys.
  *
- * The IT-Wallet OpenID Federation implementation lands in `verifier-trust-itwallet` (M0.4);
- * until then callers provide static evaluators.
+ * The OpenID Federation implementation for the IT-Wallet profile is
+ * `FederationTrustEvaluator` in `verifier-trust-itwallet`; a static evaluator pinning known
+ * keys is a legitimate choice for tests and closed deployments.
  */
 fun interface TrustEvaluator {
+    /**
+     * Returns whether the issuer described by [issuerChain] is trusted.
+     *
+     * Must not throw: an unreachable federation endpoint, a broken chain or a malformed
+     * statement are all [TrustDecision.Untrusted], because from the caller's side they are
+     * the same answer — this credential cannot be accepted right now.
+     */
     fun evaluate(issuerChain: IssuerTrustInput): TrustDecision
 }
 
@@ -43,12 +51,25 @@ data class IssuerTrustInput(
     val trustChain: List<String> = emptyList(),
 )
 
+/** The verdict on an issuer. */
 sealed interface TrustDecision {
-    /** The issuer is trusted; its signature must verify against one of [issuerKeys]. */
+    /**
+     * The issuer is trusted; its signature must verify against one of [issuerKeys].
+     *
+     * These are the credential SIGNING keys, which are not necessarily the federation keys
+     * that signed the entity statements: for the IT-Wallet profile they come from the
+     * issuer's `openid_credential_issuer` metadata after the superiors' `metadata_policy`
+     * has been applied, so a superior can restrict what the leaf advertises.
+     */
     data class Trusted(
         val issuerKeys: List<JWK>,
     ) : TrustDecision
 
+    /**
+     * The issuer is not trusted, or trust could not be established. [reason] is for logs;
+     * it distinguishes "chain does not reach the anchor" from "anchor unreachable", a
+     * difference that matters when diagnosing but not when deciding.
+     */
     data class Untrusted(
         val reason: String? = null,
     ) : TrustDecision

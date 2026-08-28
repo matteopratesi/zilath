@@ -18,6 +18,14 @@ package dev.zilath.verifier.core
 
 /** Checks the revocation status of a credential against its status list reference. */
 fun interface StatusChecker {
+    /**
+     * Resolves the revocation status referenced by [statusRef].
+     *
+     * Must not throw, and must never report [CredentialStatus.VALID] on doubt: anything
+     * that goes wrong is [CredentialStatus.UNKNOWN], which the verifier treats as a
+     * rejection. Failing closed is the point — a revoked credential that looks valid
+     * because a fetch timed out is the one outcome this interface exists to prevent.
+     */
     fun check(statusRef: StatusReference): CredentialStatus
 }
 
@@ -27,6 +35,7 @@ data class StatusReference(
     val index: Int,
 )
 
+/** The revocation state of a credential. Only [VALID] lets a verification succeed. */
 enum class CredentialStatus {
     VALID,
     REVOKED,

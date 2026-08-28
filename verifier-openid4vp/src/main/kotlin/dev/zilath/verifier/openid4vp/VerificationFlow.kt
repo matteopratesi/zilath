@@ -36,6 +36,14 @@ import kotlinx.serialization.json.putJsonObject
  * disclosed claims, and transactions expire from the [TransactionStore].
  */
 interface VerificationFlow {
+    /**
+     * Opens a transaction for [request] and returns everything needed to send the user to
+     * their wallet.
+     *
+     * Each call mints a fresh nonce and a fresh transaction id: never reuse a
+     * [StartedTransaction] across users or page loads, because the nonce is what binds one
+     * presentation to one request and it is accepted exactly once.
+     */
     fun start(
         request: PresentationRequest,
         mode: FlowMode = FlowMode.CROSS_DEVICE,
@@ -47,6 +55,17 @@ interface VerificationFlow {
      */
     fun requestJwtFor(txId: TransactionId): String?
 
+    /**
+     * Handles the wallet's `direct_post` submission for [txId] and records the outcome.
+     *
+     * Terminal and single-use: the transaction's nonce is consumed here, so a replayed body
+     * yields [RejectionReason.REPLAY] rather than a second success. The returned outcome is
+     * also what [awaitOutcome] will report from now on.
+     *
+     * Note for the endpoint on top of this: OpenID4VP requires HTTP 200 even when the
+     * result is [FlowOutcome.Rejected] or [FlowOutcome.WalletErrorAcknowledged] — the
+     * status code acknowledges receipt, it does not carry the verdict.
+     */
     fun handleWalletResponse(
         txId: TransactionId,
         body: DirectPostBody,
@@ -78,6 +97,11 @@ interface VerificationFlow {
 /** How the user reaches the wallet: QR on another device, or a link on the same one. */
 enum class FlowMode { CROSS_DEVICE, SAME_DEVICE }
 
+/**
+ * Identifies one verification transaction. Travels as the OpenID4VP `state` and appears in
+ * the response URI, so it is public by construction: it is an opaque handle, never a
+ * capability — knowing an id grants nothing on its own.
+ */
 data class TransactionId(
     val value: String,
 )
@@ -144,6 +168,10 @@ data class DirectPostBody(
     val response: String? get() = parameters["response"]
 }
 
+/**
+ * Where a transaction stands. Everything except [Pending] is terminal, and the terminal
+ * value never changes afterwards.
+ */
 sealed interface FlowOutcome {
     /** The wallet has not answered yet. */
     data object Pending : FlowOutcome
@@ -157,10 +185,18 @@ sealed interface FlowOutcome {
         val description: String? = null,
     ) : FlowOutcome
 
+    /**
+     * The presentation was verified. [claims] holds only what the wallet disclosed for this
+     * query — the credential itself is already gone by the time this is returned.
+     */
     data class Verified(
         val claims: DisclosedClaims,
     ) : FlowOutcome
 
+    /**
+     * The presentation arrived but did not pass. As in [dev.zilath.verifier.core.VerificationResult.Rejected],
+     * [detail] is for logs and must not be echoed to the person at the checkout.
+     */
     data class Rejected(
         val reason: RejectionReason,
         val detail: String? = null,

@@ -22,6 +22,13 @@ import java.util.zip.Inflater
 
 /** Retrieves a status list token from its URI; injectable so tests stay offline. */
 fun interface StatusListFetcher {
+    /**
+     * Returns the raw status list token served at [uri], or throws on any transport error.
+     *
+     * Throwing is correct here: [OAuthStatusListChecker] catches it and degrades to
+     * [CredentialStatus.UNKNOWN]. Implementations should set aggressive timeouts — the URI
+     * comes from the credential, so a slow endpoint would otherwise stall a checkout.
+     */
     fun fetch(uri: String): String
 }
 
@@ -30,9 +37,17 @@ fun interface StatusListFetcher {
  * a JWT whose `status_list` claim carries a zlib-compressed bit array where each
  * credential occupies `bits` bits at its `idx` position; 0 means valid.
  *
- * NOTE (plan docs/03 §5-M0.2): the status list token signature is NOT verified here —
- * trusting the status provider requires the IT-Wallet trust chain, which lands in M0.4.
- * Any fetch or parsing failure degrades to [CredentialStatus.UNKNOWN], never to valid.
+ * Any fetch or parsing failure degrades to [CredentialStatus.UNKNOWN], never to valid,
+ * and the inflated list is size-capped against a zip bomb.
+ *
+ * KNOWN GAP — the status list token signature is NOT verified. The token is parsed, not
+ * validated, so the contents are trusted on the strength of TLS and of the fact that the
+ * URI comes from an already signature-verified credential. Whoever can serve that URI can
+ * therefore report a revoked credential as valid. Closing this means resolving the status
+ * provider's keys through the trust chain (`verifier-trust-itwallet` can now do it) and
+ * deciding what an untrusted status issuer yields — almost certainly
+ * [CredentialStatus.UNKNOWN]. Do not read this class as a complete revocation check until
+ * then.
  */
 class OAuthStatusListChecker(
     private val fetcher: StatusListFetcher,
