@@ -16,6 +16,7 @@ assertj = "3.27.7"
 ktlintPlugin = "14.2.0"
 detekt = "1.23.8"
 spotless = "8.10.0"
+dokka = "2.2.0"
 
 [libraries]
 nimbus-jose-jwt = { module = "com.nimbusds:nimbus-jose-jwt", version.ref = "nimbusJoseJwt" }
@@ -41,3 +42,5 @@ spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintPlugin" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+# Kotlin API docs; used only to produce the -javadoc.jar Maven Central requires.
+dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
