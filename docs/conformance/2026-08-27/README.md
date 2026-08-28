@@ -39,7 +39,7 @@ is the run these notes describe) showed exactly why:
 - **An echoed `nonce` in the response payload must match the transaction** (defence in
   depth; the binding that matters stays the one inside the key-binding JWT).
 
-Reproduce it: start the demo with `VARCO_DEMO_CLIENT_ID_SCHEME=openid-federation` (plus
+Reproduce it: start the demo with `ZILATH_DEMO_CLIENT_ID_SCHEME=openid-federation` (plus
 the environment in [../2026-08-24/README.md](../2026-08-24/README.md)), copy
 [config.ini](config.ini) into the directory you run the tool from — the `[presentation]
 verifier` key has no CLI flag, which is why it must live in a file — and run:

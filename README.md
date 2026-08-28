@@ -1,6 +1,6 @@
-# varco-verifier
+# Zilath
 
-[![build](https://github.com/matteopratesi/varco-verifier/actions/workflows/build.yml/badge.svg)](https://github.com/matteopratesi/varco-verifier/actions/workflows/build.yml)
+[![build](https://github.com/matteopratesi/zilath/actions/workflows/build.yml/badge.svg)](https://github.com/matteopratesi/zilath/actions/workflows/build.yml)
 
 A Kotlin/JVM library that lets any JVM application act as an **OpenID4VP relying party**
 for European digital identity wallets: request a credential from the user's wallet
@@ -19,9 +19,14 @@ state. The European Disability Card — the launch use case — is itself an EU 
 Born for accessibility rights: letting a person with a disability prove an entitlement
 (companion ticket, priority access) online without ever sending health documents to anyone.
 
-> Working name. Status: pre-alpha — the cross-device flow completes end to end against
-> the official PagoPA conformance tool (see [docs/conformance](docs/conformance/)), and
-> the API is not frozen yet.
+> *Zilath* was the chief magistrate of an Etruscan city: the office that ascertained a
+> claim and made it binding. That is the whole job of this library — it verifies what a
+> public authority has already attested. It never issues a credential, and it never
+> decides who qualifies.
+>
+> Status: pre-alpha — the cross-device flow completes end to end against the official
+> PagoPA conformance tool (see [docs/conformance](docs/conformance/)), and the API is
+> not frozen yet.
 > Target spec: IT-Wallet v1.4.6 — see [docs/spec-version.md](docs/spec-version.md).
 
 ## Modules
@@ -60,9 +65,9 @@ wallet (the PagoPA conformance tool acts as the wallet — Node >= 22 required).
 2. Start the app (trust is bootstrapped against the tool's local anchor):
 
    ```sh
-   VARCO_TRUST_ANCHOR_ID=https://localhost:3001 VARCO_TRUST_ANCHOR_TOFU=true \
-   VARCO_INSECURE_TLS=true VARCO_PID_VCT=urn:eudi:pid:it:1 \
-   VARCO_RP_PEM_PATH=$PWD/demo-keys/rp-combined.pem \
+   ZILATH_TRUST_ANCHOR_ID=https://localhost:3001 ZILATH_TRUST_ANCHOR_TOFU=true \
+   ZILATH_INSECURE_TLS=true ZILATH_PID_VCT=urn:eudi:pid:it:1 \
+   ZILATH_RP_PEM_PATH=$PWD/demo-keys/rp-combined.pem \
    ./gradlew :demo-checkout:bootRun
    ```
 
@@ -95,9 +100,9 @@ card printed with the companion "A".
 
 ```sh
 ./scripts/run-ced-wallet.sh init
-VARCO_TRUST_ANCHOR_ID=https://anchor.ced-sim.varco.invalid \
-VARCO_TRUST_ANCHOR_JWKS_PATH=$PWD/demo-keys/ced-sim/anchor-jwks.json \
-VARCO_DEMO_CREDENTIAL_MODE=ced-sim ./gradlew :demo-checkout:bootRun
+ZILATH_TRUST_ANCHOR_ID=https://anchor.ced-sim.zilath.invalid \
+ZILATH_TRUST_ANCHOR_JWKS_PATH=$PWD/demo-keys/ced-sim/anchor-jwks.json \
+ZILATH_DEMO_CREDENTIAL_MODE=ced-sim ./gradlew :demo-checkout:bootRun
 # then, with the transaction id from the QR page:
 ./scripts/run-ced-wallet.sh <transactionId>
 ```
@@ -114,14 +119,14 @@ outcome receipt**: venue, entitlement, outcome, operator, timestamp. Never a nam
 document, a photo, a percentage. No free-text field exists, on purpose.
 
 ```sh
-VARCO_GATE_VENUE="Teatro di Prova" ./gradlew :gate-check:bootRun
+ZILATH_GATE_VENUE="Teatro di Prova" ./gradlew :gate-check:bootRun
 # then open http://localhost:8081/gate
 ```
 
-Receipts (JWS, `varco-gate-receipt+jwt`) and the venue signing key live under
-`VARCO_GATE_DATA_DIR` (default `./gate-data`, created owner-only; forged lines in the
+Receipts (JWS, `zilath-gate-receipt+jwt`) and the venue signing key live under
+`ZILATH_GATE_DATA_DIR` (default `./gate-data`, created owner-only; forged lines in the
 receipts file are excluded on load). Trust model: the app binds to `127.0.0.1` by
-default; expose it on the venue LAN explicitly (`VARCO_GATE_BIND=0.0.0.0`) and only
+default; expose it on the venue LAN explicitly (`ZILATH_GATE_BIND=0.0.0.0`) and only
 behind the venue's own network — whoever can reach the pages can record receipts, so
 the network is the trust boundary (there is no user login by design: it is a
 single-venue, door-side tool). The `method` claim is the migration seam:
