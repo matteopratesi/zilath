@@ -54,20 +54,59 @@ cannot be recovered — regenerate the token, which takes seconds.
 Central requires every artifact to carry a detached GPG signature, and it checks the public
 key against the public keyservers.
 
+Generate it **yourself**, in your own terminal — the passphrase is the whole point of the
+key, and a signing key whose passphrase someone else chose is not your signature.
+
 ```sh
-gpg --full-generate-key                      # RSA 4096 or Ed25519, no expiry shorter than a few years
-gpg --list-secret-keys --keyid-format=long   # note the key id
+gpg --batch --gen-key gpg-release-key.params   # prompts for the passphrase, and only that
+gpg --list-secret-keys --keyid-format=long     # note the key id and the fingerprint
 gpg --send-keys --keyserver keys.openpgp.org <KEY_ID>
 ```
 
-Export the private key in the armored form the build expects:
+RSA 4096, sign-only, three years. RSA rather than Ed25519 because what matters here is that
+the signature verifies in whatever tool meets the artifact, forever; expiry is safe because
+signatures made while the key was valid stay valid, and an expired key fails the bundle
+*before* an upload rather than after.
+
+The user id goes on a public keyserver and stays there. Decide the name and email before
+generating, not after.
+
+Store the private key where the release build reads it from:
 
 ```sh
-gpg --armor --export-secret-keys <KEY_ID>
+gpg --armor --export-secret-keys <KEY_ID> | \
+  security add-generic-password -a "$USER" -s zilath-signing -w -
+security add-generic-password -a "$USER" -s zilath-signing-pass -w   # the passphrase
 ```
 
-Keep that output in the keychain. **Never** put it in the repo, in an environment file, or
-in a CI variable that prints on failure.
+**Never** put it in the repo, in an environment file, or in a CI variable that prints on
+failure.
+
+#### Back up two files, in two different places
+
+```
+~/.gnupg/private-keys-v1.d/          the private key material
+~/.gnupg/openpgp-revocs.d/<FP>.rev   the revocation certificate, created automatically
+```
+
+Do not back up those directories by copying them. Export instead — an export is one
+self-contained file that restores on any machine, while the on-disk format is version- and
+agent-specific (this installation uses `keyboxd`, which already changed where public keys
+live).
+
+```sh
+gpg --armor --export-secret-keys <KEY_ID> > zilath-signing-key.asc
+```
+
+The **revocation certificate** is the file everyone forgets, and it is the one that decides
+what happens on the bad day. With it you can announce that the key is dead even if you no
+longer have the key. Without it, a key that is lost or compromised stays valid-looking
+forever, and every future signature made with it is indistinguishable from yours.
+
+So: the exported key and the revocation certificate go in **different** places. Whoever
+holds the revocation certificate can revoke your key; whoever holds both can revoke it and
+sign as you. Encrypted backup for the key, somewhere separate and offline for the
+revocation certificate.
 
 ## Cutting a release
 
