@@ -28,6 +28,9 @@ Born for accessibility rights: letting a person with a disability prove an entit
 > PagoPA conformance tool (see [docs/conformance](docs/conformance/)), and the API is
 > not frozen yet.
 > Target spec: IT-Wallet v1.4.6 — see [docs/spec-version.md](docs/spec-version.md).
+>
+> What this library does with the data it touches, what it keeps and what it cannot
+> promise: [docs/privacy-by-design.md](docs/privacy-by-design.md).
 
 ## Modules
 
