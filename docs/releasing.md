@@ -101,19 +101,31 @@ in a CI variable that prints on failure.
    unzip -l build/central/zilath-central-bundle.zip
    ```
 
-   Four things to check, in this order:
-
-   - **only one version is present** — `unzip -l ... | grep -c <old-version>` must be `0`;
-   - **every artifact has a `.asc`**, and also a `.md5` and a `.sha1`: Sonatype requires all
-     three for each deployed file, and a missing one fails validation;
-   - **nothing from `demo-checkout` or `gate-check`** is in there;
-   - **no test fixtures jar** — those are deliberately not published.
-
    ```sh
-   # every jar/pom should appear four times: itself, .asc, .md5, .sha1
-   unzip -l build/central/zilath-central-bundle.zip | grep -cE '\.(jar|pom)$'
-   unzip -l build/central/zilath-central-bundle.zip | grep -cE '\.(jar|pom)\.asc$'
+   BUNDLE=build/central/zilath-central-bundle.zip
+   FILES=$(unzip -Z1 "$BUNDLE")
+
+   # 1. Nothing from an earlier release. Set OLD_VERSION to the last one published.
+   OLD_VERSION=0.1.0
+   printf '%s\n' "$FILES" | grep -c -- "$OLD_VERSION"       # must print 0
+
+   # 2. Every deployable file carries .asc, .md5 and .sha1. Sonatype requires all three,
+   #    and this checks whatever is actually in the bundle — jars, poms and .module alike —
+   #    rather than the extensions someone remembered to list.
+   printf '%s\n' "$FILES" | grep -v '/$' | grep -vE '\.(asc|md5|sha1|sha256|sha512)$' | while read -r f; do
+     for ext in asc md5 sha1; do
+       printf '%s\n' "$FILES" | grep -qxF "$f.$ext" || echo "MISSING  $f.$ext"
+     done
+   done                                                      # must print nothing
+
+   # 3. No demo applications, no test fixtures.
+   printf '%s\n' "$FILES" | grep -E 'demo-checkout|gate-check|test-fixtures'   # must print nothing
    ```
+
+   The second check is the one that matters: it derives the list of files needing sidecars
+   from the bundle itself, so a new artifact type added later is covered without anyone
+   remembering to update this file. (`grep -v '/$'` drops the directory entries `unzip -Z1`
+   also lists — without it the check reports six missing files that were never files.)
 
 6. **Upload.** Either drop the zip in the Portal's *Publish* page, or use the API with the
    user token from step 2:
