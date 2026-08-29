@@ -60,7 +60,10 @@ class VerificationReceiptsTest {
             .containsExactly("given_name", "family_name")
         assertThat(claims.getStringClaim("request_hash")).isNotBlank()
         // The receipt must never contain claim VALUES: it proves the outcome, not the why.
-        assertThat(receipt).doesNotContain("Ada")
+        // Asserted on the decoded payload, not on the compact serialization: that carries a
+        // random ECDSA signature, and searching it for a three-character string fails by
+        // chance roughly once in a few thousand runs.
+        assertThat(jwt.payload.toString()).doesNotContain("Ada")
         assertThat(jwt.payload.toString()).doesNotContain("Lovelace")
     }
 

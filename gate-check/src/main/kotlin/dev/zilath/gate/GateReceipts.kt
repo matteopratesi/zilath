@@ -98,12 +98,17 @@ class GateReceipts(
         val jwt = SignedJWT(header, claims)
         jwt.sign(ECDSASigner(signingKey))
         val serialized = jwt.serialize()
+        val existed = Files.exists(receiptsFile)
         Files.writeString(
             receiptsFile,
             serialized + System.lineSeparator(),
             StandardOpenOption.CREATE,
             StandardOpenOption.APPEND,
         )
+        // The directory is already owner-only, so this is defence in depth — but the file
+        // outlives the directory's permissions if anyone ever moves or copies it, and it
+        // records who was checked at which gate and when.
+        if (!existed) restrictToOwner(receiptsFile, directory = false)
         return toReceipt(jwt, serialized)
     }
 
@@ -178,10 +183,22 @@ class GateReceipts(
         directory: Boolean,
     ) {
         val permissions = if (directory) OWNER_ONLY_DIR else OWNER_ONLY_FILE
-        runCatching { Files.setPosixFilePermissions(path, PosixFilePermissions.fromString(permissions)) }
+        runCatching {
+            Files.setPosixFilePermissions(path, PosixFilePermissions.fromString(permissions))
+        }.onFailure {
+            // Silence here meant the signing key could sit with inherited permissions and
+            // nobody would ever know. On a filesystem without POSIX attributes this is the
+            // operator's problem to solve, but they have to be told it is theirs.
+            logger.warn(
+                "could not restrict permissions on {}: protect the gate data directory by other means",
+                path.fileName,
+            )
+        }
     }
 
     companion object {
+        private val logger = org.slf4j.LoggerFactory.getLogger(GateReceipts::class.java)
+
         const val RECEIPT_TYP = "zilath-gate-receipt+jwt"
         const val OUTCOME_VERIFIED = "verified"
         const val OUTCOME_NOT_VERIFIED = "not_verified"

@@ -110,7 +110,16 @@ class InMemoryTransactionStore(
         transactions[transaction.id] = transaction
     }
 
-    override fun get(id: TransactionId): Transaction? = transactions[id]
+    override fun get(id: TransactionId): Transaction? {
+        val found = transactions[id]
+        // Sweep on read as well as on put. The flow deliberately still sees THIS entry when
+        // it has expired, so it can answer "expired" rather than "never existed" — but
+        // without this, a process that starts no new transaction, a venue after the last
+        // performance, kept every other completed transaction and the disclosed claims
+        // inside them in the heap until it restarted.
+        sweepExpired(except = id)
+        return found
+    }
 
     override fun compareAndUpdate(
         id: TransactionId,
@@ -128,12 +137,12 @@ class InMemoryTransactionStore(
         transactions.remove(id)
     }
 
-    private fun sweepExpired() {
+    private fun sweepExpired(except: TransactionId? = null) {
         val now = clock.instant()
         // Completed transactions keep their outcome until they expire, so the checkout
         // can still poll it; expiry is the only thing that removes entries.
         transactions.values
-            .filter { it.isExpired(now, timeToLive) }
+            .filter { it.isExpired(now, timeToLive) && it.id != except }
             .forEach { transactions.remove(it.id) }
     }
 }

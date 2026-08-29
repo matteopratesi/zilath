@@ -107,10 +107,34 @@ private fun jwksOf(container: Map<*, *>?): List<JWK> {
     }
 }
 
+/**
+ * An entity identifier must be an HTTPS URL with a host, no query and no fragment — plain
+ * `http` only for the exact localhost names, as [RpFederationConfig] already requires of our
+ * own.
+ *
+ * This runs BEFORE the first fetch, and the identifier at that point is the `iss` of a
+ * credential nobody has verified yet. Without it the library would hand an arbitrary
+ * attacker-chosen string — `file:`, `http://10.0.0.1:8080`, anything — to the integrator's
+ * fetcher and ask it to dereference it.
+ */
+private fun requireUsableEntityId(entityId: String) {
+    val uri = runCatching { java.net.URI(entityId) }.getOrNull()
+    val host = uri?.host
+    val ok =
+        !host.isNullOrBlank() &&
+            uri.query == null &&
+            uri.fragment == null &&
+            (uri.scheme == "https" || (uri.scheme == "http" && host in LOCALHOST_HOSTS))
+    if (!ok) trustFail("entity id is not a usable https identifier: $entityId")
+}
+
+private val LOCALHOST_HOSTS = setOf("localhost", "127.0.0.1", "[::1]", "::1")
+
 internal fun fetchEntityConfiguration(
     fetcher: FederationFetcher,
     entityId: String,
 ): EntityStatement {
+    requireUsableEntityId(entityId)
     val body =
         runCatching { fetcher.fetch(entityId.trimEnd('/') + WELL_KNOWN_FEDERATION) }
             .getOrElse { trustFail("cannot fetch the entity configuration of $entityId") }
@@ -138,6 +162,9 @@ internal fun fetchSubordinateStatement(
 
 internal const val DEFAULT_MAX_CHAIN_LENGTH = 4
 
+/** Tolerance for a federation peer's clock differing from ours. */
+internal val CLOCK_SKEW: java.time.Duration = java.time.Duration.ofMinutes(1)
+
 /**
  * Validates a trust chain ordered leaf-first (spec v1.4.5 §6.11): each statement's
  * signature is checked top-down starting from the out-of-band anchor keys, iss/sub
@@ -160,12 +187,26 @@ internal fun validateChain(
     val now = clock.instant()
     var trustedKeys = anchor.federationKeys
     for (statement in statements.asReversed()) {
-        if (now.isBefore(statement.issuedAt)) trustFail("statement of ${statement.subject} not yet valid")
-        if (!now.isBefore(statement.expiresAt)) trustFail("statement of ${statement.subject} is expired")
+        // A minute of tolerance, the same the status list checker allows. With none, a
+        // superior whose clock runs two seconds ahead makes its entire federation
+        // untrusted — every credential under it rejected, which on this project means
+        // people turned away at a counter for someone else's NTP drift.
+        if (now.plus(CLOCK_SKEW).isBefore(statement.issuedAt)) {
+            trustFail("statement of ${statement.subject} not yet valid")
+        }
+        if (!now.minus(CLOCK_SKEW).isBefore(statement.expiresAt)) {
+            trustFail("statement of ${statement.subject} is expired")
+        }
         if (!verifiesWithAny(statement.jwt, trustedKeys)) {
             trustFail("signature of the statement about ${statement.subject} does not verify")
         }
-        trustedKeys = statement.federationJwks.ifEmpty { trustedKeys }
+        // Each statement attests the keys of the entity below it. One that carries none
+        // used to inherit its superior's, which means a subordinate with an absent, empty
+        // or malformed jwks silently kept the chain going under keys it never held.
+        trustedKeys =
+            statement.federationJwks.ifEmpty {
+                trustFail("the statement about ${statement.subject} carries no federation keys")
+            }
     }
     // metadata_policy (VARCO-34): superiors constrain the leaf metadata. The immediate
     // superior's statement metadata overrides the leaf's first; then the policies,
@@ -175,15 +216,17 @@ internal fun validateChain(
     val policies = statements.drop(1).asReversed().mapNotNull { it.metadataPolicy }
     val resolvedMetadata = MetadataPolicy.resolve(effectiveMetadata, policies)
     val resolvedIssuer = resolvedMetadata["openid_credential_issuer"] as? Map<*, *>
-    // Fall back to the federation keys only when the resolved metadata says NOTHING
-    // about credential keys: a present-but-empty jwks is an explicit "no keys allowed".
-    val credentialKeys =
-        if (resolvedIssuer?.containsKey("jwks") == true) {
-            jwksOf(resolvedIssuer["jwks"] as? Map<*, *>)
-        } else {
-            leaf.federationJwks
-        }
-    if (credentialKeys.isEmpty()) trustFail("the leaf entity advertises no credential signing keys")
+    // No fallback. Credential-signing keys come from the RESOLVED metadata or from nowhere.
+    //
+    // Falling back to the leaf's federation keys turned a metadata_policy that RESTRICTS
+    // openid_credential_issuer.jwks into one that widens: policy removes the key set, the
+    // fallback hands over a different, unconstrained one. A leaf that published no
+    // openid_credential_issuer at all got the same gift. Federation keys sign entity
+    // statements; credential keys sign credentials. The separation is the point.
+    val credentialKeys = jwksOf(resolvedIssuer?.get("jwks") as? Map<*, *>)
+    if (credentialKeys.isEmpty()) {
+        trustFail("the resolved metadata advertises no credential signing keys")
+    }
     return credentialKeys
 }
 

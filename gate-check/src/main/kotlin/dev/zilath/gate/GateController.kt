@@ -23,6 +23,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.net.URI
@@ -45,23 +46,41 @@ class GateController(
     @GetMapping("/gate/new", produces = [MediaType.TEXT_HTML_VALUE])
     fun newVerification(): String = newVerificationHtml(venueName, entitlements)
 
+    /**
+     * Records one gate check. State-changing, so it refuses anything that did not come from
+     * this tool's own pages.
+     *
+     * Binding to 127.0.0.1 keeps the network out; it does nothing about a browser ON the
+     * door machine following a page that submits a form here. A cross-site form POST cannot
+     * forge `Sec-Fetch-Site`, and every browser that could reach this endpoint sends it, so
+     * that header is the boundary. A request without it is not a browser and is refused
+     * too: nothing legitimate reaches this endpoint any other way.
+     */
     @PostMapping("/gate/record")
     fun record(
         @RequestParam entitlement: String,
         @RequestParam operator: String,
         @RequestParam outcome: String,
+        @RequestHeader(name = "Sec-Fetch-Site", required = false) fetchSite: String?,
     ): ResponseEntity<Void> {
+        val sameOrigin = fetchSite == "same-origin"
         val validRequest =
             entitlement in entitlements &&
                 operator.isNotBlank() &&
                 operator.length <= OPERATOR_MAX_LENGTH &&
                 outcome in setOf(OUTCOME_PARAM_VERIFIED, OUTCOME_PARAM_NOT_VERIFIED)
-        if (!validRequest) return ResponseEntity.badRequest().build()
-        val receipt = receipts.issue(entitlement, outcome == OUTCOME_PARAM_VERIFIED, operator.trim())
-        return ResponseEntity
-            .status(HttpStatus.FOUND)
-            .location(URI.create("/gate/receipt/${receipt.id}"))
-            .build()
+        return when {
+            !sameOrigin -> ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+            !validRequest -> ResponseEntity.badRequest().build()
+            else -> {
+                val receipt =
+                    receipts.issue(entitlement, outcome == OUTCOME_PARAM_VERIFIED, operator.trim())
+                ResponseEntity
+                    .status(HttpStatus.FOUND)
+                    .location(URI.create("/gate/receipt/${receipt.id}"))
+                    .build()
+            }
+        }
     }
 
     @GetMapping("/gate/receipt/{id}", produces = [MediaType.TEXT_HTML_VALUE])

@@ -130,6 +130,11 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         }
     }
 
+    /**
+     * `detail` is retained on the transaction and reaches the application log, so it carries
+     * no value taken from the credential — not even a timestamp. The reason code says what
+     * failed; the exact instant is the holder's, not the log's.
+     */
     private fun checkTemporalValidity(
         issuerClaims: JWTClaimsSet,
         ctx: VerificationContext,
@@ -137,11 +142,11 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         val now = ctx.clock.instant()
         val expiration = issuerClaims.expirationTime?.toInstant()
         if (expiration != null && !expiration.isAfter(now)) {
-            reject(RejectionReason.EXPIRED, "credential expired at $expiration")
+            reject(RejectionReason.EXPIRED, "credential is expired")
         }
         val notBefore = issuerClaims.notBeforeTime?.toInstant()
         if (notBefore != null && notBefore.isAfter(now)) {
-            reject(RejectionReason.NOT_YET_VALID, "credential not valid before $notBefore")
+            reject(RejectionReason.NOT_YET_VALID, "credential is not yet valid")
         }
     }
 

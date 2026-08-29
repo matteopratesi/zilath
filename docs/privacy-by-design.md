@@ -156,7 +156,15 @@ An honest list is more useful than a short one.
    from an issuer you already trust — but a fetcher able to reach arbitrary hosts is one
    compromised issuer away from being a request-forgery tool inside your network. An
    allow-list of expected status hosts costs nothing.
-8. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
+8. **`gate-check` does not scale, and says so here rather than in a support ticket.** Every
+   page render re-reads and re-verifies the whole append-only receipts file, which is never
+   rotated. A busy season makes the door tool slow, and there is no bound on the file. It is
+   a single-venue tool for a single door; if that stops being true it needs a real store.
+9. **Losing the `gate-check` signing key voids the receipt history.** Receipts are verified
+   on load, so a replaced or lost key makes every past receipt vanish from the interface —
+   silently, with no way to tell "voided" from "never happened". Back up the key with the
+   data directory, or accept that the archive is only as durable as that one file.
+10. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
 
 ## 6. What you still have to do
 
