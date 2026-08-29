@@ -90,7 +90,7 @@ class SameDeviceCallbackTest {
                         responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("t-enc").generate(),
                     ),
                 trustEvaluator = TrustEvaluator { TrustDecision.Untrusted("test") },
-                statusChecker = StatusChecker { CredentialStatus.VALID },
+                statusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
             )
         return DemoCheckoutController(
             flow = flow,

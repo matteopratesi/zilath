@@ -49,7 +49,7 @@ class StarterSmokeTest {
         fun trustEvaluator(): TrustEvaluator = TrustEvaluator { TrustDecision.Untrusted("smoke test") }
 
         @Bean
-        fun statusChecker(): StatusChecker = StatusChecker { CredentialStatus.UNKNOWN }
+        fun statusChecker(): StatusChecker = StatusChecker { _, _ -> CredentialStatus.UNKNOWN }
     }
 
     companion object {

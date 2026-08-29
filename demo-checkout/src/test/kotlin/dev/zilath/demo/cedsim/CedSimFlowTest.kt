@@ -69,7 +69,7 @@ class CedSimFlowTest {
                     FederationFetcher { error("offline: the simulated chain travels in the header") },
                     clock,
                 ),
-            statusChecker = StatusChecker { CredentialStatus.VALID },
+            statusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
         )
     private val flow = OpenId4VpVerificationFlow.withInMemoryStore(config, SdJwtVcCredentialVerifier(), clock)
     private var lastStartedId: dev.zilath.verifier.openid4vp.TransactionId? = null

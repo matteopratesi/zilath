@@ -58,7 +58,7 @@ class OpenId4VpFlowIntegrationTest {
                 ),
             keys = RpKeys(requestSigningKey = signingKey, responseEncryptionKey = encryptionKey),
             trustEvaluator = TestVectors.trustIssuerEc(),
-            statusChecker = StatusChecker { CredentialStatus.VALID },
+            statusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
         )
     private val flow =
         OpenId4VpVerificationFlow.withInMemoryStore(config, SdJwtVcCredentialVerifier(), clock)
@@ -165,7 +165,7 @@ class OpenId4VpFlowIntegrationTest {
 
     @Test
     fun `a throwing status checker ends in a terminal internal error, not a stuck transaction`() {
-        val throwingStatus = StatusChecker { error("status backend down") }
+        val throwingStatus = StatusChecker { _, _ -> error("status backend down") }
         val fragileFlow =
             OpenId4VpVerificationFlow.withInMemoryStore(
                 config.copy(statusChecker = throwingStatus),

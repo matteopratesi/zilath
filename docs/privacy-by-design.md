@@ -120,17 +120,26 @@ An honest list is more useful than a short one.
    lists are designed so that the individual index is hidden in a large list, which is the
    mitigation the format provides, but the fetch itself is observable. Consider caching if
    your volumes make the timing meaningful.
-5. **The status list token's signature is not verified yet.** The token is parsed, not
-   validated. Note where the trust boundary actually sits: `StatusListFetcher` is YOUR
-   implementation, so this library enforces no TLS, no certificate validation and no check
-   on the endpoint's identity — whatever your fetcher returns is believed. Whoever can serve
-   or tamper with that response can make a revoked credential look valid, **and can equally
-   make a valid one look revoked** — which on this project is the worse of the two, because
-   it denies someone an entitlement they hold. Give the fetcher a pinned, TLS-verified
-   client until this is closed. It is tracked, and it is fixed before the first stable
-   release.
+5. **Only the credential's own issuer may answer for its status.** The status list token is
+   validated before it is believed — signature against the issuer's trusted keys, `typ`,
+   `sub` against the referenced URI, and expiry. The specification allows a credential to
+   point at a *separate* status issuer but defines no way to trust one, so this library
+   refuses those: the answer is `UNKNOWN`, and `UNKNOWN` is a rejection. **If your
+   population's credentials delegate their status lists to a third party, every one of
+   those verifications fails** — a denied entitlement, not a warning. Check this against a
+   real credential before deploying, and tell us if you hit it: the fix is configuration,
+   not code.
+6. **A status list older than a day stops counting as an answer.** The draft only
+   *recommends* `exp`, so a compliant token can carry none and would never go stale —
+   a captured "nobody is revoked" list could then be replayed indefinitely. The freshness
+   policy runs on `iat` instead, which the draft requires. The default window is 24 hours
+   and is configurable: shorten it if your issuer republishes more often, but note that
+   past the window every verification fails rather than degrading, so a status endpoint
+   that stops republishing becomes denied entitlements within a day.
+7. **`StatusListFetcher` is yours, and this library cannot see past it.** Validation stops
+   at the token; your fetcher enforces TLS and certificate validation, or nothing does.
 
-   Two things to get right in that fetcher regardless of the signature gap. **Set
+   Two things to get right in that fetcher. **Set
    aggressive connect and read timeouts**: the URI comes from the credential, so a slow or
    unreachable status endpoint stalls a checkout, and TLS does nothing to bound that wait —
    the failure then degrades to `UNKNOWN`, which is a rejection, so a hanging endpoint
@@ -140,7 +149,7 @@ An honest list is more useful than a short one.
    from an issuer you already trust — but a fetcher able to reach arbitrary hosts is one
    compromised issuer away from being a request-forgery tool inside your network. An
    allow-list of expected status hosts costs nothing.
-6. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
+8. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
 
 ## 6. What you still have to do
 

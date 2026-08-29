@@ -328,7 +328,7 @@ class FederationTrustEvaluatorTest {
                 expectedAudiences = setOf(TestVectors.AUDIENCE),
                 clock = clock,
                 trustEvaluator = evaluator(FederationFixtures.directFederation()),
-                statusChecker = StatusChecker { CredentialStatus.VALID },
+                statusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
             )
         val result =
             SdJwtVcCredentialVerifier()

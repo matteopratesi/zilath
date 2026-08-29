@@ -40,7 +40,7 @@ class VerificationReceiptsTest {
                     responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("rp-enc").generate(),
                 ),
             trustEvaluator = TestVectors.trustIssuerEc(),
-            statusChecker = StatusChecker { CredentialStatus.VALID },
+            statusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
         )
     private val receipts = VerificationReceipts(config, Clock.fixed(TestVectors.NOW, ZoneOffset.UTC))
     private val request = PresentationRequest.forTestPid("urn:zilath:test:entitlement")
