@@ -16,13 +16,34 @@
  */
 package dev.zilath.verifier.core
 
+import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import eu.europa.ec.eudi.sdjwt.NimbusSdJwtOps
 import eu.europa.ec.eudi.sdjwt.SdJwtAndKbJwt
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonObject
 import java.time.Duration
+
+/**
+ * Rejects a JWT whose `typ` header contradicts what it is being used as.
+ *
+ * Deliberately lenient about ABSENCE. The specification requires `typ`, but our own test
+ * vectors do not set it and there is no evidence yet about what the production IT-Wallet
+ * issuer emits — and on this project rejecting a genuine credential is as bad as accepting
+ * a forged one. Checking only what is present costs no false rejection and still stops the
+ * cheap version of the attack: presenting some other JWT that the issuer signed with the
+ * same key, which will normally carry a `typ` of its own.
+ */
+private fun checkTypIfPresent(
+    header: JWSHeader,
+    accepted: Set<String>,
+    reason: RejectionReason,
+) {
+    val typ = header.type?.toString() ?: return
+    if (typ !in accepted) reject(reason, "unexpected typ header")
+}
 
 /**
  * Verifies SD-JWT VC presentations (issuer JWT + selective disclosures + key binding JWT)
@@ -35,6 +56,7 @@ import java.time.Duration
  * EUDI `eudi-lib-jvm-sdjwt-kt` library; this class only orchestrates and maps
  * failures to stable [RejectionReason]s.
  */
+
 class SdJwtVcCredentialVerifier : CredentialVerifier {
     override fun verify(
         presentation: RawPresentation,
@@ -55,14 +77,17 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         ctx: VerificationContext,
     ): VerificationResult.Verified {
         val issuerJwt = parseIssuerJwt(compact)
+        checkTypIfPresent(issuerJwt.header, ISSUER_JWT_TYPS, RejectionReason.UNSUPPORTED_FORMAT)
         val issuerKeys = trustedIssuerKeys(issuerJwt, ctx)
         val verified = verifyWithEudiLibrary(compact, issuerKeys)
         val issuerClaims = verified.sdJwt.jwt.jwtClaimsSet
+        checkCredentialType(issuerClaims, ctx)
         checkTemporalValidity(issuerClaims, ctx)
+        checkTypIfPresent(verified.keyBindingJwt.header, KEY_BINDING_TYPS, RejectionReason.INVALID_KEY_BINDING)
         checkKeyBinding(verified.keyBindingJwt.jwtClaimsSet, compact, ctx)
         checkStatus(issuerClaims, issuerKeys, ctx)
         val claims = with(NimbusSdJwtOps) { verified.sdJwt.recreateClaims(null) }
-        return VerificationResult.Verified(DisclosedClaims(claims))
+        return VerificationResult.Verified(DisclosedClaims(withoutInternalClaims(claims)))
     }
 
     private fun trustedIssuerKeys(
@@ -81,6 +106,29 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         runBlocking {
             NimbusSdJwtOps.verify(issuerSignatureVerifier(issuerKeys), holderKeyBindingVerifier(), compact)
         }.getOrElse { failure -> throw rejectionOf(failure) }
+
+    /**
+     * The credential must be of the type that was asked for.
+     *
+     * The wallet chooses which credential to present, so without this a holder — or a
+     * malicious wallet — can answer a request for one credential with a different one from
+     * the same trusted issuer, and the library would report it verified. "Verified" has to
+     * mean "verified the thing you asked for".
+     *
+     * No expected types configured means no check: a caller building its own DCQL query
+     * that does not constrain `vct_values` gets the old behaviour rather than a surprise
+     * rejection.
+     */
+    private fun checkCredentialType(
+        issuerClaims: JWTClaimsSet,
+        ctx: VerificationContext,
+    ) {
+        if (ctx.expectedVcts.isEmpty()) return
+        val vct = runCatching { issuerClaims.getStringClaim("vct") }.getOrNull()
+        if (vct == null || vct !in ctx.expectedVcts) {
+            reject(RejectionReason.UNSUPPORTED_FORMAT, "credential type is not the one requested")
+        }
+    }
 
     private fun checkTemporalValidity(
         issuerClaims: JWTClaimsSet,
@@ -129,6 +177,20 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         }
     }
 
+    /**
+     * Strips the claims that exist for verification and have no business reaching the
+     * application.
+     *
+     * `recreateClaims` returns the whole issuer envelope, not only what the holder chose to
+     * disclose: `cnf` carries the holder's public key and `status` carries the index of this
+     * credential in its issuer's revocation list. Both are STABLE PER CREDENTIAL, so handing
+     * them over would let an integrator — or anything downstream of them — link two
+     * verifications of the same person across venues and across months. The library has
+     * finished with them by the time it returns; nobody else needs them.
+     */
+    private fun withoutInternalClaims(claims: JsonObject): JsonObject =
+        JsonObject(claims.filterKeys { it !in INTERNAL_CLAIMS })
+
     private fun checkStatus(
         issuerClaims: JWTClaimsSet,
         issuerKeys: List<JWK>,
@@ -142,5 +204,15 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
             CredentialStatus.UNKNOWN ->
                 reject(RejectionReason.STATUS_CHECK_FAILED, "credential status could not be determined")
         }
+    }
+
+    private companion object {
+        /** Verification machinery, and stable identifiers: never part of an outcome. */
+        private val INTERNAL_CLAIMS = setOf("cnf", "status")
+
+        /** `dc+sd-jwt` is the current media type; `vc+sd-jwt` is the earlier draft, still in the wild. */
+        private val ISSUER_JWT_TYPS = setOf("dc+sd-jwt", "vc+sd-jwt")
+
+        private val KEY_BINDING_TYPS = setOf("kb+jwt")
     }
 }

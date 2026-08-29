@@ -28,7 +28,7 @@ A single verification, end to end:
 | Request | A DCQL query naming the credential type and the claim paths you ask for | Signed into the request object (JAR) the wallet fetches |
 | Response | The wallet's response, carrying the SD-JWT VC presentation and its key-binding JWT. **Encrypted only on profiles that require it** — see below | Decrypted or parsed in memory; never written |
 | Verification | Issuer signature, trust chain, key binding (`nonce`, `aud`, `sd_hash`), disclosure digests, validity window, revocation status | Nothing written anywhere |
-| Result | `Verified(claims)` with only the disclosed claims, or `Rejected(reason)` | Returned to your application; recorded on the transaction |
+| Result | `Verified(claims)` — the disclosed claims plus the envelope claims (`iss`, `vct`, `exp`, `iat`), with `cnf` and `status` stripped — or `Rejected(reason)` | Returned to your application; recorded on the transaction |
 
 **Whether the response is encrypted depends on the profile you select.** `ItWalletProfile`,
 the default, mandates `direct_post.jwt`: the response is a JWE (ECDH-ES + A256GCM) and is
@@ -41,7 +41,9 @@ never written down. It exists as a local variable for the duration of one call a
 gone when that call returns.
 
 **Selective disclosure is the mechanism that keeps this small.** You ask for claim paths
-in the DCQL query; the wallet discloses those and withholds the rest. Ask for a boolean
+in the DCQL query; the wallet discloses those and withholds the rest. What comes back is
+those claims plus the envelope the format requires — `iss`, `vct`, `exp`, `iat` — and not
+the whole credential. Ask for a boolean
 entitlement and an expiry date, and a boolean and a date are what you get — the diagnosis,
 the percentage of invalidity and the medical record are not withheld by our good manners,
 they are never transmitted.
@@ -87,9 +89,17 @@ The `gate-check` module issues the same kind of outcome-only receipt for in-pers
 
 ## 4. Design decisions behind the properties
 
-- **The nonce is single-use.** A replayed response is rejected as `REPLAY`. Beyond replay
-  protection this means nothing in the protocol carries across transactions: there is no
-  identifier that would let two verifications of the same person be linked by this library.
+- **The nonce is single-use.** A replayed response is rejected as `REPLAY`, and nothing in
+  the protocol carries across transactions.
+- **The outcome carries no stable identifier from the SD-JWT envelope.** Note the scope:
+  this is about the envelope, not about what you asked for. A claim path YOU request can of
+  course be an identifier — a document number is one — and the library will faithfully return
+  what the wallet discloses for it. The envelope contains
+  two that would survive every presentation — `cnf.jwk`, the holder's public key, and
+  `status.status_list.idx`, the credential's slot in its issuer's revocation list. Both are
+  stripped before the outcome is returned. They exist for verification; the library is done
+  with them by the time it answers, and passing them on would hand whoever is downstream a
+  way to link two checkouts, at different venues and months apart, to one person.
 - **No counters, no history, no profiles.** There is no per-person state of any kind, not
   even for abuse prevention. That is a deliberate refusal, not an omission.
 - **Rejection reasons are coarse by design.** `RejectionReason` is a small enum of outcome
@@ -186,6 +196,8 @@ Zilath handles the cryptography and the minimisation. It does not handle your ob
 | What a transaction holds | `verifier-openid4vp/.../TransactionStore.kt` |
 | What a receipt contains | `verifier-openid4vp/.../VerificationReceipts.kt` |
 | Reason codes carry no content | `verifier-core/.../CredentialVerifier.kt`, `RejectionReason` |
+| `cnf` and `status` never reach the outcome | `verifier-core/.../SdJwtVcCredentialVerifier.kt`, `withoutInternalClaims` |
+| The credential type is the one requested | same file, `checkCredentialType` |
 | Detail is kept server-side | `verifier-spring-boot-starter/.../OpenId4VpController.kt` |
 | Nonce single use, replay rejected | `verifier-openid4vp/.../OpenId4VpVerificationFlow.kt` |
 | No outbound calls to the project | grep the four library modules for any HTTP client — there are none. Every network access goes through `FederationFetcher` and `StatusListFetcher`, interfaces you implement and inject. (The `demo-checkout` app does make HTTP calls; it is an example, not a published artifact.) |

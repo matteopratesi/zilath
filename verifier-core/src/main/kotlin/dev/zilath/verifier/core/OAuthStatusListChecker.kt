@@ -147,6 +147,10 @@ class OAuthStatusListChecker(
         bits: Int,
         index: Int,
     ): Int {
+        // A negative index passes the byteIndex bounds check below — -1/8 is 0 — and then
+        // shifts by a negative amount, which the JVM masks to (n and 31): the read silently
+        // lands on a different credential's entry. Refuse it outright.
+        require(index >= 0) { "negative status list index" }
         val entriesPerByte = BITS_PER_BYTE / bits
         val byteIndex = index / entriesPerByte
         require(byteIndex in bytes.indices) { "index $index outside the status list" }

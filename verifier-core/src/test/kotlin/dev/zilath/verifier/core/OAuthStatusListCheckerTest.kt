@@ -220,6 +220,14 @@ class OAuthStatusListCheckerTest {
     // --- failures that already degraded closed, kept honest ----------------------------
 
     @Test
+    fun `a negative index is unknown, not a read of somebody else's entry`() {
+        // -1/8 is 0, so a negative index passes the byteIndex bounds check, and the JVM
+        // masks a negative shift to (n and 31): the read lands on a different credential.
+        assertThat(statusOf(token(rawList = byteArrayOf(0b0111_1111)), index = -1))
+            .isEqualTo(CredentialStatus.UNKNOWN)
+    }
+
+    @Test
     fun `index outside the list is unknown`() {
         assertThat(statusOf(token(), index = 999)).isEqualTo(CredentialStatus.UNKNOWN)
     }

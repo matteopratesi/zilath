@@ -18,7 +18,9 @@ package dev.zilath.verifier.openid4vp
 
 import dev.zilath.verifier.core.DisclosedClaims
 import dev.zilath.verifier.core.RejectionReason
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -132,6 +134,37 @@ data class PresentationRequest(
     /** The id of the credential query inside [dcqlQuery], used to pick the vp_token entry. */
     val credentialQueryId: String,
 ) {
+    /**
+     * The credential types this request will accept, read back out of the DCQL query's
+     * `meta.vct_values` for the credential query this request names.
+     *
+     * The query is the statement of what was asked for; deriving the check from it means
+     * the two cannot drift apart. An empty result — a caller-built query that does not
+     * constrain the type — leaves the verifier unconstrained too, rather than rejecting.
+     */
+    fun expectedVcts(): Set<String> {
+        // No runCatching here, deliberately. Swallowing a parse failure would return the
+        // empty set, and the empty set means "do not check the credential type" — so a
+        // malformed query would silently switch off a security check instead of failing.
+        // That is the same fail-open this audit found elsewhere, and a query this library
+        // cannot read is the relying party's own bug, which should surface at start().
+        val credentials =
+            requireNotNull(dcqlQuery["credentials"] as? JsonArray) {
+                "dcql_query has no credentials array"
+            }
+        val matching =
+            credentials
+                .mapNotNull { it as? JsonObject }
+                .filter { (it["id"] as? JsonPrimitive)?.content == credentialQueryId }
+        require(matching.isNotEmpty()) { "dcql_query has no credential with id $credentialQueryId" }
+        return matching
+            .flatMap { credential ->
+                ((credential["meta"] as? JsonObject)?.get("vct_values") as? JsonArray)
+                    .orEmpty()
+                    .mapNotNull { (it as? JsonPrimitive)?.content }
+            }.toSet()
+    }
+
     companion object {
         /**
          * DCQL query for a single SD-JWT VC type: [claimPaths] are top-level claim names

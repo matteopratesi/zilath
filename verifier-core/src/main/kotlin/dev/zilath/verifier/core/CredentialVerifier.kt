@@ -77,6 +77,13 @@ data class VerificationContext(
     val statusChecker: StatusChecker,
     /** Maximum accepted distance between the key binding `iat` and now, in both directions. */
     val keyBindingMaxAge: Duration = DEFAULT_KEY_BINDING_MAX_AGE,
+    /**
+     * The credential types this request will accept, from the DCQL query's `vct_values`.
+     * Empty means no check — see `checkCredentialType`. Non-empty is what makes "verified"
+     * mean "verified the credential you asked for" rather than "verified some credential
+     * this issuer signed".
+     */
+    val expectedVcts: Set<String> = emptySet(),
 ) {
     init {
         require(expectedAudiences.isNotEmpty()) { "at least one expected audience is required" }

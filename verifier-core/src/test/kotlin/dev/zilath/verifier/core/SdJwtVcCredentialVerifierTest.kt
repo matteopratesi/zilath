@@ -32,9 +32,11 @@ class SdJwtVcCredentialVerifierTest {
         audience: String = TestVectors.AUDIENCE,
         trust: TrustEvaluator = TestVectors.trustIssuerEc(),
         status: StatusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
+        expectedVcts: Set<String> = emptySet(),
     ) = VerificationContext(
         expectedNonce = nonce,
         expectedAudiences = setOf(audience),
+        expectedVcts = expectedVcts,
         clock = clock,
         trustEvaluator = trust,
         statusChecker = status,
@@ -189,6 +191,45 @@ class SdJwtVcCredentialVerifierTest {
         assertThat(trustSeen).hasSize(1)
         assertThat(trustSeen.single().issuer).isEqualTo(TestVectors.ISSUER)
         assertThat(trustSeen.single().issuerKeys).isNotEmpty()
+    }
+
+    @Test
+    fun `the outcome carries no stable per-credential identifier`() {
+        // cnf.jwk is the holder's public key and status.status_list.idx is this credential's
+        // slot in its issuer's revocation list. Both are the same on every presentation of
+        // the same credential, so handing them to the application would let two checkouts —
+        // different venues, months apart — be linked to one person. They exist for
+        // verification and the library is done with them by the time it answers.
+        val compact = TestVectors.vector(statusUri = "https://status.example/1", statusIndex = 3)
+        val result = verify(compact, context(status = { _, _ -> CredentialStatus.VALID }))
+        val claims = (result as VerificationResult.Verified).claims.claims
+        assertThat(claims).doesNotContainKey("cnf")
+        assertThat(claims).doesNotContainKey("status")
+        // What was actually asked for is still there.
+        assertThat(claims).containsKeys("entitled", "given_name", "vct")
+    }
+
+    @Test
+    fun `a credential of a type that was not requested is rejected`() {
+        // The wallet chooses what to present. Without this check "verified" would only mean
+        // "some credential this issuer signed", not "the credential you asked for".
+        val other = TestVectors.vector(vct = "urn:zilath:test:something-else")
+        val result = verify(other, context(expectedVcts = setOf(TestVectors.VCT)))
+        assertThat(rejectionOf(result)).isEqualTo(RejectionReason.UNSUPPORTED_FORMAT)
+
+        val right = TestVectors.vector()
+        assertThat(verify(right, context(expectedVcts = setOf(TestVectors.VCT))))
+            .isInstanceOf(VerificationResult.Verified::class.java)
+    }
+
+    @Test
+    fun `a status claim that is not an object fails closed instead of skipping revocation`() {
+        // The sibling case — an object with a malformed status_list — already rejects. This
+        // one used to be swallowed, which skipped the revocation check altogether: the
+        // quietest way to make a revoked credential look fine.
+        val compact = TestVectors.vector(statusNotAnObject = true)
+        val result = verify(compact, context(status = { _, _ -> CredentialStatus.REVOKED }))
+        assertThat(rejectionOf(result)).isEqualTo(RejectionReason.STATUS_CHECK_FAILED)
     }
 
     @Test

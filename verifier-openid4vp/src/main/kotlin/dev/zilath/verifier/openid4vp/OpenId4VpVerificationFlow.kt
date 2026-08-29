@@ -183,6 +183,7 @@ class OpenId4VpVerificationFlow(
                 VerificationContext(
                     expectedNonce = transaction.nonce,
                     expectedAudiences = acceptedAudiencesFor(config.clientId),
+                    expectedVcts = transaction.request.expectedVcts(),
                     clock = clock,
                     trustEvaluator = config.trustEvaluator,
                     statusChecker = config.statusChecker,
