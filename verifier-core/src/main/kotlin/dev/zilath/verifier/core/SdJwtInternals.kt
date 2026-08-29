@@ -99,7 +99,7 @@ private fun holderKeyOf(issuerClaims: JsonObject): JWK? {
     return runCatching { JWK.parse(jwkJson.toString()) }.getOrNull()
 }
 
-private fun jwsVerifierFor(key: JWK): JWSVerifier? =
+internal fun jwsVerifierFor(key: JWK): JWSVerifier? =
     when (key.keyType) {
         KeyType.EC -> ECDSAVerifier(key.toECKey())
         KeyType.RSA -> RSASSAVerifier(key.toRSAKey())

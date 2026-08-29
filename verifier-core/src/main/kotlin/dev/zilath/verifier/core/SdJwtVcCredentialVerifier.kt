@@ -16,6 +16,7 @@
  */
 package dev.zilath.verifier.core
 
+import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import eu.europa.ec.eudi.sdjwt.NimbusSdJwtOps
@@ -59,7 +60,7 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         val issuerClaims = verified.sdJwt.jwt.jwtClaimsSet
         checkTemporalValidity(issuerClaims, ctx)
         checkKeyBinding(verified.keyBindingJwt.jwtClaimsSet, compact, ctx)
-        checkStatus(issuerClaims, ctx)
+        checkStatus(issuerClaims, issuerKeys, ctx)
         val claims = with(NimbusSdJwtOps) { verified.sdJwt.recreateClaims(null) }
         return VerificationResult.Verified(DisclosedClaims(claims))
     }
@@ -130,10 +131,12 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
 
     private fun checkStatus(
         issuerClaims: JWTClaimsSet,
+        issuerKeys: List<JWK>,
         ctx: VerificationContext,
     ) {
         val statusRef = statusReferenceOf(issuerClaims) ?: return
-        when (ctx.statusChecker.check(statusRef)) {
+        val trust = StatusIssuerTrust(issuerClaims.issuer, issuerKeys)
+        when (ctx.statusChecker.check(statusRef, trust)) {
             CredentialStatus.VALID -> Unit
             CredentialStatus.REVOKED -> reject(RejectionReason.REVOKED, "credential is revoked")
             CredentialStatus.UNKNOWN ->

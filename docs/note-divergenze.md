@@ -53,5 +53,8 @@ still pending (tracked on the project board).
    conformance tool implements OpenID4VP in its wallet and the profile wording in RPR-105/
    106, so it contradicts itself. Reported: pagopa/wallet-conformance-test#221. Until it is
    settled the verifier accepts BOTH forms of its own identifier (never a third party's).
-5. Status list token **signature** is not verified yet (needs the status provider inside the
-   trust chain; noted in `OAuthStatusListChecker`).
+5. Status list tokens are validated per draft §8.3 — signature, `typ`, `sub`, expiry — but
+   only when signed by the **issuer of the credential being checked**. The draft permits a
+   separate Status Issuer (§11.3) and mandates no way to establish trust in one, so a token
+   from any other entity is `UNKNOWN`. Supporting a third-party status issuer needs a policy
+   decision and configuration; it is not a default.

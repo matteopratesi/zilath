@@ -31,7 +31,7 @@ class SdJwtVcCredentialVerifierTest {
         nonce: String = TestVectors.NONCE,
         audience: String = TestVectors.AUDIENCE,
         trust: TrustEvaluator = TestVectors.trustIssuerEc(),
-        status: StatusChecker = StatusChecker { CredentialStatus.VALID },
+        status: StatusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
     ) = VerificationContext(
         expectedNonce = nonce,
         expectedAudiences = setOf(audience),
@@ -156,14 +156,14 @@ class SdJwtVcCredentialVerifierTest {
     @Test
     fun `revoked credential is rejected`() {
         val compact = TestVectors.vector(statusUri = "https://status.example/1", statusIndex = 3)
-        val result = verify(compact, context(status = StatusChecker { CredentialStatus.REVOKED }))
+        val result = verify(compact, context(status = StatusChecker { _, _ -> CredentialStatus.REVOKED }))
         assertThat(rejectionOf(result)).isEqualTo(RejectionReason.REVOKED)
     }
 
     @Test
     fun `unknown status is rejected as status check failure`() {
         val compact = TestVectors.vector(statusUri = "https://status.example/1", statusIndex = 3)
-        val result = verify(compact, context(status = StatusChecker { CredentialStatus.UNKNOWN }))
+        val result = verify(compact, context(status = StatusChecker { _, _ -> CredentialStatus.UNKNOWN }))
         assertThat(rejectionOf(result)).isEqualTo(RejectionReason.STATUS_CHECK_FAILED)
     }
 
@@ -174,7 +174,7 @@ class SdJwtVcCredentialVerifierTest {
         val result =
             verify(
                 compact,
-                context(status = { ref ->
+                context(status = { ref, _ ->
                     checked.add(ref)
                     CredentialStatus.VALID
                 }),

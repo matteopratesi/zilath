@@ -120,17 +120,13 @@ An honest list is more useful than a short one.
    lists are designed so that the individual index is hidden in a large list, which is the
    mitigation the format provides, but the fetch itself is observable. Consider caching if
    your volumes make the timing meaningful.
-5. **The status list token's signature is not verified yet.** The token is parsed, not
-   validated. Note where the trust boundary actually sits: `StatusListFetcher` is YOUR
-   implementation, so this library enforces no TLS, no certificate validation and no check
-   on the endpoint's identity — whatever your fetcher returns is believed. Whoever can serve
-   or tamper with that response can make a revoked credential look valid, **and can equally
-   make a valid one look revoked** — which on this project is the worse of the two, because
-   it denies someone an entitlement they hold. Give the fetcher a pinned, TLS-verified
-   client until this is closed. It is tracked, and it is fixed before the first stable
-   release.
+5. **`StatusListFetcher` is yours, and this library cannot see past it.** The status list
+   token is now fully validated — signature against the issuer's trusted keys, `typ`, `sub`
+   against the referenced URI, and expiry — so a tampered or forged list is `UNKNOWN` rather
+   than believed. What the library still cannot do is police the transport: your fetcher
+   enforces TLS and certificate validation, or nothing does.
 
-   Two things to get right in that fetcher regardless of the signature gap. **Set
+   Two things to get right in that fetcher. **Set
    aggressive connect and read timeouts**: the URI comes from the credential, so a slow or
    unreachable status endpoint stalls a checkout, and TLS does nothing to bound that wait —
    the failure then degrades to `UNKNOWN`, which is a rejection, so a hanging endpoint

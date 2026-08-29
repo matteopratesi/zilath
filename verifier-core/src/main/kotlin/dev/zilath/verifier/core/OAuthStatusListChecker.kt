@@ -16,9 +16,24 @@
  */
 package dev.zilath.verifier.core
 
+import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.SignedJWT
+import java.time.Clock
 import java.util.zip.Inflater
+
+/**
+ * True when [jwt] verifies under at least one of [keys]. A key that cannot produce a
+ * verifier, or that throws while verifying, simply does not count as a match — so an
+ * unusable key can never turn into an accepted signature.
+ */
+private fun verifiesWithAny(
+    jwt: SignedJWT,
+    keys: List<JWK>,
+): Boolean =
+    keys.any { key ->
+        runCatching { jwsVerifierFor(key)?.let(jwt::verify) == true }.getOrDefault(false)
+    }
 
 /** Retrieves a status list token from its URI; injectable so tests stay offline. */
 fun interface StatusListFetcher {
@@ -37,28 +52,39 @@ fun interface StatusListFetcher {
  * a JWT whose `status_list` claim carries a zlib-compressed bit array where each
  * credential occupies `bits` bits at its `idx` position; 0 means valid.
  *
- * Any fetch or parsing failure degrades to [CredentialStatus.UNKNOWN], never to valid,
- * and the inflated list is size-capped against a zip bomb.
+ * The token is validated before it is believed, following §8.3 of the draft: the `typ`
+ * header, the signature against keys already trusted for the credential's issuer, `sub`
+ * against the URI the credential pointed at, and `exp` if present. Any failure at any step
+ * — transport, parsing, signature, or a claim that does not match — degrades to
+ * [CredentialStatus.UNKNOWN], never to valid, and the inflated list is size-capped against
+ * a zip bomb.
  *
- * KNOWN GAP — the status list token signature is NOT verified. The token is parsed, not
- * validated, so the contents are trusted on the strength of TLS and of the fact that the
- * URI comes from an already signature-verified credential. Whoever can serve that URI can
- * therefore report a revoked credential as valid. Closing this means resolving the status
- * provider's keys through the trust chain (`verifier-trust-itwallet` can now do it) and
- * deciding what an untrusted status issuer yields — almost certainly
- * [CredentialStatus.UNKNOWN]. Do not read this class as a complete revocation check until
- * then.
+ * **Third-party status issuers are not supported.** The draft allows the Status Issuer to
+ * be a different entity from the credential's Issuer (§11.3) but mandates no way to
+ * establish trust in it, so this implementation accepts only a status list signed by the
+ * issuer of the credential being checked. A token from anyone else is [CredentialStatus.UNKNOWN]
+ * — the conservative reading, and the one that cannot be talked into accepting a revoked
+ * credential. Supporting a separate status issuer is a policy decision that needs
+ * configuration, not a default.
  */
 class OAuthStatusListChecker(
     private val fetcher: StatusListFetcher,
+    private val clock: Clock = Clock.systemUTC(),
 ) : StatusChecker {
-    override fun check(statusRef: StatusReference): CredentialStatus =
-        runCatching { lookup(statusRef) }.getOrDefault(CredentialStatus.UNKNOWN)
+    override fun check(
+        statusRef: StatusReference,
+        trust: StatusIssuerTrust,
+    ): CredentialStatus = runCatching { lookup(statusRef, trust) }.getOrDefault(CredentialStatus.UNKNOWN)
 
-    private fun lookup(statusRef: StatusReference): CredentialStatus {
+    private fun lookup(
+        statusRef: StatusReference,
+        trust: StatusIssuerTrust,
+    ): CredentialStatus {
         val token = fetcher.fetch(statusRef.uri)
+        val jwt = SignedJWT.parse(token)
+        validate(jwt, statusRef, trust)
         val statusList =
-            checkNotNull(SignedJWT.parse(token).jwtClaimsSet.getJSONObjectClaim("status_list")) {
+            checkNotNull(jwt.jwtClaimsSet.getJSONObjectClaim("status_list")) {
                 "token has no status_list claim"
             }
         val bits = (statusList["bits"] as Number).toInt()
@@ -66,6 +92,38 @@ class OAuthStatusListChecker(
         val compressed = Base64URL.from(statusList["lst"] as String).decode()
         val value = statusValueAt(inflate(compressed), bits, statusRef.index)
         return if (value == 0) CredentialStatus.VALID else CredentialStatus.REVOKED
+    }
+
+    /**
+     * The checks of draft-ietf-oauth-status-list §8.3 that stand between a fetched
+     * document and a statement about someone's credential. Each one throws, and [check]
+     * turns any throw into [CredentialStatus.UNKNOWN]: there is deliberately no path
+     * through this function that ends in VALID without all of them having passed.
+     */
+    private fun validate(
+        jwt: SignedJWT,
+        statusRef: StatusReference,
+        trust: StatusIssuerTrust,
+    ) {
+        require(jwt.header.type?.toString() == STATUS_LIST_TYP) {
+            "status list token typ is not $STATUS_LIST_TYP"
+        }
+        val claims = jwt.jwtClaimsSet
+        // Only the issuer of the credential may speak about that credential's status. The
+        // draft permits a separate status issuer but gives no way to trust one, and the
+        // keys below are the ONLY keys we have any reason to believe.
+        val issuer = trust.issuer
+        require(!issuer.isNullOrBlank() && claims.issuer == issuer) {
+            "status list is not issued by the credential's issuer"
+        }
+        require(trust.issuerKeys.isNotEmpty()) { "no trusted keys for the status list issuer" }
+        require(verifiesWithAny(jwt, trust.issuerKeys)) { "status list token signature does not verify" }
+        // sub binds the token to the URI the credential pointed at, so a valid token for a
+        // different list cannot be replayed in place of this one.
+        require(claims.subject == statusRef.uri) { "status list sub does not match the referenced uri" }
+        claims.expirationTime?.let { expiry ->
+            require(!clock.instant().isAfter(expiry.toInstant())) { "status list token is expired" }
+        }
     }
 
     private fun statusValueAt(
@@ -102,6 +160,9 @@ class OAuthStatusListChecker(
     }
 
     companion object {
+        /** draft-ietf-oauth-status-list §5.1: the JWT type MUST be this. */
+        private const val STATUS_LIST_TYP = "statuslist+jwt"
+
         private const val BITS_PER_BYTE = 8
         private const val INFLATE_BUFFER_SIZE = 4096
 
