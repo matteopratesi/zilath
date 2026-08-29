@@ -20,6 +20,7 @@ import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.SignedJWT
 import java.time.Clock
+import java.time.Duration
 import java.util.zip.Inflater
 
 /**
@@ -70,6 +71,7 @@ fun interface StatusListFetcher {
 class OAuthStatusListChecker(
     private val fetcher: StatusListFetcher,
     private val clock: Clock = Clock.systemUTC(),
+    private val maxAge: Duration = DEFAULT_MAX_AGE,
 ) : StatusChecker {
     override fun check(
         statusRef: StatusReference,
@@ -121,12 +123,23 @@ class OAuthStatusListChecker(
         // sub binds the token to the URI the credential pointed at, so a valid token for a
         // different list cannot be replayed in place of this one.
         require(claims.subject == statusRef.uri) { "status list sub does not match the referenced uri" }
+        val now = clock.instant()
         claims.expirationTime?.let { expiry ->
             // Strictly before, per RFC 7519 §4.1.4, and matching how the credential's own
             // exp is treated in SdJwtVcCredentialVerifier: two temporal checks in the same
             // pipeline disagreeing on the boundary instant is a bug waiting for a clock.
-            require(clock.instant().isBefore(expiry.toInstant())) { "status list token is expired" }
+            require(now.isBefore(expiry.toInstant())) { "status list token is expired" }
         }
+        // exp is only RECOMMENDED by the draft (§5.1), so a compliant token may carry none
+        // and would then never go stale: an attacker who captured a genuine "nobody is
+        // revoked" list could replay it forever. iat is REQUIRED, and §8.3 step 4b points
+        // at exactly this — a relying-party freshness policy on iat. Refusing tokens
+        // without exp would have been the other way to close it, at the cost of failing
+        // spec-compliant issuers, and every one of those failures is a denied entitlement.
+        val issuedAt =
+            requireNotNull(claims.issueTime?.toInstant()) { "status list token has no iat" }
+        require(!issuedAt.isAfter(now.plus(CLOCK_SKEW))) { "status list token is issued in the future" }
+        require(!issuedAt.isBefore(now.minus(maxAge))) { "status list token older than $maxAge" }
     }
 
     private fun statusValueAt(
@@ -165,6 +178,18 @@ class OAuthStatusListChecker(
     companion object {
         /** draft-ietf-oauth-status-list §5.1: the JWT type MUST be this. */
         private const val STATUS_LIST_TYP = "statuslist+jwt"
+
+        /**
+         * How stale a status list may be before it stops counting as an answer. The draft
+         * sets no number — it is a relying-party policy (§8.3 step 4b) — so this is a
+         * choice, not a rule: a day bounds the replay window for a token with no `exp`
+         * while tolerating issuers that republish daily. Tighten it if your issuer
+         * refreshes more often; every hour you cut is an hour a revocation takes to bite.
+         */
+        val DEFAULT_MAX_AGE: Duration = Duration.ofDays(1)
+
+        /** Tolerance for a status issuer's clock running slightly ahead of ours. */
+        private val CLOCK_SKEW: Duration = Duration.ofMinutes(1)
 
         private const val BITS_PER_BYTE = 8
         private const val INFLATE_BUFFER_SIZE = 4096

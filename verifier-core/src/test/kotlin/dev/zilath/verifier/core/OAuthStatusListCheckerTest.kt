@@ -30,6 +30,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayOutputStream
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.Date
@@ -70,6 +71,7 @@ class OAuthStatusListCheckerTest {
         sub: String? = uri,
         typ: String? = "statuslist+jwt",
         expiresAt: Instant? = null,
+        issuedAt: Instant? = now,
     ): String {
         val claims =
             JWTClaimsSet
@@ -78,7 +80,7 @@ class OAuthStatusListCheckerTest {
                     iss?.let { issuer(it) }
                     sub?.let { subject(it) }
                     expiresAt?.let { expirationTime(Date.from(it)) }
-                    issueTime(Date.from(now))
+                    issuedAt?.let { issueTime(Date.from(it)) }
                     claim("status_list", mapOf("bits" to bits, "lst" to deflate(rawList)))
                 }.build()
         val header =
@@ -171,6 +173,36 @@ class OAuthStatusListCheckerTest {
         // boundary the credential's own expiry uses. Pinned because an off-by-one here is
         // invisible until a clock lands exactly on it.
         assertThat(statusOf(token(expiresAt = now))).isEqualTo(CredentialStatus.UNKNOWN)
+    }
+
+    @Test
+    fun `a token with no iat is unknown`() {
+        // iat is REQUIRED by the draft, and it is what the freshness policy stands on.
+        assertThat(statusOf(token(issuedAt = null))).isEqualTo(CredentialStatus.UNKNOWN)
+    }
+
+    @Test
+    fun `a stale token is unknown even though it is correctly signed`() {
+        // The replay a missing exp would otherwise allow forever: a genuine "nobody is
+        // revoked" list, captured and served again long after someone was revoked.
+        val stale = token(issuedAt = now.minus(Duration.ofDays(1)).minusSeconds(1))
+        assertThat(statusOf(stale)).isEqualTo(CredentialStatus.UNKNOWN)
+
+        val fresh = token(issuedAt = now.minus(Duration.ofHours(23)))
+        assertThat(statusOf(fresh)).isEqualTo(CredentialStatus.VALID)
+    }
+
+    @Test
+    fun `a token issued in the future beyond the skew tolerance is unknown`() {
+        assertThat(statusOf(token(issuedAt = now.plusSeconds(120)))).isEqualTo(CredentialStatus.UNKNOWN)
+        // A minute of the issuer's clock running ahead is tolerated, not punished.
+        assertThat(statusOf(token(issuedAt = now.plusSeconds(30)))).isEqualTo(CredentialStatus.VALID)
+    }
+
+    @Test
+    fun `the freshness window is configurable`() {
+        val strict = OAuthStatusListChecker({ token(issuedAt = now.minusSeconds(120)) }, clock, Duration.ofMinutes(1))
+        assertThat(strict.check(StatusReference(uri, 0), trust)).isEqualTo(CredentialStatus.UNKNOWN)
     }
 
     @Test
