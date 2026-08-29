@@ -34,9 +34,12 @@ interface TransactionStore {
     /**
      * Returns the stored transaction, or null if it is absent.
      *
-     * An EXPIRED transaction MAY still be returned once, while the store holds it — a
-     * concurrent `put` sweeps it too, so a caller can also get null instead. Both answers
-     * mean the same thing to the flow, and neither carries the claims. That is not
+     * An EXPIRED transaction MUST still be returned once, so the flow can tell "expired"
+     * apart from "never existed"; returning null for every expired entry loses that
+     * distinction and makes [VerificationFlow.awaitOutcome] answer Unknown where it should
+     * answer Expired. Null is allowed only when a concurrent cleanup got there first —
+     * that race is unavoidable, not a licence to skip the rule. Whatever is returned for an
+     * expired entry must carry no claims. That is not
      * laxity: [VerificationFlow.awaitOutcome] needs to tell "this expired" apart from
      * "no such transaction", and it can only do that if the entry survives long enough to
      * be seen once. Implementations that return null for an expired entry will make the
@@ -128,7 +131,10 @@ class InMemoryTransactionStore(
         // without this, a process that starts no new transaction, a venue after the last
         // performance, kept every other completed transaction and the disclosed claims
         // inside them in the heap until it restarted.
-        sweepExpired()
+        // Sweep the OTHERS; this one is consumed just below, atomically. Sweeping it here
+        // too would make the conditional remove always fail and turn every expired read
+        // into "unknown", which is the distinction the contract exists to preserve.
+        sweepExpired(except = id)
         // An expired entry answers at most one more read, so the flow can usually say
         // "expired" rather than "never existed", and is gone from the store before that
         // answer is returned. At most, not exactly: a concurrent start() sweeps on put and
@@ -138,12 +144,12 @@ class InMemoryTransactionStore(
         // message. Not worth it: both answers are terminal and neither carries claims. The
         // tombstone is the answer, not the stored value: redacting a copy while leaving the
         // original in the map would have looked like a fix and retained the claims anyway.
-        return if (found != null && found.isExpired(clock.instant(), timeToLive)) {
-            transactions.remove(id, found)
-            found.copy(outcome = tombstoneOf(found.outcome))
-        } else {
-            found
-        }
+        if (found == null || !found.isExpired(clock.instant(), timeToLive)) return found
+        // Only the caller whose conditional remove SUCCEEDS gets the tombstone. Ignoring
+        // that boolean let two concurrent reads both receive one, which leaks nothing but
+        // makes the sentence above false — and a contract the code does not keep is how
+        // the next person builds on something that is not there.
+        return if (transactions.remove(id, found)) found.copy(outcome = tombstoneOf(found.outcome)) else null
     }
 
     /** An expired outcome keeps its kind and loses everything a person could be found in. */
@@ -176,12 +182,12 @@ class InMemoryTransactionStore(
         transactions.remove(id)
     }
 
-    private fun sweepExpired() {
+    private fun sweepExpired(except: TransactionId? = null) {
         val now = clock.instant()
         // Completed transactions keep their outcome until they expire, so the checkout
         // can still poll it; expiry is the only thing that removes entries.
         transactions.values
-            .filter { it.isExpired(now, timeToLive) }
+            .filter { it.isExpired(now, timeToLive) && it.id != except }
             .forEach { transactions.remove(it.id) }
     }
 }
