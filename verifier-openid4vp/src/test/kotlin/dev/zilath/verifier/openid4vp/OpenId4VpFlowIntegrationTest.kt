@@ -176,14 +176,19 @@ class OpenId4VpFlowIntegrationTest {
     fun `an expired wallet error does not keep the wallet's own text readable`() {
         // The tombstone drops the description too: it came from the wallet response and
         // has no business outliving the transaction it belonged to.
-        val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        // Cross-device on purpose: a same-device transaction with no completed return leg
+        // answers Expired whatever the tombstone did, so that version of this test would
+        // have passed with the redaction removed — it would have tested nothing.
+        val started = startForPid()
         flow.handleWalletResponse(
             started.id,
             DirectPostBody(mapOf("error" to "access_denied", "error_description" to "user said no")),
         )
         clock.advance(Duration.ofMinutes(6))
         val outcome = flow.awaitOutcome(started.id)
-        assertThat(outcome.toString()).doesNotContain("user said no")
+        assertThat(outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
+        assertThat((outcome as FlowOutcome.WalletErrorAcknowledged).description).isNull()
+        assertThat(outcome.error).isEqualTo("access_denied")
     }
 
     @Test

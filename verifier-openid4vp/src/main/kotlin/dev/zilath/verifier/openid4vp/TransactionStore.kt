@@ -34,7 +34,9 @@ interface TransactionStore {
     /**
      * Returns the stored transaction, or null if it is absent.
      *
-     * An EXPIRED transaction is still returned while the store holds it. That is not
+     * An EXPIRED transaction MAY still be returned once, while the store holds it — a
+     * concurrent `put` sweeps it too, so a caller can also get null instead. Both answers
+     * mean the same thing to the flow, and neither carries the claims. That is not
      * laxity: [VerificationFlow.awaitOutcome] needs to tell "this expired" apart from
      * "no such transaction", and it can only do that if the entry survives long enough to
      * be seen once. Implementations that return null for an expired entry will make the
@@ -127,8 +129,13 @@ class InMemoryTransactionStore(
         // performance, kept every other completed transaction and the disclosed claims
         // inside them in the heap until it restarted.
         sweepExpired()
-        // An expired entry answers ONE more read, so the flow can say "expired" rather than
-        // "never existed", and is gone from the store before that answer is returned. The
+        // An expired entry answers at most one more read, so the flow can usually say
+        // "expired" rather than "never existed", and is gone from the store before that
+        // answer is returned. At most, not exactly: a concurrent start() sweeps on put and
+        // may take it first, and the caller then sees "unknown". Holding a side registry of
+        // tombstones would make that guarantee exact, and it would add state to the one
+        // component in this library that holds anything sensitive, to improve a diagnostic
+        // message. Not worth it: both answers are terminal and neither carries claims. The
         // tombstone is the answer, not the stored value: redacting a copy while leaving the
         // original in the map would have looked like a fix and retained the claims anyway.
         return if (found != null && found.isExpired(clock.instant(), timeToLive)) {
@@ -148,6 +155,8 @@ class InMemoryTransactionStore(
             // The description came from the wallet response; it has no business outliving
             // the transaction it belonged to.
             is FlowOutcome.WalletErrorAcknowledged -> outcome.copy(description = null)
+            // The description came from the wallet response; it has no business outliving
+            // the transaction it belonged to.
             else -> outcome
         }
 
