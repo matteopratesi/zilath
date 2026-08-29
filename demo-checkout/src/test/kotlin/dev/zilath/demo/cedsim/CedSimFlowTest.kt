@@ -21,6 +21,7 @@ import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import com.nimbusds.jose.util.JSONObjectUtils
 import com.nimbusds.jwt.SignedJWT
+import dev.zilath.demo.ConformanceController
 import dev.zilath.verifier.core.CredentialStatus
 import dev.zilath.verifier.core.RejectionReason
 import dev.zilath.verifier.core.SdJwtVcCredentialVerifier
@@ -191,6 +192,24 @@ class CedSimFlowTest {
         // A consumed code is never re-minted, and the outcome is now observable.
         assertThat(flow.sameDeviceRedirectFor(txId, outcome)).isNull()
         assertThat(flow.awaitOutcome(txId)).isInstanceOf(FlowOutcome.Verified::class.java)
+    }
+
+    @Test
+    fun `the conformance outcome endpoint reports the category and never the claims`() {
+        // It used to answer awaitOutcome(...).toString(), and that data class carries the
+        // disclosed claims: an unauthenticated GET with a transaction id returned somebody's
+        // entitlement. The harness only ever needed to know whether the run passed.
+        // Cross-device: a same-device outcome deliberately reads as pending until the
+        // user-agent has come back through the response-code exchange (WP_094).
+        val outcome = presentSimulatedCed(keys)
+        assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
+        val body = ConformanceController(flow, config, clock, CedSim.VCT).outcome(lastTransactionId().value)
+        assertThat(body).containsEntry("outcome", "verified")
+        // Nothing from inside the credential, not the claim names and not their values.
+        assertThat(body.values.joinToString(" "))
+            .doesNotContain("constant_attendance_allowance")
+            .doesNotContain("expiry_date")
+            .doesNotContain("true")
     }
 
     @Test

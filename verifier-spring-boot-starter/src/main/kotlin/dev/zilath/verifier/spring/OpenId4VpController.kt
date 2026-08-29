@@ -75,7 +75,7 @@ class OpenId4VpController(
                 // OpenID4VP direct_post: wallet error responses are acknowledged with 200.
                 // In the same-device flow the ack still carries the redirect_uri, so the
                 // user lands back on the RP even after cancelling in the wallet (RPR-59).
-                logger.info("wallet error response acknowledged: {}", outcome.error)
+                logger.info("wallet error response acknowledged: {}", forLog(outcome.error))
                 ResponseEntity.ok(ackBody(txId, outcome))
             }
             is FlowOutcome.Rejected -> {
@@ -99,6 +99,18 @@ class OpenId4VpController(
     ): Map<String, String> =
         flow.sameDeviceRedirectFor(TransactionId(txId), outcome)?.let { mapOf("redirect_uri" to it) } ?: emptyMap()
 
+    /**
+     * Anyone who knows a transaction id can put an arbitrary string in `error` and have it
+     * written to the log. Bound the length and strip the control characters, so an
+     * unauthenticated caller cannot forge log lines or flood the file.
+     */
+    private fun forLog(value: String?): String =
+        value
+            .orEmpty()
+            .take(MAX_LOGGED_ERROR)
+            .map { if (it.isISOControl()) '?' else it }
+            .joinToString("")
+
     private fun badRequest(description: String): ResponseEntity<Map<String, String>> =
         ResponseEntity
             .badRequest()
@@ -107,5 +119,7 @@ class OpenId4VpController(
     companion object {
         const val REQUEST_OBJECT_MEDIA_TYPE = "application/oauth-authz-req+jwt"
         private val logger = org.slf4j.LoggerFactory.getLogger(OpenId4VpController::class.java)
+
+        private const val MAX_LOGGED_ERROR = 200
     }
 }

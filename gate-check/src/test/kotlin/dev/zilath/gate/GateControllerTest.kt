@@ -38,6 +38,7 @@ class GateControllerTest(
         val redirect =
             mockMvc
                 .post("/gate/record") {
+                    header("Sec-Fetch-Site", "same-origin")
                     param("entitlement", "Biglietto accompagnatore")
                     param("operator", "MP")
                     param("outcome", "verified")
@@ -65,16 +66,35 @@ class GateControllerTest(
     fun `an unknown entitlement or a blank operator is refused`() {
         mockMvc
             .post("/gate/record") {
+                header("Sec-Fetch-Site", "same-origin")
                 param("entitlement", "Sconto inventato")
                 param("operator", "MP")
                 param("outcome", "verified")
             }.andExpect { status { isBadRequest() } }
         mockMvc
             .post("/gate/record") {
+                header("Sec-Fetch-Site", "same-origin")
                 param("entitlement", "Biglietto accompagnatore")
                 param("operator", "  ")
                 param("outcome", "verified")
             }.andExpect { status { isBadRequest() } }
+    }
+
+    @Test
+    fun `a cross-site form post cannot mint a receipt`() {
+        // Binding to 127.0.0.1 keeps the network out. It does nothing about a browser on
+        // the door machine following a page that submits a form here — and a receipt is
+        // signed with the venue's key, so a forged one is indistinguishable from a real
+        // check. A cross-site form POST cannot forge Sec-Fetch-Site.
+        for (site in listOf("cross-site", "same-site", null)) {
+            mockMvc
+                .post("/gate/record") {
+                    if (site != null) header("Sec-Fetch-Site", site)
+                    param("entitlement", "Biglietto accompagnatore")
+                    param("operator", "MP")
+                    param("outcome", "verified")
+                }.andExpect { status { isForbidden() } }
+        }
     }
 
     @Test

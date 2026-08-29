@@ -3,6 +3,11 @@ server:
   # Safe default: reachable only from this machine. Expose on the venue LAN explicitly
   # (ZILATH_GATE_BIND=0.0.0.0) and only behind the venue's own network: whoever can reach
   # these pages can record receipts, so the network IS the trust boundary.
+  #
+  # /gate/record requires Sec-Fetch-Site: same-origin, which stops a malicious page on the
+  # door machine from submitting a form here. It does NOT stop anyone who can load the
+  # pages themselves: for them the request IS same-origin. Widen the bind address and you
+  # have given receipt-minting to everyone who can reach the port.
   address: ${ZILATH_GATE_BIND:127.0.0.1}
 
 zilath:

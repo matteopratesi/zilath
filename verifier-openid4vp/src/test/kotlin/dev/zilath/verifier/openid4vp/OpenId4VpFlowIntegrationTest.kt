@@ -156,11 +156,39 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
-    fun `a recorded outcome survives the transaction expiry`() {
+    fun `a recorded outcome outlives the transaction only as a claim-free tombstone`() {
+        // This asserted that a Verified outcome, claims and all, stayed readable after the
+        // transaction expired — so a checkout that polled late still got them. That is the
+        // retention the privacy document promises not to have: the time to live is the
+        // bound, and letting a late poll exceed it empties the promise.
+        //
+        // The transaction still answers after expiry, so "expired" stays distinguishable
+        // from "never existed". What it no longer answers with is the claims.
         val started = startForPid()
         flow.handleWalletResponse(started.id, walletBody(started))
         clock.advance(Duration.ofMinutes(6))
-        assertThat(flow.awaitOutcome(started.id)).isInstanceOf(FlowOutcome.Verified::class.java)
+        val outcome = flow.awaitOutcome(started.id)
+        assertThat(outcome).isNotInstanceOf(FlowOutcome.Verified::class.java)
+        assertThat(outcome.toString()).doesNotContain("given_name").doesNotContain("family_name")
+    }
+
+    @Test
+    fun `an expired wallet error does not keep the wallet's own text readable`() {
+        // The tombstone drops the description too: it came from the wallet response and
+        // has no business outliving the transaction it belonged to.
+        // Cross-device on purpose: a same-device transaction with no completed return leg
+        // answers Expired whatever the tombstone did, so that version of this test would
+        // have passed with the redaction removed — it would have tested nothing.
+        val started = startForPid()
+        flow.handleWalletResponse(
+            started.id,
+            DirectPostBody(mapOf("error" to "access_denied", "error_description" to "user said no")),
+        )
+        clock.advance(Duration.ofMinutes(6))
+        val outcome = flow.awaitOutcome(started.id)
+        assertThat(outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
+        assertThat((outcome as FlowOutcome.WalletErrorAcknowledged).description).isNull()
+        assertThat(outcome.error).isEqualTo("access_denied")
     }
 
     @Test
@@ -229,8 +257,11 @@ class OpenId4VpFlowIntegrationTest {
         val started = startForPid()
         val body = walletBody(started)
         clock.advance(Duration.ofMinutes(6))
+        // One read answers "expired" and takes the entry with it; after that there is
+        // nothing left to answer about, which is the point — an expired transaction must
+        // not stay queryable, because staying queryable is what kept its claims alive.
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
-        assertThat(flow.handleWalletResponse(started.id, body)).isEqualTo(FlowOutcome.Expired)
+        assertThat(flow.handleWalletResponse(started.id, body)).isEqualTo(FlowOutcome.Unknown)
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Unknown)
     }
 
@@ -379,8 +410,8 @@ class OpenId4VpFlowIntegrationTest {
         // No new code is minted for an expired transaction.
         assertThat(flow.sameDeviceRedirectFor(started.id, outcome)).isNull()
         // The stale code is not consumable, and the wallet outcome is never exposed:
-        // Expired while the entry survives, Unknown once the store sweep removed it.
-        assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
+        // the first read after expiry took the entry, so what is left is Unknown.
+        assertThat(flow.awaitOutcome(started.id)).isIn(FlowOutcome.Expired, FlowOutcome.Unknown)
         assertThat(flow.consumeResponseCode(started.id, code)).isFalse()
         assertThat(flow.awaitOutcome(started.id)).isIn(FlowOutcome.Expired, FlowOutcome.Unknown)
     }

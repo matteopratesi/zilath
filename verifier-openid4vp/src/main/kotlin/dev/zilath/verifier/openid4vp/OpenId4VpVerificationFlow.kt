@@ -199,7 +199,14 @@ class OpenId4VpVerificationFlow(
                     // Application-supplied TrustEvaluator/StatusChecker beans may throw anything:
                     // the transaction must still reach a terminal state (its nonce is consumed),
                     // and internals must not leak towards the wallet.
-                    logger.log(System.Logger.Level.ERROR, "verification pipeline failure", failure)
+                    // The class, never the message and never the stack trace: this failure
+                    // can come from a TrustEvaluator or StatusChecker the integrator wrote,
+                    // around data belonging to the person being verified. A crash is not a
+                    // licence to print what it was holding.
+                    logger.log(
+                        System.Logger.Level.ERROR,
+                        "verification pipeline failure (${failure.javaClass.name})",
+                    )
                     FlowOutcome.Rejected(RejectionReason.INTERNAL_ERROR, "verification pipeline failure")
                 }
             }

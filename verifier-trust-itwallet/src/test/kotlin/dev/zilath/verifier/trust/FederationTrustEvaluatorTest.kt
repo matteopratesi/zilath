@@ -308,16 +308,38 @@ class FederationTrustEvaluatorTest {
     }
 
     @Test
-    fun `a leaf without credential metadata falls back to its federation keys`() {
+    fun `a leaf without credential metadata is untrusted, not silently given its federation keys`() {
+        // This test used to assert the opposite, and the opposite was a hole: falling back
+        // to the leaf's federation keys turned a metadata_policy RESTRICTING
+        // openid_credential_issuer.jwks into one that widened it, and let any leaf that
+        // simply published no credential metadata sign credentials with the keys it uses
+        // for entity statements. Federation keys attest; credential keys sign credentials.
         val chain =
             listOf(
                 FederationFixtures.leafConfiguration(includeCredentialKeys = false),
                 FederationFixtures.offlineChain()[1],
             )
         val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = chain))
-        assertThat(decision).isInstanceOf(TrustDecision.Trusted::class.java)
-        val keys = (decision as TrustDecision.Trusted).issuerKeys
-        assertThat(keys.map { it.keyID }).containsExactly(FederationFixtures.leafFederationKey.keyID)
+        assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+    }
+
+    @Test
+    fun `an entity id that is not an https identifier is refused before any fetch`() {
+        // iss is unverified at this point: without this the library would ask the
+        // integrator's fetcher to dereference whatever an attacker put in a credential.
+        var fetched = false
+        val evaluator =
+            evaluator(
+                FederationFetcher {
+                    fetched = true
+                    error("should not be reached")
+                },
+            )
+        for (bad in listOf("file:///etc/passwd", "http://10.0.0.1:8080", "https://", "not a url")) {
+            val decision = evaluator.evaluate(inputFor(issuer = bad, trustChain = emptyList()))
+            assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+        }
+        assertThat(fetched).isFalse()
     }
 
     @Test

@@ -16,6 +16,7 @@
  */
 package dev.zilath.demo
 
+import dev.zilath.verifier.openid4vp.FlowOutcome
 import dev.zilath.verifier.openid4vp.PresentationRequest
 import dev.zilath.verifier.openid4vp.RelyingPartyConfiguration
 import dev.zilath.verifier.openid4vp.RpEntityConfiguration
@@ -71,10 +72,27 @@ class ConformanceController(
         )
     }
 
+    /**
+     * What the conformance harness polls: whether the run succeeded, and why not if it did
+     * not. The CATEGORY only.
+     *
+     * This used to be `awaitOutcome(...).toString()`, and the data class it stringified
+     * carries the disclosed claims — so an unauthenticated GET with a transaction id
+     * returned somebody's name and entitlement. The harness never needed them, and neither
+     * does anything else: an outcome is a yes or a no.
+     */
     @GetMapping("/conformance/outcome/{txId}")
     fun outcome(
         @PathVariable txId: String,
-    ): Map<String, String> = mapOf("outcome" to flow.awaitOutcome(TransactionId(txId)).toString())
+    ): Map<String, String> =
+        when (val outcome = flow.awaitOutcome(TransactionId(txId))) {
+            is FlowOutcome.Verified -> mapOf("outcome" to "verified")
+            is FlowOutcome.Rejected -> mapOf("outcome" to "rejected", "reason" to outcome.reason.name)
+            is FlowOutcome.WalletErrorAcknowledged -> mapOf("outcome" to "wallet_error")
+            FlowOutcome.Pending -> mapOf("outcome" to "pending")
+            FlowOutcome.Expired -> mapOf("outcome" to "expired")
+            FlowOutcome.Unknown -> mapOf("outcome" to "unknown")
+        }
 }
 
 /**
