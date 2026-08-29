@@ -55,7 +55,7 @@ import java.time.Clock
 class ConformanceDemoApp {
     @Bean
     fun statusChecker(): StatusChecker =
-        StatusChecker {
+        StatusChecker { _, _ ->
             // Status list checks are exercised in unit tests; the conformance PID carries
             // no status reference, so a static VALID keeps the demo deterministic.
             CredentialStatus.VALID

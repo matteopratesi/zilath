@@ -120,11 +120,17 @@ An honest list is more useful than a short one.
    lists are designed so that the individual index is hidden in a large list, which is the
    mitigation the format provides, but the fetch itself is observable. Consider caching if
    your volumes make the timing meaningful.
-5. **`StatusListFetcher` is yours, and this library cannot see past it.** The status list
-   token is now fully validated — signature against the issuer's trusted keys, `typ`, `sub`
-   against the referenced URI, and expiry — so a tampered or forged list is `UNKNOWN` rather
-   than believed. What the library still cannot do is police the transport: your fetcher
-   enforces TLS and certificate validation, or nothing does.
+5. **Only the credential's own issuer may answer for its status.** The status list token is
+   validated before it is believed — signature against the issuer's trusted keys, `typ`,
+   `sub` against the referenced URI, and expiry. The specification allows a credential to
+   point at a *separate* status issuer but defines no way to trust one, so this library
+   refuses those: the answer is `UNKNOWN`, and `UNKNOWN` is a rejection. **If your
+   population's credentials delegate their status lists to a third party, every one of
+   those verifications fails** — a denied entitlement, not a warning. Check this against a
+   real credential before deploying, and tell us if you hit it: the fix is configuration,
+   not code.
+6. **`StatusListFetcher` is yours, and this library cannot see past it.** Validation stops
+   at the token; your fetcher enforces TLS and certificate validation, or nothing does.
 
    Two things to get right in that fetcher. **Set
    aggressive connect and read timeouts**: the URI comes from the credential, so a slow or
@@ -136,7 +142,7 @@ An honest list is more useful than a short one.
    from an issuer you already trust — but a fetcher able to reach arbitrary hosts is one
    compromised issuer away from being a request-forgery tool inside your network. An
    allow-list of expected status hosts costs nothing.
-6. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
+7. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
 
 ## 6. What you still have to do
 

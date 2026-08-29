@@ -166,6 +166,14 @@ class OAuthStatusListCheckerTest {
     }
 
     @Test
+    fun `the expiry instant itself is already expired`() {
+        // RFC 7519 4.1.4 wants the current time strictly before exp, and this is the same
+        // boundary the credential's own expiry uses. Pinned because an off-by-one here is
+        // invisible until a clock lands exactly on it.
+        assertThat(statusOf(token(expiresAt = now))).isEqualTo(CredentialStatus.UNKNOWN)
+    }
+
+    @Test
     fun `no trusted keys means unknown`() {
         assertThat(statusOf(token(), trust = StatusIssuerTrust(issuer, emptyList())))
             .isEqualTo(CredentialStatus.UNKNOWN)

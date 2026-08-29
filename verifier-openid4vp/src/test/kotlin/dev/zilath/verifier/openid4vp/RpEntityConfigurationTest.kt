@@ -45,7 +45,7 @@ class RpEntityConfigurationTest {
                     responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("rp-enc").generate(),
                 ),
             trustEvaluator = TrustEvaluator { _ -> TrustDecision.Untrusted("static test evaluator") },
-            statusChecker = StatusChecker { CredentialStatus.VALID },
+            statusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
             federation = federation(),
         )
 

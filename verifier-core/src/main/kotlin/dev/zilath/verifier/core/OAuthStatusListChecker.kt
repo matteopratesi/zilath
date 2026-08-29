@@ -122,7 +122,10 @@ class OAuthStatusListChecker(
         // different list cannot be replayed in place of this one.
         require(claims.subject == statusRef.uri) { "status list sub does not match the referenced uri" }
         claims.expirationTime?.let { expiry ->
-            require(!clock.instant().isAfter(expiry.toInstant())) { "status list token is expired" }
+            // Strictly before, per RFC 7519 §4.1.4, and matching how the credential's own
+            // exp is treated in SdJwtVcCredentialVerifier: two temporal checks in the same
+            // pipeline disagreeing on the boundary instant is a bug waiting for a clock.
+            require(clock.instant().isBefore(expiry.toInstant())) { "status list token is expired" }
         }
     }
 

@@ -171,16 +171,24 @@ class SdJwtVcCredentialVerifierTest {
     fun `credential with status is verified when the list says valid`() {
         val compact = TestVectors.vector(statusUri = "https://status.example/1", statusIndex = 3)
         val checked = mutableListOf<StatusReference>()
+        val trustSeen = mutableListOf<StatusIssuerTrust>()
         val result =
             verify(
                 compact,
-                context(status = { ref, _ ->
+                context(status = { ref, trust ->
                     checked.add(ref)
+                    trustSeen.add(trust)
                     CredentialStatus.VALID
                 }),
             )
         assertThat(result).isInstanceOf(VerificationResult.Verified::class.java)
         assertThat(checked).containsExactly(StatusReference("https://status.example/1", 3))
+        // The checker is only as good as what it is handed: assert the verifier actually
+        // propagates the issuer and the keys it trusted, rather than something empty that
+        // a checker ignoring its second argument would never notice.
+        assertThat(trustSeen).hasSize(1)
+        assertThat(trustSeen.single().issuer).isEqualTo(TestVectors.ISSUER)
+        assertThat(trustSeen.single().issuerKeys).isNotEmpty()
     }
 
     @Test
