@@ -16,6 +16,7 @@
  */
 package dev.zilath.verifier.openid4vp
 
+import dev.zilath.verifier.core.RejectionReason
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -31,9 +32,17 @@ interface TransactionStore {
     fun put(transaction: Transaction)
 
     /**
-     * Returns the stored transaction, or null if it is absent OR already expired —
-     * implementations are free to expire lazily on read, so a non-null result is a
-     * transaction still within its time to live.
+     * Returns the stored transaction, or null if it is absent.
+     *
+     * An EXPIRED transaction is still returned while the store holds it. That is not
+     * laxity: [VerificationFlow.awaitOutcome] needs to tell "this expired" apart from
+     * "no such transaction", and it can only do that if the entry survives long enough to
+     * be seen once. Implementations that return null for an expired entry will make the
+     * flow answer [FlowOutcome.Unknown] where it should answer [FlowOutcome.Expired].
+     *
+     * What an implementation MUST NOT do is keep expired entries indefinitely: they hold
+     * the disclosed claims. Remove them promptly — and do not let repeated reads of the
+     * same expired entry postpone its removal.
      */
     fun get(id: TransactionId): Transaction?
 
@@ -118,8 +127,26 @@ class InMemoryTransactionStore(
         // performance, kept every other completed transaction and the disclosed claims
         // inside them in the heap until it restarted.
         sweepExpired(except = id)
-        return found
+        // An expired entry survives one more read so the flow can answer "expired" rather
+        // than "never existed" — but it survives as a TOMBSTONE. Polling an expired
+        // transaction postpones its removal, so without this a caller could keep the
+        // disclosed claims of a finished verification in the heap indefinitely just by
+        // asking about it. What is kept is the shape; what is dropped is the content.
+        return if (found != null && found.isExpired(clock.instant(), timeToLive)) {
+            found.copy(outcome = tombstoneOf(found.outcome))
+        } else {
+            found
+        }
     }
+
+    /** An expired outcome keeps its kind and loses everything a person could be found in. */
+    private fun tombstoneOf(outcome: FlowOutcome?): FlowOutcome? =
+        when (outcome) {
+            null -> null
+            is FlowOutcome.Verified -> FlowOutcome.Rejected(RejectionReason.EXPIRED, "outcome expired")
+            is FlowOutcome.Rejected -> FlowOutcome.Rejected(outcome.reason, null)
+            else -> outcome
+        }
 
     override fun compareAndUpdate(
         id: TransactionId,

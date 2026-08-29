@@ -165,8 +165,11 @@ An honest list is more useful than a short one.
    a single-venue tool for a single door; if that stops being true it needs a real store.
 9. **Losing the `gate-check` signing key voids the receipt history.** Receipts are verified
    on load, so a replaced or lost key makes every past receipt vanish from the interface —
-   silently, with no way to tell "voided" from "never happened". Back up the key with the
-   data directory, or accept that the archive is only as durable as that one file.
+   silently, with no way to tell "voided" from "never happened". Back the key up — but back
+   it up ENCRYPTED and owner-only, with the same access control as the data directory:
+   whoever holds it can mint receipts this tool accepts as authentic, so a casual copy of
+   it is a forgery path, not just a spare. Or accept that the archive is only as durable as
+   that one file.
 10. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
 
 ## 6. What you still have to do

@@ -156,11 +156,20 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
-    fun `a recorded outcome survives the transaction expiry`() {
+    fun `a recorded outcome outlives the transaction only as a claim-free tombstone`() {
+        // This asserted that a Verified outcome, claims and all, stayed readable after the
+        // transaction expired — so a checkout that polled late still got them. That is the
+        // retention the privacy document promises not to have: the time to live is the
+        // bound, and letting a late poll exceed it empties the promise.
+        //
+        // The transaction still answers after expiry, so "expired" stays distinguishable
+        // from "never existed". What it no longer answers with is the claims.
         val started = startForPid()
         flow.handleWalletResponse(started.id, walletBody(started))
         clock.advance(Duration.ofMinutes(6))
-        assertThat(flow.awaitOutcome(started.id)).isInstanceOf(FlowOutcome.Verified::class.java)
+        val outcome = flow.awaitOutcome(started.id)
+        assertThat(outcome).isNotInstanceOf(FlowOutcome.Verified::class.java)
+        assertThat(outcome.toString()).doesNotContain("given_name").doesNotContain("family_name")
     }
 
     @Test
