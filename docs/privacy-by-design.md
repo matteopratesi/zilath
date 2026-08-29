@@ -91,7 +91,10 @@ The `gate-check` module issues the same kind of outcome-only receipt for in-pers
 
 - **The nonce is single-use.** A replayed response is rejected as `REPLAY`, and nothing in
   the protocol carries across transactions.
-- **The outcome carries no stable per-credential identifier.** The SD-JWT envelope contains
+- **The outcome carries no stable identifier from the SD-JWT envelope.** Note the scope:
+  this is about the envelope, not about what you asked for. A claim path YOU request can of
+  course be an identifier — a document number is one — and the library will faithfully return
+  what the wallet discloses for it. The envelope contains
   two that would survive every presentation — `cnf.jwk`, the holder's public key, and
   `status.status_list.idx`, the credential's slot in its issuer's revocation list. Both are
   stripped before the outcome is returned. They exist for verification; the library is done
