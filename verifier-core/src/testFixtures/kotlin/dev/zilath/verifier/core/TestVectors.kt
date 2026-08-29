@@ -39,6 +39,8 @@ object TestVectors {
     const val AUDIENCE = "https://verifier.example/zilath"
     const val ISSUER = "https://issuer.example"
 
+    const val VCT = "urn:zilath:test:entitlement"
+
     val issuerEcKey = ECKeyGenerator(Curve.P_256).keyID("issuer-ec").generate()
     val issuerRsaKey = RSAKeyGenerator(RSA_KEY_SIZE).keyID("issuer-rsa").generate()
     val holderKey = ECKeyGenerator(Curve.P_256).keyID("holder").generate()
@@ -59,6 +61,8 @@ object TestVectors {
         statusUri: String? = null,
         statusIndex: Int? = null,
         useRsaIssuer: Boolean = false,
+        vct: String = VCT,
+        statusNotAnObject: Boolean = false,
     ): String =
         runBlocking {
             val spec =
@@ -67,8 +71,9 @@ object TestVectors {
                     claim("iat", iat.epochSecond)
                     claim("exp", exp.epochSecond)
                     if (nbf != null) claim("nbf", nbf.epochSecond)
-                    claim("vct", "urn:zilath:test:entitlement")
+                    claim("vct", vct)
                     if (includeCnf) cnf(holderKey.toPublicJWK())
+                    if (statusNotAnObject) claim("status", "not-an-object")
                     if (statusUri != null && statusIndex != null) {
                         objClaim("status") {
                             objClaim("status_list") {

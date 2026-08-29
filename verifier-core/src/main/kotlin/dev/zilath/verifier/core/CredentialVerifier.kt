@@ -72,6 +72,13 @@ data class VerificationContext(
      * as one entry would. Reported upstream: pagopa/wallet-conformance-test#221.
      */
     val expectedAudiences: Set<String>,
+    /**
+     * The credential types this request will accept, from the DCQL query's `vct_values`.
+     * Empty means no check — see `checkCredentialType`. Non-empty is what makes "verified"
+     * mean "verified the credential you asked for" rather than "verified some credential
+     * this issuer signed".
+     */
+    val expectedVcts: Set<String> = emptySet(),
     val clock: Clock,
     val trustEvaluator: TrustEvaluator,
     val statusChecker: StatusChecker,

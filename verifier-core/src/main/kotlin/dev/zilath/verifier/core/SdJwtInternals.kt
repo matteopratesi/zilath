@@ -133,7 +133,14 @@ internal fun sdHashOf(compact: String): String {
 
 /** Extracts the OAuth Status List reference, if the credential carries one. */
 internal fun statusReferenceOf(issuerClaims: JWTClaimsSet): StatusReference? {
-    val status = runCatching { issuerClaims.getJSONObjectClaim("status") }.getOrNull() ?: return null
+    // Absent is fine: not every credential is revocable. Present but not an object is NOT
+    // fine — swallowing that would skip the revocation check entirely, while the sibling
+    // case (an object with a malformed status_list, below) fails closed. A credential that
+    // says something about its status and says it wrongly is not a credential to trust.
+    if (!issuerClaims.claims.containsKey("status")) return null
+    val status =
+        runCatching { issuerClaims.getJSONObjectClaim("status") }.getOrNull()
+            ?: reject(RejectionReason.STATUS_CHECK_FAILED, "status claim is not an object")
     val statusList =
         status["status_list"] as? Map<*, *>
             ?: reject(RejectionReason.STATUS_CHECK_FAILED, "status claim without a status_list reference")

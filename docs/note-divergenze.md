@@ -58,3 +58,7 @@ still pending (tracked on the project board).
    separate Status Issuer (§11.3) and mandates no way to establish trust in one, so a token
    from any other entity is `UNKNOWN`. Supporting a third-party status issuer needs a policy
    decision and configuration; it is not a default.
+6. The issuer JWT's and key-binding JWT's `typ` headers are checked only when PRESENT. The
+   specification requires them, but our own vectors omit them and there is no evidence yet
+   about the production IT-Wallet issuer — and rejecting a genuine credential is, on this
+   project, as costly as accepting a forged one. Revisit with a real credential in hand.
