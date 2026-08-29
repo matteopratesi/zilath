@@ -324,6 +324,43 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
+    fun `an error post cannot collect the return ticket of a verification it did not make`() {
+        // The attack this test exists for. A same-device verification completes: the
+        // wallet has answered, the outcome is Verified, and the user's browser has not yet
+        // come back through the callback. An attacker who knows only the transaction id —
+        // it travels in the URL the user was sent to — posts an unauthenticated error.
+        //
+        // Before the fix, that request was acknowledged with a body carrying the victim's
+        // freshly minted response_code: one unauthenticated POST bought somebody else's
+        // verified entitlement, and burned their return leg on the way out.
+        val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        val verified = flow.handleWalletResponse(started.id, walletBody(started))
+        assertThat(verified).isInstanceOf(FlowOutcome.Verified::class.java)
+
+        val attacker = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
+        assertThat(attacker).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
+
+        // The attacker is owed an acknowledgement, and nothing else.
+        assertThat(flow.sameDeviceRedirectFor(started.id, attacker)).isNull()
+
+        // The verification itself is untouched: the wallet's own ack still carries the
+        // ticket, and the user completes the flow they started.
+        val redirect = checkNotNull(flow.sameDeviceRedirectFor(started.id, verified))
+        val code = redirect.substringAfter("response_code=")
+        assertThat(flow.consumeResponseCode(started.id, code)).isTrue()
+    }
+
+    @Test
+    fun `a wallet error while the transaction is still open still returns the user`() {
+        // The legitimate case the fix must not break (RPR-59): the user cancels inside the
+        // wallet, the wallet posts an error, and the acknowledgement must still bring them
+        // back to the relying party rather than stranding them.
+        val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        val cancelled = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
+        assertThat(flow.sameDeviceRedirectFor(started.id, cancelled)).contains("response_code=")
+    }
+
+    @Test
     fun `pending transaction reports pending`() {
         val started = startForPid()
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Pending)
@@ -335,12 +372,12 @@ class OpenId4VpFlowIntegrationTest {
         val outcome =
             flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
         assertThat(outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
-        val redirect = checkNotNull(flow.sameDeviceRedirectFor(started.id))
+        val redirect = checkNotNull(flow.sameDeviceRedirectFor(started.id, outcome))
         val code = redirect.substringAfter("response_code=")
         // The user never comes back within the transaction TTL.
         clock.advance(config.transactionTimeToLive.plusSeconds(1))
         // No new code is minted for an expired transaction.
-        assertThat(flow.sameDeviceRedirectFor(started.id)).isNull()
+        assertThat(flow.sameDeviceRedirectFor(started.id, outcome)).isNull()
         // The stale code is not consumable, and the wallet outcome is never exposed:
         // Expired while the entry survives, Unknown once the store sweep removed it.
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
@@ -380,9 +417,10 @@ class OpenId4VpFlowIntegrationTest {
         val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
         val started =
             retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
-        retainingFlow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
+        val cancelled =
+            retainingFlow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
         val code =
-            checkNotNull(retainingFlow.sameDeviceRedirectFor(started.id)).substringAfter("response_code=")
+            checkNotNull(retainingFlow.sameDeviceRedirectFor(started.id, cancelled)).substringAfter("response_code=")
         clock.advance(config.transactionTimeToLive.plusSeconds(1))
         // The retained entry is findable, but the stale code must not complete the flow.
         assertThat(retainingFlow.consumeResponseCode(started.id, code)).isFalse()
