@@ -111,18 +111,28 @@ class OpenId4VpVerificationFlow(
         }
     }
 
-    override fun sameDeviceRedirectFor(txId: TransactionId): String? {
+    override fun sameDeviceRedirectFor(
+        txId: TransactionId,
+        outcome: FlowOutcome,
+    ): String? {
         val callbackBase = config.endpoints.sameDeviceCallbackBase
         val transaction = store.get(txId)
         // The redirect exists only for a same-device transaction whose response has
         // been processed: the ack to the wallet is the only place it belongs. After the
         // return leg no further redirect exists, and an expired transaction gets no
         // code either — its callback could never complete the flow.
+        //
+        // And the caller must present the outcome it was just handed. Anyone can POST an
+        // `error` to the response endpoint knowing only the transaction id; that request
+        // is owed an acknowledgement, but it is owed nothing about a verification someone
+        // else's wallet completed. Without this equality the ack would mint and return
+        // that person's return ticket to whoever asked.
         val eligible =
             callbackBase != null &&
                 transaction != null &&
                 transaction.mode == FlowMode.SAME_DEVICE &&
                 transaction.outcome != null &&
+                transaction.outcome == outcome &&
                 !transaction.returned &&
                 !transaction.isExpired(clock.instant(), config.transactionTimeToLive)
         if (!eligible) return null

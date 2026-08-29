@@ -68,7 +68,10 @@ class SameDeviceCallbackTest {
         override fun awaitOutcome(txId: TransactionId): FlowOutcome =
             if (txId == knownId) FlowOutcome.Pending else FlowOutcome.Unknown
 
-        override fun sameDeviceRedirectFor(txId: TransactionId): String? = null
+        override fun sameDeviceRedirectFor(
+            txId: TransactionId,
+            outcome: FlowOutcome,
+        ): String? = null
 
         override fun consumeResponseCode(
             txId: TransactionId,

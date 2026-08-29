@@ -170,10 +170,10 @@ class CedSimFlowTest {
         val outcome = presentSimulatedCed(keys, mode = FlowMode.SAME_DEVICE)
         assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
         val txId = lastTransactionId()
-        val redirect = flow.sameDeviceRedirectFor(txId)
+        val redirect = flow.sameDeviceRedirectFor(txId, outcome)
         assertThat(redirect).startsWith("https://demo.zilath.example/cb/${txId.value}?response_code=")
         // Idempotent while unconsumed, single-use once exchanged.
-        assertThat(flow.sameDeviceRedirectFor(txId)).isEqualTo(redirect)
+        assertThat(flow.sameDeviceRedirectFor(txId, outcome)).isEqualTo(redirect)
         // WP_094: same-device outcomes stay pending until the user-agent comes back.
         assertThat(flow.awaitOutcome(txId)).isEqualTo(FlowOutcome.Pending)
         val code = redirect!!.substringAfter("response_code=")
@@ -190,7 +190,7 @@ class CedSimFlowTest {
         assertThat(flow.consumeResponseCode(txId, code)).isTrue()
         assertThat(flow.consumeResponseCode(txId, code)).isFalse()
         // A consumed code is never re-minted, and the outcome is now observable.
-        assertThat(flow.sameDeviceRedirectFor(txId)).isNull()
+        assertThat(flow.sameDeviceRedirectFor(txId, outcome)).isNull()
         assertThat(flow.awaitOutcome(txId)).isInstanceOf(FlowOutcome.Verified::class.java)
     }
 
@@ -214,8 +214,8 @@ class CedSimFlowTest {
 
     @Test
     fun `a cross-device transaction never yields a same-device redirect`() {
-        presentSimulatedCed(keys)
-        assertThat(flow.sameDeviceRedirectFor(lastTransactionId())).isNull()
+        val outcome = presentSimulatedCed(keys)
+        assertThat(flow.sameDeviceRedirectFor(lastTransactionId(), outcome)).isNull()
     }
 
     @Test
@@ -229,7 +229,7 @@ class CedSimFlowTest {
             )
         assertThat(outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
         // RPR-59: the user who cancelled in the wallet must still land back on the RP.
-        assertThat(flow.sameDeviceRedirectFor(started.id)).contains("response_code=")
+        assertThat(flow.sameDeviceRedirectFor(started.id, outcome)).contains("response_code=")
     }
 
     private fun lastTransactionId(): dev.zilath.verifier.openid4vp.TransactionId {

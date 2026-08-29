@@ -72,6 +72,11 @@ data class VerificationContext(
      * as one entry would. Reported upstream: pagopa/wallet-conformance-test#221.
      */
     val expectedAudiences: Set<String>,
+    val clock: Clock,
+    val trustEvaluator: TrustEvaluator,
+    val statusChecker: StatusChecker,
+    /** Maximum accepted distance between the key binding `iat` and now, in both directions. */
+    val keyBindingMaxAge: Duration = DEFAULT_KEY_BINDING_MAX_AGE,
     /**
      * The credential types this request will accept, from the DCQL query's `vct_values`.
      * Empty means no check — see `checkCredentialType`. Non-empty is what makes "verified"
@@ -79,11 +84,6 @@ data class VerificationContext(
      * this issuer signed".
      */
     val expectedVcts: Set<String> = emptySet(),
-    val clock: Clock,
-    val trustEvaluator: TrustEvaluator,
-    val statusChecker: StatusChecker,
-    /** Maximum accepted distance between the key binding `iat` and now, in both directions. */
-    val keyBindingMaxAge: Duration = DEFAULT_KEY_BINDING_MAX_AGE,
 ) {
     init {
         require(expectedAudiences.isNotEmpty()) { "at least one expected audience is required" }

@@ -79,11 +79,24 @@ interface VerificationFlow {
 
     /**
      * The same-device `redirect_uri` for the wallet response acknowledgement (spec
-     * v1.4.6, remote flow): callback base + a fresh single-use `response_code`.
-     * Null for cross-device transactions and for transactions without a recorded
-     * outcome. Idempotent: repeated calls return the same code.
+     * v1.4.6, remote flow): callback base + a single-use `response_code`.
+     *
+     * [outcome] must be the outcome [handleWalletResponse] just returned to this caller,
+     * and the code is released only when it still matches the one recorded on the
+     * transaction. That parameter is the security boundary, not a convenience: without it
+     * any acknowledgement — including the one owed to an unauthenticated `error` POST —
+     * would hand out the return ticket for whatever outcome the transaction happened to
+     * hold, which for a completed same-device verification is somebody's verified
+     * entitlement.
+     *
+     * Null for cross-device transactions, for a transaction with no recorded outcome, for
+     * one whose return leg is already done or expired, and for any caller presenting an
+     * outcome that is not the recorded one. Idempotent for the caller it belongs to.
      */
-    fun sameDeviceRedirectFor(txId: TransactionId): String?
+    fun sameDeviceRedirectFor(
+        txId: TransactionId,
+        outcome: FlowOutcome,
+    ): String?
 
     /**
      * Completes the same-device return leg of [txId] with its single-use `code`, in one
@@ -102,8 +115,13 @@ enum class FlowMode { CROSS_DEVICE, SAME_DEVICE }
 
 /**
  * Identifies one verification transaction. Travels as the OpenID4VP `state` and appears in
- * the response URI, so it is public by construction: it is an opaque handle, never a
- * capability — knowing an id grants nothing on its own.
+ * the response URI.
+ *
+ * Treat it as a BEARER CAPABILITY, not as a public handle. The response endpoint is
+ * unauthenticated by protocol design, so whoever holds this id can post to it — including
+ * an `error`, which terminally ends the transaction. That is inherent to OpenID4VP: the id
+ * is 16 random bytes precisely because unguessability is what protects the exchange. Do not
+ * put it anywhere it can leak — a referrer, an analytics URL, a log shipped off the box.
  */
 data class TransactionId(
     val value: String,
@@ -124,18 +142,28 @@ data class PresentationRequest(
      * the two cannot drift apart. An empty result — a caller-built query that does not
      * constrain the type — leaves the verifier unconstrained too, rather than rejecting.
      */
-    fun expectedVcts(): Set<String> =
-        runCatching {
-            (dcqlQuery["credentials"] as? JsonArray)
-                .orEmpty()
+    fun expectedVcts(): Set<String> {
+        // No runCatching here, deliberately. Swallowing a parse failure would return the
+        // empty set, and the empty set means "do not check the credential type" — so a
+        // malformed query would silently switch off a security check instead of failing.
+        // That is the same fail-open this audit found elsewhere, and a query this library
+        // cannot read is the relying party's own bug, which should surface at start().
+        val credentials =
+            requireNotNull(dcqlQuery["credentials"] as? JsonArray) {
+                "dcql_query has no credentials array"
+            }
+        val matching =
+            credentials
                 .mapNotNull { it as? JsonObject }
                 .filter { (it["id"] as? JsonPrimitive)?.content == credentialQueryId }
-                .flatMap { credential ->
-                    ((credential["meta"] as? JsonObject)?.get("vct_values") as? JsonArray)
-                        .orEmpty()
-                        .mapNotNull { (it as? JsonPrimitive)?.content }
-                }.toSet()
-        }.getOrDefault(emptySet())
+        require(matching.isNotEmpty()) { "dcql_query has no credential with id $credentialQueryId" }
+        return matching
+            .flatMap { credential ->
+                ((credential["meta"] as? JsonObject)?.get("vct_values") as? JsonArray)
+                    .orEmpty()
+                    .mapNotNull { (it as? JsonPrimitive)?.content }
+            }.toSet()
+    }
 
     companion object {
         /**
