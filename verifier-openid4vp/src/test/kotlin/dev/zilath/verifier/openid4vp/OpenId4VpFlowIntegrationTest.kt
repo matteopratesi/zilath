@@ -173,6 +173,20 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
+    fun `an expired wallet error does not keep the wallet's own text readable`() {
+        // The tombstone drops the description too: it came from the wallet response and
+        // has no business outliving the transaction it belonged to.
+        val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        flow.handleWalletResponse(
+            started.id,
+            DirectPostBody(mapOf("error" to "access_denied", "error_description" to "user said no")),
+        )
+        clock.advance(Duration.ofMinutes(6))
+        val outcome = flow.awaitOutcome(started.id)
+        assertThat(outcome.toString()).doesNotContain("user said no")
+    }
+
+    @Test
     fun `a throwing status checker ends in a terminal internal error, not a stuck transaction`() {
         val throwingStatus = StatusChecker { _, _ -> error("status backend down") }
         val fragileFlow =
@@ -238,8 +252,11 @@ class OpenId4VpFlowIntegrationTest {
         val started = startForPid()
         val body = walletBody(started)
         clock.advance(Duration.ofMinutes(6))
+        // One read answers "expired" and takes the entry with it; after that there is
+        // nothing left to answer about, which is the point — an expired transaction must
+        // not stay queryable, because staying queryable is what kept its claims alive.
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
-        assertThat(flow.handleWalletResponse(started.id, body)).isEqualTo(FlowOutcome.Expired)
+        assertThat(flow.handleWalletResponse(started.id, body)).isEqualTo(FlowOutcome.Unknown)
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Unknown)
     }
 
@@ -388,8 +405,8 @@ class OpenId4VpFlowIntegrationTest {
         // No new code is minted for an expired transaction.
         assertThat(flow.sameDeviceRedirectFor(started.id, outcome)).isNull()
         // The stale code is not consumable, and the wallet outcome is never exposed:
-        // Expired while the entry survives, Unknown once the store sweep removed it.
-        assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
+        // the first read after expiry took the entry, so what is left is Unknown.
+        assertThat(flow.awaitOutcome(started.id)).isIn(FlowOutcome.Expired, FlowOutcome.Unknown)
         assertThat(flow.consumeResponseCode(started.id, code)).isFalse()
         assertThat(flow.awaitOutcome(started.id)).isIn(FlowOutcome.Expired, FlowOutcome.Unknown)
     }

@@ -126,13 +126,13 @@ class InMemoryTransactionStore(
         // without this, a process that starts no new transaction, a venue after the last
         // performance, kept every other completed transaction and the disclosed claims
         // inside them in the heap until it restarted.
-        sweepExpired(except = id)
-        // An expired entry survives one more read so the flow can answer "expired" rather
-        // than "never existed" — but it survives as a TOMBSTONE. Polling an expired
-        // transaction postpones its removal, so without this a caller could keep the
-        // disclosed claims of a finished verification in the heap indefinitely just by
-        // asking about it. What is kept is the shape; what is dropped is the content.
+        sweepExpired()
+        // An expired entry answers ONE more read, so the flow can say "expired" rather than
+        // "never existed", and is gone from the store before that answer is returned. The
+        // tombstone is the answer, not the stored value: redacting a copy while leaving the
+        // original in the map would have looked like a fix and retained the claims anyway.
         return if (found != null && found.isExpired(clock.instant(), timeToLive)) {
+            transactions.remove(id, found)
             found.copy(outcome = tombstoneOf(found.outcome))
         } else {
             found
@@ -145,6 +145,9 @@ class InMemoryTransactionStore(
             null -> null
             is FlowOutcome.Verified -> FlowOutcome.Rejected(RejectionReason.EXPIRED, "outcome expired")
             is FlowOutcome.Rejected -> FlowOutcome.Rejected(outcome.reason, null)
+            // The description came from the wallet response; it has no business outliving
+            // the transaction it belonged to.
+            is FlowOutcome.WalletErrorAcknowledged -> outcome.copy(description = null)
             else -> outcome
         }
 
@@ -164,12 +167,12 @@ class InMemoryTransactionStore(
         transactions.remove(id)
     }
 
-    private fun sweepExpired(except: TransactionId? = null) {
+    private fun sweepExpired() {
         val now = clock.instant()
         // Completed transactions keep their outcome until they expire, so the checkout
         // can still poll it; expiry is the only thing that removes entries.
         transactions.values
-            .filter { it.isExpired(now, timeToLive) && it.id != except }
+            .filter { it.isExpired(now, timeToLive) }
             .forEach { transactions.remove(it.id) }
     }
 }
