@@ -152,17 +152,31 @@ and the current state of cryptographic review.
 
 ## License
 
-AGPL-3.0. **Commercial use is allowed** — the AGPL does not forbid it, and you owe nothing
-for deploying Zilath in a paid product or service. What it asks is compliance: if you
-convey the software or offer it over a network, users get the corresponding source of your
-modified version under the same licence.
+AGPL-3.0, with a commercial licence available as an alternative. What separates the two is
+not whether you make money from it: it is **whether the software that incorporates the
+library is open or closed**.
 
-A separate commercial licence exists for the case where that is genuinely not possible —
-typically embedding the library in a product whose source cannot be released. It is an
-alternative for those who cannot comply with the AGPL, not a fee for doing business:
-contact the author.
+The AGPL does not forbid commercial use. It is, however, strong copyleft, and incorporating
+the library into an application is generally understood to produce a work based on it:
+conveying that application means giving recipients its Corresponding Source under the same
+licence, and — this is what separates the AGPL from the GPL — letting users interact with a
+modified work over a network means offering them that source too, even though no copy was
+ever distributed. So:
 
-The commercial licence only ever exists *alongside* the open one: every release stays
+- **open software** — use it freely and at no cost, including inside a paid service;
+- **closed software** — the AGPL terms cannot be met, and the commercial licence applies.
+
+The second case covers proprietary ticketing and venue systems, which is the setting this
+library was written for. The commercial licence is the project's only intended source of
+revenue: contact the author.
+
+Where that cost falls is a property of the model rather than an accident of it — on
+organisations that choose to keep their own software closed. **The person being verified
+never pays and is never metered.** Not because the price was set that way, but because it
+is a stated constraint of the project: section 4 of the [CLA](CLA.md). The project may not
+be transferred to anyone who has not accepted that section in writing — and a transfer made
+without it does not carry the relicensing right along with it.
+
+The commercial licence only ever exists *alongside* the open one. Every release stays
 available under the AGPL-3.0, or another licence approved by the Open Source Initiative
-granting at least the same freedoms, and no feature is withheld from it. Those commitments
-are binding — they are section 4 of the [CLA](CLA.md).
+granting at least the same freedoms, and no feature is withheld from it.
