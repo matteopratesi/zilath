@@ -130,7 +130,17 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
-    fun `request object follows the IT-Wallet v1_4_5 profile`() {
+    fun `profile names are the specification line, not a patch release`() {
+        // These strings reach an integrator's logs and configuration. Pinning them here
+        // means a rename has to be a deliberate act rather than a side effect of editing
+        // a comment — and naming the LINE keeps them true across 1.4.x, whose RP flow
+        // requirements do not change between patch releases.
+        assertThat(ItWalletProfile.name).isEqualTo("it-wallet-1.4")
+        assertThat(ArfBaselineProfile.name).isEqualTo("arf-baseline")
+    }
+
+    @Test
+    fun `request object follows the IT-Wallet v1_4 profile`() {
         val started = startForPid()
         val jwt = SignedJWT.parse(flow.requestJwtFor(started.id))
         assertThat(jwt.header.type.toString()).isEqualTo("oauth-authz-req+jwt")

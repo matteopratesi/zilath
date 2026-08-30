@@ -1,6 +1,8 @@
 # IT-Wallet vs ARF/EUDI divergences
 
-Recorded against IT-Wallet v1.4.5 (docs/spec-version.md) and PagoPA conformance tool 1.2.1
+Observed against IT-Wallet v1.4.5 with PagoPA conformance tool 1.2.1; the target is now
+v1.4.6 and the divergences below still hold, because the 1.4.5 → 1.4.6 delta does not touch
+the RP flow requirements (see [spec-version.md](spec-version.md)). Tool details: 1.2.1
 (`@pagopa/it-wallet-conformance-tool`, wallet version `V1_4`). The EUDI reference verifier
 (`eudi-srv-verifier-endpoint`) has been cloned for comparison; a runtime side-by-side has
 not been run yet.

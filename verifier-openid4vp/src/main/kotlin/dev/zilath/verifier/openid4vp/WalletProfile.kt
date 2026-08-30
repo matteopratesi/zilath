@@ -27,12 +27,19 @@ import kotlinx.serialization.json.buildJsonObject
  * to change about the OpenID4VP relying-party flow, without touching the flow itself.
  *
  * The baseline is OpenID4VP 1.0 / the EUDI ARF; [ItWalletProfile] is the first national
- * profile (Italy, IT-Wallet v1.4.5) and the library default. Further profiles implement
+ * profile (Italy, IT-Wallet v1.4.x) and the library default. Further profiles implement
  * this interface — the transaction machinery, replay protection, TTL and receipts are
  * profile-independent by design.
  */
 interface WalletProfile {
-    /** Short identifier used in logs and documentation (e.g. `it-wallet-1.4.5`). */
+    /**
+     * Short identifier used in logs and documentation (e.g. `it-wallet-1.4`).
+     *
+     * It names the specification LINE, not a patch release: the RP flow requirements are
+     * identical across 1.4.x, so pinning the patch number here would mean changing an
+     * observable value — one that lands in an integrator's logs — on every documentation
+     * release of the specification.
+     */
     val name: String
 
     /** The `response_mode` the request object announces and the response endpoint accepts. */
@@ -52,11 +59,11 @@ interface WalletProfile {
 }
 
 /**
- * IT-Wallet v1.4.5 (docs/spec-version.md): `direct_post.jwt` is MANDATORY — the response
+ * IT-Wallet v1.4.x (docs/spec-version.md): `direct_post.jwt` is MANDATORY — the response
  * is always a JWE encrypted to the RP key advertised in `client_metadata.jwks`.
  */
 object ItWalletProfile : WalletProfile {
-    override val name: String = "it-wallet-1.4.5"
+    override val name: String = "it-wallet-1.4"
     override val responseMode: String = "direct_post.jwt"
 
     override fun clientMetadataFor(config: RelyingPartyConfiguration): Map<String, Any> =
