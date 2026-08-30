@@ -24,10 +24,13 @@ impossible to licence any other way. That is the entire purpose of this document
 
 You keep the copyright in what you write. You grant Matteo Pratesi (the "maintainer"):
 
-- a perpetual, worldwide, non-exclusive, royalty-free, irrevocable **copyright licence**
+- a perpetual, worldwide, non-exclusive, royalty-free, **irrevocable copyright licence**
   to reproduce, modify, publish and distribute your contribution and derivative works of
-  it, **including under licence terms different from the AGPL-3.0**, subject to section 4;
-- a perpetual, worldwide, non-exclusive, royalty-free, irrevocable **patent licence** to
+  it;
+- in addition, and **conditionally**, the right to licence your contribution under terms
+  other than the AGPL-3.0. This right is what makes the commercial licence possible, and
+  it is the only permission section 4 can affect;
+- a perpetual, worldwide, non-exclusive, royalty-free, **irrevocable patent licence** to
   make, use, sell and otherwise transfer your contribution, covering only those patent
   claims you own or control that your contribution necessarily infringes, alone or in
   combination with the project.
@@ -44,7 +47,12 @@ in any other project.
 
 ## 4. What the project commits to in return
 
-These commitments bind the maintainer and any successor who takes over the project:
+These commitments bind the maintainer, and they are how they reach anyone who comes after:
+the maintainer undertakes **not to transfer, sell or assign the project, this agreement or
+the rights granted under it unless the receiving party agrees in writing to be bound by
+this section 4 in full**, towards contributors, on the same terms. A transfer made without
+that written undertaking does not carry the conditional relicensing right of section 2
+with it: that right simply ends.
 
 1. **Every release of Zilath stays available under the AGPL-3.0**, or under another
    licence approved by the Open Source Initiative that grants at least the same freedoms.
@@ -58,9 +66,15 @@ These commitments bind the maintainer and any successor who takes over the proje
    point **stays under the licence it was published with**. Nobody can retroactively close
    what has already been given.
 
-If the maintainer breaks commitment 1 or 2, the permission you granted in section 2 to
-licence your contribution under different terms ends for contributions you made before the
-breach — the AGPL licence on your work, like everyone else's, continues unaffected.
+**What a breach does, precisely.** If the maintainer breaks commitment 1 or 2, the
+conditional right in section 2 — to licence your contribution under terms other than the
+AGPL-3.0 — ends automatically, for every contribution you made before the breach. It is a
+condition on that one permission, not a termination right over the rest.
+
+Nothing else is undone. **Licences already granted to third parties stay valid**: someone
+who bought a commercial licence in good faith does not lose it because of a later breach,
+and no user of a published release loses anything. The irrevocable copyright and patent
+licences in section 2 are unaffected, and so is the AGPL licence on your work.
 
 ## 5. What you are telling us
 
@@ -81,13 +95,13 @@ expected to support it.
 
 Add a `Signed-off-by` line to your commits:
 
-```
+```bash
 git commit -s
 ```
 
 which appends:
 
-```
+```text
 Signed-off-by: Your Name <your.email@example.com>
 ```
 

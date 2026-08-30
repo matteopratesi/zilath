@@ -152,9 +152,17 @@ and the current state of cryptographic review.
 
 ## License
 
-AGPL-3.0 — free to use in open-source software. For embedding in closed-source commercial
-products, a commercial license is available: contact the author.
+AGPL-3.0. **Commercial use is allowed** — the AGPL does not forbid it, and you owe nothing
+for deploying Zilath in a paid product or service. What it asks is compliance: if you
+convey the software or offer it over a network, users get the corresponding source of your
+modified version under the same licence.
 
-The commercial license only ever exists *alongside* the open one: every release stays
-available under AGPL-3.0, and no feature is withheld from it. Those commitments are
-binding — they are section 4 of the [CLA](CLA.md).
+A separate commercial licence exists for the case where that is genuinely not possible —
+typically embedding the library in a product whose source cannot be released. It is an
+alternative for those who cannot comply with the AGPL, not a fee for doing business:
+contact the author.
+
+The commercial licence only ever exists *alongside* the open one: every release stays
+available under the AGPL-3.0, or another licence approved by the Open Source Initiative
+granting at least the same freedoms, and no feature is withheld from it. Those commitments
+are binding — they are section 4 of the [CLA](CLA.md).

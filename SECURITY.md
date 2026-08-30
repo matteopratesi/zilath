@@ -12,14 +12,20 @@ Use GitHub's private vulnerability reporting: the **Security** tab of this repos
 *Report a vulnerability*. It is private to the maintainer, and it gives you a place to
 attach details without publishing them.
 
+If that form is not available to you for any reason, write to the maintainer at the email
+address on the commits in this repository (`git log -1 --format=%ae`). It is already public
+by virtue of being in the git history, so using it exposes nothing further.
+
 Please include, as far as you can:
 
 - what an attacker achieves, not only what the code does wrong;
 - the shortest sequence of steps that shows it — a failing test is the ideal form;
 - which module and version, and whether the online or offline trust path is involved.
 
-If you cannot use GitHub's form, open a normal issue saying only *"I have a security report
-and need a private channel"* — with no details — and you will be given one.
+Never put the details in a public issue, a pull request, a discussion or a commit message,
+not even partially. If you are unsure whether what you found counts as a vulnerability,
+treat it as one and use a private channel: it is easy to move a report into the open later,
+and impossible to move it back.
 
 ## What to expect
 
@@ -62,8 +68,21 @@ are not bugs; a report about them will be closed with a pointer here.
 
 ## Cryptographic review
 
-The cryptography and trust chain have been reviewed internally, including an adversarial
-audit whose findings are fixed. **They have not yet had an independent external review.**
-Until they have, treat this library as promising rather than proven, and say so to anyone
-who asks. If you are in a position to perform such a review, that offer would be more
-valuable than any feature.
+The cryptography and trust chain have had two internal reviews, both by the maintainer,
+both with their findings fixed and covered by tests in this repository:
+
+- **2026-08-29** — an adversarial audit across the whole codebase, nine lenses with paired
+  opposed reviewers. Of roughly 23 distinct findings, 21 were fixed; the two left open are
+  limits of the `gate-check` demo, declared in its own documentation.
+- **2026-08-30** — a targeted review of signatures, encryption, hashing, nonces and the
+  federation trust chain: every `main` source of the four library modules, read in full.
+  Three findings, all fixed: an SSRF in the online trust-chain resolution, response-JWE
+  confinement, and a missing clock tolerance on credential `exp`/`nbf`.
+
+The reports themselves are working notes and are not published. **Neither review was
+independent**: the same person wrote the code and audited it, which catches slips and
+cannot catch blind spots.
+
+**There has been no external review.** Until there is, treat this library as promising
+rather than proven, and say so to anyone who asks. If you are in a position to perform one,
+that offer would be worth more to this project than any feature.
