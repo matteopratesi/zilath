@@ -137,7 +137,32 @@ today `manual-inps-qr`; when private relying parties can receive wallet presenta
 the same receipt is issued as `wallet-openid4vp` by the library flow — the venue's
 process and records do not change.
 
+## Contributing
+
+Issues and pull requests are welcome — read [CONTRIBUTING.md](CONTRIBUTING.md) first, in
+particular the red lines the project will not cross. Contributions are covered by the
+[Contributor License Agreement](CLA.md), accepted by signing off your commits
+(`git commit -s`).
+
+## Security
+
+Found a vulnerability? **Do not open a public issue** — see [SECURITY.md](SECURITY.md) for
+the private reporting channel, the boundaries this library deliberately does not defend,
+and the current state of cryptographic review.
+
 ## License
 
-AGPL-3.0 — free to use in open-source software. For embedding in closed-source commercial
-products, a commercial license is available: contact the author.
+AGPL-3.0. **Commercial use is allowed** — the AGPL does not forbid it, and you owe nothing
+for deploying Zilath in a paid product or service. What it asks is compliance: if you
+convey the software or offer it over a network, users get the corresponding source of your
+modified version under the same licence.
+
+A separate commercial licence exists for the case where that is genuinely not possible —
+typically embedding the library in a product whose source cannot be released. It is an
+alternative for those who cannot comply with the AGPL, not a fee for doing business:
+contact the author.
+
+The commercial licence only ever exists *alongside* the open one: every release stays
+available under the AGPL-3.0, or another licence approved by the Open Source Initiative
+granting at least the same freedoms, and no feature is withheld from it. Those commitments
+are binding — they are section 4 of the [CLA](CLA.md).
