@@ -145,7 +145,7 @@ internal const val DEFAULT_MAX_CHAIN_LENGTH = 4
 internal val CLOCK_SKEW: java.time.Duration = java.time.Duration.ofMinutes(1)
 
 /**
- * Validates a trust chain ordered leaf-first (spec v1.4.5 §6.11): each statement's
+ * Validates a trust chain ordered leaf-first (spec v1.4.x §6.11): each statement's
  * signature is checked top-down starting from the out-of-band anchor keys, iss/sub
  * linking and temporal validity are enforced, and the leaf's credential signing keys
  * are returned.

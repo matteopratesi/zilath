@@ -118,7 +118,7 @@ internal fun buildRequestJwt(
             .Builder(JWSAlgorithm.ES256)
             .keyID(config.keys.requestSigningKey.keyID)
             .type(JOSEObjectType(REQUEST_OBJECT_TYP))
-    // x509_hash client id scheme: the JAR carries the RP certificate chain (spec v1.4.5).
+    // x509_hash client id scheme: the JAR carries the RP certificate chain (spec v1.4.x).
     config.keys.requestSigningKey.x509CertChain
         ?.takeIf { it.isNotEmpty() }
         ?.let(headerBuilder::x509CertChain)

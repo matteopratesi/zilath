@@ -29,7 +29,7 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
 /**
- * The OpenID4VP relying-party flow (cross-device, IT-Wallet profile v1.4.5):
+ * The OpenID4VP relying-party flow (cross-device, IT-Wallet profile v1.4.x):
  * [start] creates a transaction and yields the QR payload; the wallet fetches the
  * signed request JWT via [requestJwtFor] and posts its encrypted response, handled
  * by [handleWalletResponse]; the checkout page polls [awaitOutcome].
@@ -129,7 +129,7 @@ data class TransactionId(
 
 /** What the relying party asks the wallet to present. */
 data class PresentationRequest(
-    /** A DCQL query as required by IT-Wallet v1.4.5 (`dcql_query` claim). */
+    /** A DCQL query as required by IT-Wallet v1.4.x (`dcql_query` claim). */
     val dcqlQuery: JsonObject,
     /** The id of the credential query inside [dcqlQuery], used to pick the vp_token entry. */
     val credentialQueryId: String,
