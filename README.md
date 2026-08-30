@@ -156,11 +156,18 @@ AGPL-3.0, with a commercial licence available as an alternative. What separates 
 not whether you make money from it: it is **whether the software that incorporates the
 library is open or closed**.
 
-The AGPL does not forbid commercial use. It is, however, strong copyleft, and it reaches
-the work that incorporates the library: under section 13, anyone offering an application
-that integrates Zilath over a network must make the corresponding source of **the whole
-application** available to its users — not merely of any changes made to the library
-itself. Two situations follow:
+The AGPL does not forbid commercial use. It is, however, strong copyleft, and incorporating
+the library into an application is generally understood to produce a work based on it. Two
+obligations follow. **Conveying** that application means giving recipients its Corresponding
+Source under the same licence; and — this is what separates the AGPL from the GPL —
+**modifying** the work and letting users interact with it **over a network** means offering
+them that source as well, under section 13, even though no copy was ever distributed.
+
+How far this reaches for a library that is only linked against has never been settled in
+court, although legal departments generally treat the AGPL as unusable inside a closed
+product. If your case sits near that line, ask a lawyer rather than a README.
+
+Two situations follow:
 
 - **open software** — use it freely and at no cost, including inside a paid service;
 - **closed software** — the AGPL terms cannot be met, and the commercial licence applies.
@@ -172,8 +179,9 @@ revenue: contact the author.
 Where that cost falls is a property of the model rather than an accident of it — on
 organisations that choose to keep their own software closed. **The person being verified
 never pays and is never metered.** Not because the price was set that way, but because it
-is a stated constraint of the project: section 4 of the [CLA](CLA.md), which also binds
-anyone the project is ever transferred to.
+is a stated constraint of the project: section 4 of the [CLA](CLA.md). The project may not
+be transferred to anyone who has not accepted that section in writing — and a transfer made
+without it does not carry the relicensing right along with it.
 
 The commercial licence only ever exists *alongside* the open one. Every release stays
 available under the AGPL-3.0, or another licence approved by the Open Source Initiative
