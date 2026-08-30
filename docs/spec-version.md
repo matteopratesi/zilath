@@ -9,7 +9,7 @@
   behind the WalletProfile seam.
 - All profile decisions (request/response modes, trust chain format, credential formats)
   MUST be taken against this version. Upgrading the target version is a logged decision.
-## RP flow requirements of v1.4.x (recorded during M0.3 against v1.4.5)
+## RP flow requirements of v1.4.x (recorded against v1.4.5)
 
 - `response_mode=direct_post.jwt` is MANDATORY for both same-device and cross-device flows:
   the wallet response is always an encrypted JWE (ECDH-ES on P-256 with A128GCM/A256GCM,
@@ -21,10 +21,9 @@
   `iss`, `iat`, `exp`; `state` recommended.
 - QR payload: `openid4vp://` or `haip-vp://` scheme (or HTTPS universal link) with
   `client_id` and `request_uri`; `request_uri_method` optional (GET when absent).
-- Client id prefixes `openid_federation:` / `x509_hash:` and the trust chain land in M0.4;
-  until then `client_id` is an opaque configured string.
-- Deviation from the original definition of done: the integration test simulates the wallet
-  with `eudi-lib-jvm-sdjwt-kt` (issuance + key binding) instead of
-  `eudi-lib-jvm-siop-openid4vp-kt` — the siop library is a full wallet stack with its own
-  HTTP and trust machinery, unsuitable for hermetic in-process tests against an RP whose
-  trust chain does not exist yet (M0.4). Recorded in the project log.
+- Client id prefixes `openid_federation:` / `x509_hash:` are supported, and the trust
+  chain travels in the JAR header when the federation provides one.
+- The integration tests simulate the wallet with `eudi-lib-jvm-sdjwt-kt` (issuance + key
+  binding) rather than `eudi-lib-jvm-siop-openid4vp-kt`: the siop library is a full wallet
+  stack carrying its own HTTP client and trust machinery, which makes it unsuitable for
+  hermetic in-process tests. The conformance tool covers the real wallet side.
