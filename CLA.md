@@ -76,6 +76,13 @@ who bought a commercial licence in good faith does not lose it because of a late
 and no user of a published release loses anything. The irrevocable copyright and patent
 licences in section 2 are unaffected, and so is the AGPL licence on your work.
 
+**Contributions made after a breach.** While a breach is unremedied, the conditional right
+never arises at all: anything contributed in that period is licensed under the AGPL-3.0
+only. If the maintainer remedies the breach and says so publicly, the conditional right
+resumes **only for contributions made after that** — it does not come back to life for
+anything contributed before or during the breach. In short: at no point can a breach leave
+the maintainer able to relicense work the breach itself affected.
+
 ## 5. What you are telling us
 
 By contributing you confirm that:
