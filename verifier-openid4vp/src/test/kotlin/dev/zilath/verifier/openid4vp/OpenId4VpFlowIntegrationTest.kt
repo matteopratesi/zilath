@@ -16,6 +16,7 @@
  */
 package dev.zilath.verifier.openid4vp
 
+import com.nimbusds.jose.CompressionAlgorithm
 import com.nimbusds.jose.EncryptionMethod
 import com.nimbusds.jose.JWEAlgorithm
 import com.nimbusds.jose.JWEHeader
@@ -76,6 +77,7 @@ class OpenId4VpFlowIntegrationTest {
         vpTokenAsPlainString: Boolean = false,
         encryptTo: JWK? = null,
         audienceOverride: String? = null,
+        jweHeader: JWEHeader = JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM),
     ): DirectPostBody {
         val jar = checkNotNull(flow.requestJwtFor(started.id)) { "request JWT not available" }
         val jwt = SignedJWT.parse(jar)
@@ -99,7 +101,7 @@ class OpenId4VpFlowIntegrationTest {
                 }
                 put("state", stateOverride ?: claims.getStringClaim("state"))
             }
-        val jwe = JWEObject(JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM), Payload(payload.toString()))
+        val jwe = JWEObject(jweHeader, Payload(payload.toString()))
         jwe.encrypt(ECDHEncrypter((encryptTo ?: advertisedKey).toECKey()))
         return DirectPostBody(mapOf("response" to jwe.serialize()))
     }
@@ -299,6 +301,34 @@ class OpenId4VpFlowIntegrationTest {
         val wrongKey = ECKeyGenerator(Curve.P_256).keyID("wrong").generate().toPublicJWK()
         val outcome = flow.handleWalletResponse(started.id, walletBody(started, encryptTo = wrongKey))
         assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
+    }
+
+    @Test
+    fun `a response using an encryption the RP never advertised is rejected`() {
+        // ECDHDecrypter would accept every one of these; the RP's metadata advertises none
+        // of them, and a compressed payload on an unauthenticated endpoint is a
+        // decompression bomb. What is advertised is what is accepted.
+        val notAdvertised =
+            listOf(
+                JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A128CBC_HS256),
+                JWEHeader(JWEAlgorithm.ECDH_ES_A256KW, EncryptionMethod.A256GCM),
+                JWEHeader
+                    .Builder(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM)
+                    .compressionAlgorithm(CompressionAlgorithm.DEF)
+                    .build(),
+            )
+        for (header in notAdvertised) {
+            val started = startForPid()
+            val outcome = flow.handleWalletResponse(started.id, walletBody(started, jweHeader = header))
+            assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
+        }
+    }
+
+    @Test
+    fun `the advertised A128GCM alternative is accepted`() {
+        val started = startForPid()
+        val body = walletBody(started, jweHeader = JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A128GCM))
+        assertThat(flow.handleWalletResponse(started.id, body)).isInstanceOf(FlowOutcome.Verified::class.java)
     }
 
     @Test

@@ -107,29 +107,6 @@ private fun jwksOf(container: Map<*, *>?): List<JWK> {
     }
 }
 
-/**
- * An entity identifier must be an HTTPS URL with a host, no query and no fragment — plain
- * `http` only for the exact localhost names, as [RpFederationConfig] already requires of our
- * own.
- *
- * This runs BEFORE the first fetch, and the identifier at that point is the `iss` of a
- * credential nobody has verified yet. Without it the library would hand an arbitrary
- * attacker-chosen string — `file:`, `http://10.0.0.1:8080`, anything — to the integrator's
- * fetcher and ask it to dereference it.
- */
-private fun requireUsableEntityId(entityId: String) {
-    val uri = runCatching { java.net.URI(entityId) }.getOrNull()
-    val host = uri?.host
-    val ok =
-        !host.isNullOrBlank() &&
-            uri.query == null &&
-            uri.fragment == null &&
-            (uri.scheme == "https" || (uri.scheme == "http" && host in LOCALHOST_HOSTS))
-    if (!ok) trustFail("entity id is not a usable https identifier: $entityId")
-}
-
-private val LOCALHOST_HOSTS = setOf("localhost", "127.0.0.1", "[::1]", "::1")
-
 internal fun fetchEntityConfiguration(
     fetcher: FederationFetcher,
     entityId: String,
@@ -153,7 +130,9 @@ internal fun fetchSubordinateStatement(
     val endpoint =
         superiorConfiguration.federationFetchEndpoint
             ?: trustFail("${superiorConfiguration.subject} exposes no federation_fetch_endpoint")
-    val url = "$endpoint?sub=${URLEncoder.encode(subject, StandardCharsets.UTF_8)}"
+    requireUsableFetchEndpoint(endpoint, superiorConfiguration.subject)
+    val separator = if ('?' in endpoint) '&' else '?'
+    val url = "$endpoint${separator}sub=${URLEncoder.encode(subject, StandardCharsets.UTF_8)}"
     val body =
         runCatching { fetcher.fetch(url) }
             .getOrElse { trustFail("cannot fetch the subordinate statement of $subject") }

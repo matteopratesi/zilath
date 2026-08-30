@@ -141,11 +141,11 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
     ) {
         val now = ctx.clock.instant()
         val expiration = issuerClaims.expirationTime?.toInstant()
-        if (expiration != null && !expiration.isAfter(now)) {
+        if (expiration != null && !expiration.isAfter(now.minus(CLOCK_SKEW))) {
             reject(RejectionReason.EXPIRED, "credential is expired")
         }
         val notBefore = issuerClaims.notBeforeTime?.toInstant()
-        if (notBefore != null && notBefore.isAfter(now)) {
+        if (notBefore != null && notBefore.isAfter(now.plus(CLOCK_SKEW))) {
             reject(RejectionReason.NOT_YET_VALID, "credential is not yet valid")
         }
     }
@@ -219,5 +219,15 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         private val ISSUER_JWT_TYPS = setOf("dc+sd-jwt", "vc+sd-jwt")
 
         private val KEY_BINDING_TYPS = setOf("kb+jwt")
+
+        /**
+         * Tolerance for the ISSUER's clock differing from ours on `exp`/`nbf` — the same
+         * minute the status list checker and the trust chain walk already allow. This was
+         * the one temporal check in the pipeline with no tolerance at all: the NTP drift
+         * the federation code deliberately forgives would have rejected a freshly issued
+         * credential here. The key binding freshness check needs none of this — its window
+         * is minutes wide and symmetric already.
+         */
+        private val CLOCK_SKEW: java.time.Duration = java.time.Duration.ofMinutes(1)
     }
 }

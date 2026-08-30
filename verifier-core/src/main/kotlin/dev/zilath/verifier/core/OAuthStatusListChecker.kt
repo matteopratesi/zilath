@@ -44,6 +44,11 @@ fun interface StatusListFetcher {
      * Throwing is correct here: [OAuthStatusListChecker] catches it and degrades to
      * [CredentialStatus.UNKNOWN]. Implementations should set aggressive timeouts — the URI
      * comes from the credential, so a slow endpoint would otherwise stall a checkout.
+     *
+     * SECURITY: the URI is asserted by the credential's issuer — an entity trusted for
+     * signatures, not for network destinations. Treat it as remote input: cap the response
+     * size, refuse or re-validate redirects, and refuse destinations inside a network the
+     * deployment must protect.
      */
     fun fetch(uri: String): String
 }

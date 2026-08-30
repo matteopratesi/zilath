@@ -128,7 +128,7 @@ internal fun baselineClientMetadata(config: RelyingPartyConfiguration): Map<Stri
                         publicEncryptionJwk(config).toJSONObject(),
                     ),
             ),
-        "encrypted_response_enc_values_supported" to listOf(RESPONSE_ENCRYPTION_ENC, "A128GCM"),
+        "encrypted_response_enc_values_supported" to ACCEPTED_RESPONSE_ENCS,
         "vp_formats_supported" to
             mapOf(
                 "dc+sd-jwt" to
