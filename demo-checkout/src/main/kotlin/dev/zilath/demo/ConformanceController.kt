@@ -47,7 +47,7 @@ class ConformanceController(
     private val clock: Clock,
     @Value("\${zilath.demo.pid-vct:urn:eu.europa.ec.eudi:pid:1}") private val pidVct: String,
 ) {
-    /** The RP entity configuration (VARCO-33): how a federation discovers and onboards us. */
+    /** The RP entity configuration: how a federation discovers and onboards us. */
     @GetMapping("/.well-known/openid-federation")
     fun entityConfiguration(): ResponseEntity<String> {
         val federation =

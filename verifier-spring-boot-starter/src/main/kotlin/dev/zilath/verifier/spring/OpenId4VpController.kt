@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
-/** The two wallet-facing endpoints of the IT-Wallet cross-device flow (plan docs/03 §5-M0.3). */
+/** The two wallet-facing endpoints of the IT-Wallet cross-device flow. */
 @RestController
 class OpenId4VpController(
     private val flow: VerificationFlow,

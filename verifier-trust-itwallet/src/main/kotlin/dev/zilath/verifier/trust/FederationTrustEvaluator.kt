@@ -23,8 +23,7 @@ import dev.zilath.verifier.core.TrustEvaluator
 import java.time.Clock
 
 /**
- * [TrustEvaluator] for the IT-Wallet OpenID Federation profile (spec v1.4.5 §6,
- * plan docs/03 §5-M0.4).
+ * [TrustEvaluator] for the IT-Wallet OpenID Federation profile (spec v1.4.5 §6).
  *
  * Trust is anchored to [TrustAnchorConfig]: the anchor entity id and its federation
  * keys, obtained out-of-band (for the PoC: the conformance tool's local anchor).

@@ -238,5 +238,5 @@ One thing is outstanding and should not be released around:
 - The repository is still private. Publishing artifacts whose POM points at a `404` on
   GitHub would be worse than not publishing.
 
-(VARCO-54, the unverified status list signature, is closed: the token is now validated
+(The unverified status list signature is closed: the token is now validated
 before it is believed.)

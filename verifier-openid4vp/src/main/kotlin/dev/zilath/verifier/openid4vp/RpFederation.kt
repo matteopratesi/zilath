@@ -35,7 +35,7 @@ const val OPENID_FEDERATION_PREFIX = "openid_federation:"
 const val X509_HASH_PREFIX = "x509_hash:"
 
 /**
- * Federation-side identity of the RP (VARCO-33): what is needed to publish the entity
+ * Federation-side identity of the RP: what is needed to publish the entity
  * configuration at `/.well-known/openid-federation` and to onboard into a federation.
  *
  * The [federationKey] signs entity statements and is DISTINCT from the protocol keys in

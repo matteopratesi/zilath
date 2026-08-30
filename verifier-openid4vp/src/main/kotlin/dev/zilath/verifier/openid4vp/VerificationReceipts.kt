@@ -32,7 +32,7 @@ import java.util.Date
 
 /**
  * Issues verification receipts: the signed artifact a venue keeps INSTEAD of any document
- * (plan docs/03 §5-M0.5). A receipt proves that a verification happened and what its
+ * A receipt proves that a verification happened and what its
  * outcome was — never why: it carries the transaction id, the timestamp, the outcome,
  * the claim paths that were REQUESTED and a hash of the request. No claim values, no
  * personal data, no health data.

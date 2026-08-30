@@ -43,7 +43,7 @@ import java.nio.file.Path
 import java.time.Clock
 
 /**
- * Minimal runnable relying party for the PagoPA conformance runs (plan docs/03 §5-M0.4).
+ * Minimal runnable relying party for the PagoPA conformance runs.
  * Ephemeral RP keys are generated at startup: nothing here is production material.
  *
  * Trust: when `zilath.demo.trust-anchor-id` and `zilath.demo.trust-anchor-jwks-path` are set,
@@ -120,7 +120,7 @@ class ConformanceDemoApp {
                 walletAuthorizationScheme = walletScheme,
                 // The demo publishes its entity configuration regardless of the client id
                 // scheme in use: the federation onboarding side must be demonstrable
-                // (VARCO-33) even while the conformance wallet mandates x509_hash.
+                // even while the conformance wallet mandates x509_hash.
                 federation =
                     RpFederationConfig(
                         entityId = baseUrl,

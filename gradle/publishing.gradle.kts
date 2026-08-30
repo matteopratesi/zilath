@@ -1,5 +1,5 @@
 /*
- * Maven Central publishing for the four library modules (VARCO-31).
+ * Maven Central publishing for the four library modules.
  *
  * Applied from the root build. Everything here produces artifacts LOCALLY, into a single
  * staging tree under the root build directory; nothing is uploaded by Gradle. Uploading is
@@ -74,7 +74,7 @@ configure(subprojects.filter { it.name in publishedModules }) {
 
         // Central requires a -javadoc.jar. For Kotlin that is Dokka's HTML output: an empty
         // jar would satisfy the rule and betray the point, in a library whose public API was
-        // documented on purpose (VARCO-53).
+        // documented on purpose.
         val javadocJar =
             tasks.register<Jar>("javadocJar") {
                 archiveClassifier.set("javadoc")

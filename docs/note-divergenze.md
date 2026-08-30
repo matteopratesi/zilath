@@ -1,9 +1,9 @@
-# IT-Wallet vs ARF/EUDI divergences (observed during M0.4)
+# IT-Wallet vs ARF/EUDI divergences
 
 Recorded against IT-Wallet v1.4.5 (docs/spec-version.md) and PagoPA conformance tool 1.2.1
 (`@pagopa/it-wallet-conformance-tool`, wallet version `V1_4`). The EUDI reference verifier
-(`eudi-srv-verifier-endpoint`) has been cloned for comparison; a runtime side-by-side is
-still pending (tracked on the project board).
+(`eudi-srv-verifier-endpoint`) has been cloned for comparison; a runtime side-by-side has
+not been run yet.
 
 ## Specification-level divergences
 
@@ -28,25 +28,26 @@ still pending (tracked on the project board).
 - Wallet **authorization error responses** are posted to the same `response_uri` and the RP
   must acknowledge them with HTTP 200 (`direct_post` semantics).
 
-## Known gaps on our side (tracked as issues on the project board)
+## Known gaps on our side
 
-1. **Same-device flow** (VARCO-32): implemented in the library — `FlowMode.SAME_DEVICE`
+1. **Same-device flow**: implemented in the library — `FlowMode.SAME_DEVICE`
    transactions, wallet-response ack carrying `redirect_uri` with a single-use
    `response_code` (also on wallet cancellation, RPR-59), `consumeResponseCode` exchange
    for the return leg, callback base in `RpEndpoints`/starter properties, demo `/demo/cb`
-   endpoint plus a same-device link on the event page. A conformance re-run against the
-   PagoPA tool is still pending to confirm which RPR failures clear.
-2. **RP federation onboarding** (VARCO-33): the RP now publishes its entity configuration
+   endpoint plus a same-device link on the event page. Confirmed by the 2026-08-27
+   conformance re-run (67 passed, 23 failed, 1 skipped — see
+   [docs/conformance/2026-08-27](conformance/2026-08-27/README.md)), up from 33 passed.
+2. **RP federation onboarding**: the RP now publishes its entity configuration
    at `/.well-known/openid-federation` (`federation_entity` + `openid_credential_verifier`
    metadata, attested `request_uris`/`response_uris`, protocol JWKS by value) and the JAR
    carries the RP `trust_chain` header when the federation provides one. What remains is
    the onboarding itself — registration under a superior and the fetch endpoints a real
    federation requires — which needs a counterpart (IPZS test environment or the AgID
    registration procedure, still unpublished).
-3. **`metadata_policy` operators** (VARCO-34): applied — `value`, `add`, `default`,
+3. **`metadata_policy` operators**: applied — `value`, `add`, `default`,
    `one_of`, `subset_of`, `superset_of`, `essential` are merged anchor-first and resolved
    against the leaf metadata; the credential keys come from the resolved metadata.
-4. **KB-JWT audience** (VARCO-52): the two specifications disagree on whether the audience
+4. **KB-JWT audience**: the two specifications disagree on whether the audience
    carries the Client Identifier Prefix. OpenID4VP 1.0 (App. B.3.6) says it is the Client
    Identifier and its example keeps the prefix; the IT-Wallet rules say it must match the
    "Relying Party unique entity identifier", which reads as the stripped form — and the

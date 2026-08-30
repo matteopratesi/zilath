@@ -31,7 +31,7 @@ import java.util.Date
 
 /**
  * Generates SD-JWT VC test vectors with ephemeral keys, using the same EUDI library
- * on the issuance side (plan docs/03 §5-M0.2).
+ * on the issuance side.
  */
 object TestVectors {
     val NOW: Instant = Instant.parse("2026-08-24T10:00:00Z")

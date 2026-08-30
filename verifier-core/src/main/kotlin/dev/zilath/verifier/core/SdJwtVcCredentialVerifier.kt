@@ -47,7 +47,7 @@ private fun checkTypIfPresent(
 
 /**
  * Verifies SD-JWT VC presentations (issuer JWT + selective disclosures + key binding JWT)
- * against the checks required by the project plan (docs/03 §5-M0.2):
+ * against the full set of checks required for a presentation to be accepted:
  * issuer signature via [TrustEvaluator], disclosure integrity, key binding
  * (signature with the `cnf` key, audience, nonce, freshness, `sd_hash`),
  * temporal validity against the injected clock, and revocation via [StatusChecker].
