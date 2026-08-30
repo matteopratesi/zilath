@@ -137,7 +137,24 @@ today `manual-inps-qr`; when private relying parties can receive wallet presenta
 the same receipt is issued as `wallet-openid4vp` by the library flow — the venue's
 process and records do not change.
 
+## Contributing
+
+Issues and pull requests are welcome — read [CONTRIBUTING.md](CONTRIBUTING.md) first, in
+particular the red lines the project will not cross. Contributions are covered by the
+[Contributor License Agreement](CLA.md), accepted by signing off your commits
+(`git commit -s`).
+
+## Security
+
+Found a vulnerability? **Do not open a public issue** — see [SECURITY.md](SECURITY.md) for
+the private reporting channel, the boundaries this library deliberately does not defend,
+and the current state of cryptographic review.
+
 ## License
 
 AGPL-3.0 — free to use in open-source software. For embedding in closed-source commercial
 products, a commercial license is available: contact the author.
+
+The commercial license only ever exists *alongside* the open one: every release stays
+available under AGPL-3.0, and no feature is withheld from it. Those commitments are
+binding — they are section 4 of the [CLA](CLA.md).
