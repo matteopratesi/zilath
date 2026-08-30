@@ -157,17 +157,11 @@ not whether you make money from it: it is **whether the software that incorporat
 library is open or closed**.
 
 The AGPL does not forbid commercial use. It is, however, strong copyleft, and incorporating
-the library into an application is generally understood to produce a work based on it. Two
-obligations follow. **Conveying** that application means giving recipients its Corresponding
-Source under the same licence; and — this is what separates the AGPL from the GPL —
-**modifying** the work and letting users interact with it **over a network** means offering
-them that source as well, under section 13, even though no copy was ever distributed.
-
-How far this reaches for a library that is only linked against has never been settled in
-court, although legal departments generally treat the AGPL as unusable inside a closed
-product. If your case sits near that line, ask a lawyer rather than a README.
-
-Two situations follow:
+the library into an application is generally understood to produce a work based on it:
+conveying that application means giving recipients its Corresponding Source under the same
+licence, and — this is what separates the AGPL from the GPL — letting users interact with a
+modified work over a network means offering them that source too, even though no copy was
+ever distributed. So:
 
 - **open software** — use it freely and at no cost, including inside a paid service;
 - **closed software** — the AGPL terms cannot be met, and the commercial licence applies.
