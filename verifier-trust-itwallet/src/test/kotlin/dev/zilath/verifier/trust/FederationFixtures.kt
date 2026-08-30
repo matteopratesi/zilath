@@ -94,12 +94,12 @@ object FederationFixtures {
             }
         }
 
-    fun anchorConfiguration(): String =
+    fun anchorConfiguration(fetchEndpoint: String = "$ANCHOR_ID/fetch"): String =
         signedStatement(anchorKey, ANCHOR_ID, ANCHOR_ID) {
             claim("jwks", jwksClaim(anchorKey))
             claim(
                 "metadata",
-                mapOf("federation_entity" to mapOf("federation_fetch_endpoint" to "$ANCHOR_ID/fetch")),
+                mapOf("federation_entity" to mapOf("federation_fetch_endpoint" to fetchEndpoint)),
             )
         }
 
@@ -157,7 +157,7 @@ object FederationFixtures {
             },
         )
 
-    private fun encode(value: String) =
+    fun encode(value: String) =
         java.net.URLEncoder
             .encode(value, Charsets.UTF_8)
 }

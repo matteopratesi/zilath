@@ -335,11 +335,75 @@ class FederationTrustEvaluatorTest {
                     error("should not be reached")
                 },
             )
-        for (bad in listOf("file:///etc/passwd", "http://10.0.0.1:8080", "https://", "not a url")) {
+        val badIds =
+            listOf(
+                "file:///etc/passwd",
+                "http://10.0.0.1:8080",
+                // https alone does not make an address usable: userinfo and bare IPs are
+                // the shapes a reach for something internal takes.
+                "https://root@ta.example",
+                "https://10.0.0.1",
+                "https://[fd00::1]/x",
+                "https://",
+                "not a url",
+            )
+        for (bad in badIds) {
             val decision = evaluator.evaluate(inputFor(issuer = bad, trustChain = emptyList()))
             assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
         }
         assertThat(fetched).isFalse()
+    }
+
+    @Test
+    fun `a poisoned federation_fetch_endpoint is refused before the fetcher sees it`() {
+        // The endpoint comes from the still-unverified configuration of a superior: it
+        // gets the same shape rules as an entity id, or the walk stops. Without this the
+        // library would hand the integrator's fetcher whatever a chain document says.
+        val poisoned =
+            listOf(
+                "file:///etc/passwd",
+                "http://internal.example/fetch",
+                "https://user@ta.example/fetch",
+                "https://169.254.169.254/latest",
+            )
+        for (bad in poisoned) {
+            val fetched = mutableListOf<String>()
+            val fetcher =
+                FederationFetcher { url ->
+                    fetched += url
+                    when (url) {
+                        "${FederationFixtures.LEAF_ID}/.well-known/openid-federation" ->
+                            FederationFixtures.leafConfiguration()
+                        "${FederationFixtures.ANCHOR_ID}/.well-known/openid-federation" ->
+                            FederationFixtures.anchorConfiguration(fetchEndpoint = bad)
+                        else -> error("unexpected fetch of $url")
+                    }
+                }
+            val decision = evaluator(fetcher).evaluate(inputFor())
+            assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+            assertThat(fetched).noneMatch { it.startsWith(bad) }
+        }
+    }
+
+    @Test
+    fun `a fetch endpoint with its own query gets sub appended, not a second question mark`() {
+        val endpoint = "${FederationFixtures.ANCHOR_ID}/fetch?profile=itwallet"
+        val fetcher =
+            FederationFixtures.fetcherOf(
+                mapOf(
+                    "${FederationFixtures.LEAF_ID}/.well-known/openid-federation" to
+                        FederationFixtures.leafConfiguration(),
+                    "${FederationFixtures.ANCHOR_ID}/.well-known/openid-federation" to
+                        FederationFixtures.anchorConfiguration(fetchEndpoint = endpoint),
+                    "$endpoint&sub=${FederationFixtures.encode(FederationFixtures.LEAF_ID)}" to
+                        FederationFixtures.signedStatement(
+                            FederationFixtures.anchorKey,
+                            FederationFixtures.ANCHOR_ID,
+                            FederationFixtures.LEAF_ID,
+                        ) { claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey)) },
+                ),
+            )
+        assertTrustedWithIssuerKey(evaluator(fetcher).evaluate(inputFor()))
     }
 
     @Test

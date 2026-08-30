@@ -177,7 +177,6 @@ object RpEntityConfiguration {
                     // the onboarding work (docs/note-divergenze.md, gap 2).
                     "request_uris" to listOf(config.endpoints.requestUriBase),
                     "response_uris" to listOf(config.endpoints.responseUriBase),
-                    "encrypted_response_enc_values_supported" to listOf(RESPONSE_ENCRYPTION_ENC),
                     "vp_formats_supported" to
                         mapOf(
                             "dc+sd-jwt" to
@@ -187,7 +186,7 @@ object RpEntityConfiguration {
                                 ),
                         ),
                     "authorization_encrypted_response_alg" to RESPONSE_ENCRYPTION_ALG,
-                    "encrypted_response_enc_values_supported" to listOf(RESPONSE_ENCRYPTION_ENC, "A128GCM"),
+                    "encrypted_response_enc_values_supported" to ACCEPTED_RESPONSE_ENCS,
                     // The SAME published JWKs as the request object's client_metadata:
                     // a wallet resolving us through the federation must find the very key
                     // it is asked to encrypt to (matching kid, and use "enc").

@@ -92,7 +92,20 @@ data class TrustAnchorConfig(
     }
 }
 
-/** Retrieves federation documents over HTTP; injectable so tests stay offline. */
+/**
+ * Retrieves federation documents over HTTP; injectable so tests stay offline.
+ *
+ * SECURITY: every [url] derives from content an attacker may influence — the `iss` of a
+ * credential nobody has verified yet, `authority_hints` and `federation_fetch_endpoint`
+ * values from documents that are only verified once the chain closes at the anchor. The
+ * library enforces their shape — https with a hostname, no userinfo, no IP literals —
+ * with one exception: the exact loopback names (localhost, 127.0.0.1, [::1]) are also
+ * accepted as plain http or as literals, so local development needs no TLS. It never
+ * resolves names, so the network boundary is this implementation's job: set aggressive
+ * timeouts, cap the response size, refuse redirects or re-check each redirect target
+ * against the same rules — and when the deployment has an internal network to protect,
+ * refuse destinations that resolve into it.
+ */
 fun interface FederationFetcher {
     /** Returns the response body for [url], or throws on any transport error. */
     fun fetch(url: String): String

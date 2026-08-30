@@ -125,6 +125,18 @@ class SdJwtVcCredentialVerifierTest {
     }
 
     @Test
+    fun `temporal checks tolerate a minute of issuer clock drift`() {
+        // The same tolerance the status list checker and the trust chain walk apply: a
+        // credential expired thirty seconds "ago", or valid in thirty seconds, is someone
+        // else's NTP drift, not a forgery. The two tests above pin that beyond the minute
+        // both checks still bite.
+        assertThat(verify(TestVectors.vector(exp = TestVectors.NOW.minusSeconds(30))))
+            .isInstanceOf(VerificationResult.Verified::class.java)
+        assertThat(verify(TestVectors.vector(nbf = TestVectors.NOW.plusSeconds(30))))
+            .isInstanceOf(VerificationResult.Verified::class.java)
+    }
+
+    @Test
     fun `stale key binding is rejected`() {
         val compact = TestVectors.vector(kbIssuedAt = TestVectors.NOW.minusSeconds(3600))
         assertThat(rejectionOf(verify(compact))).isEqualTo(RejectionReason.INVALID_KEY_BINDING)

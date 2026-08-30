@@ -17,16 +17,13 @@
 package dev.zilath.verifier.openid4vp
 
 import com.nimbusds.jose.JOSEObjectType
-import com.nimbusds.jose.JWEObject
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
-import com.nimbusds.jose.crypto.ECDHDecrypter
 import com.nimbusds.jose.crypto.ECDSASigner
 import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.RejectionReason
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -42,8 +39,6 @@ import java.util.Date
  * behind [WalletProfile] (response mode, client_metadata, response decoding).
  */
 internal const val REQUEST_OBJECT_TYP = "oauth-authz-req+jwt"
-internal const val RESPONSE_ENCRYPTION_ALG = "ECDH-ES"
-internal const val RESPONSE_ENCRYPTION_ENC = "A256GCM"
 
 /** OpenID4VP §5.8: `aud` of a request object addressed to a wallet (static discovery). */
 internal const val WALLET_AUDIENCE = "https://self-issued.me/v2"
@@ -142,17 +137,6 @@ internal fun buildRequestJwt(
 private fun jsonToMap(json: JsonObject): Map<String, Any?> =
     com.nimbusds.jose.util.JSONObjectUtils
         .parse(json.toString())
-
-/** Decrypts the `direct_post.jwt` response JWE with the RP encryption key. */
-internal fun decryptWalletResponse(
-    jwe: String,
-    config: RelyingPartyConfiguration,
-): JsonObject =
-    runCatching {
-        val jweObject = JWEObject.parse(jwe)
-        jweObject.decrypt(ECDHDecrypter(config.keys.responseEncryptionKey))
-        Json.parseToJsonElement(jweObject.payload.toString()) as JsonObject
-    }.getOrElse { flowReject(RejectionReason.MALFORMED, "wallet response cannot be decrypted") }
 
 /** Extracts the compact SD-JWT presentation for the requested credential from `vp_token`. */
 internal fun extractPresentation(
