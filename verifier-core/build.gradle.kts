@@ -27,7 +27,8 @@ tasks.test {
     finalizedBy(tasks.jacocoTestReport)
 }
 
-// Plan docs/03 §5-M0.2 DoD: line coverage of this module must stay >= 90%.
+// Line coverage of this module must stay >= 90%: it is the module that decides whether
+// a credential is accepted.
 tasks.jacocoTestCoverageVerification {
     dependsOn(tasks.test)
     violationRules {

@@ -187,7 +187,7 @@ internal fun validateChain(
                 trustFail("the statement about ${statement.subject} carries no federation keys")
             }
     }
-    // metadata_policy (VARCO-34): superiors constrain the leaf metadata. The immediate
+    // metadata_policy: superiors constrain the leaf metadata. The immediate
     // superior's statement metadata overrides the leaf's first; then the policies,
     // merged anchor-first, are applied. The credential keys come from the RESOLVED
     // metadata, so a superior can restrict or replace what the leaf advertises.

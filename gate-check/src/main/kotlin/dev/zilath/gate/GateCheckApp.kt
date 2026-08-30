@@ -24,7 +24,7 @@ import java.nio.file.Path
 import java.time.Clock
 
 /**
- * Gate-check: the piece that helps TODAY (VARCO-40). A tiny web app the venue
+ * Gate-check: the piece that helps TODAY. A tiny web app the venue
  * self-hosts: the operator follows a guided flow, the person shows the European
  * Disability Card, the operator verifies its QR on the INPS service (exactly what the
  * State expects them to do), and the tool records ONLY the signed outcome.

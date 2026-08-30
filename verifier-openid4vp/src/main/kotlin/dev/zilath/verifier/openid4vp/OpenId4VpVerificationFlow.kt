@@ -24,7 +24,7 @@ import dev.zilath.verifier.core.VerificationResult
 import java.time.Clock
 
 /**
- * Default [VerificationFlow] implementation (plan docs/03 §5-M0.3).
+ * Default [VerificationFlow] implementation.
  *
  * State machine per transaction: CREATED -> PRESENTED -> VERIFIED | REJECTED.
  * The nonce is consumed atomically on the first wallet response: any further

@@ -196,7 +196,7 @@ data class PresentationRequest(
         }
 
         /**
-         * Minimal query for the test PID (plan docs/03 §5-M0.3): given name and family
+         * Minimal query for the test PID: given name and family
          * name only. The production vct is confirmed against the conformance tool in M0.4.
          */
         fun forTestPid(vct: String): PresentationRequest = forVct(vct, listOf("given_name", "family_name"), "pid")

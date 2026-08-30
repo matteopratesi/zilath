@@ -37,7 +37,7 @@ import java.net.URI
 import javax.imageio.ImageIO
 
 /**
- * The "fake checkout" demo (plan docs/03 §5-M0.5): event page, companion-ticket button,
+ * The "fake checkout" demo: event page, companion-ticket button,
  * QR for the wallet, polling, NOMINATIVE fake ticket and signed verification receipt.
  */
 @RestController

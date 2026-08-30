@@ -2,7 +2,7 @@
 
 - **IT-Wallet technical specifications: v1.4.6 LTS** (released 2026-08-06), as published at
   https://italia.github.io/eid-wallet-it-docs/releases/1.4.6/it/ — bumped from v1.4.5 on
-  2026-08-25 (logged decision, varco repo BACKLOG): the 1.4.5→1.4.6 delta is documentation
+  2026-08-25 (logged decision): the 1.4.5→1.4.6 delta is documentation
   plus the IT-Wallet ID data model, with no changes to the RP flow requirements below.
   The 1.4.x line is LTS (EOL when IT-Wallet is notified as EUDIW-compliant, at the latest
   ~August 2027); breaking changes live on the `eudiw`/1.5 branch and will be absorbed
@@ -23,7 +23,7 @@
   `client_id` and `request_uri`; `request_uri_method` optional (GET when absent).
 - Client id prefixes `openid_federation:` / `x509_hash:` and the trust chain land in M0.4;
   until then `client_id` is an opaque configured string.
-- Deviation from the plan DoD (docs/03 §5-M0.3): the integration test simulates the wallet
+- Deviation from the original definition of done: the integration test simulates the wallet
   with `eudi-lib-jvm-sdjwt-kt` (issuance + key binding) instead of
   `eudi-lib-jvm-siop-openid4vp-kt` — the siop library is a full wallet stack with its own
   HTTP and trust machinery, unsuitable for hermetic in-process tests against an RP whose

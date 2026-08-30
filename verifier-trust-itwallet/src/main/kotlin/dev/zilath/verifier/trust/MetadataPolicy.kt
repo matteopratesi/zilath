@@ -17,7 +17,7 @@
 package dev.zilath.verifier.trust
 
 /*
- * OpenID Federation 1.0 §6.1 metadata policies (VARCO-34), the subset the IT-Wallet
+ * OpenID Federation 1.0 §6.1 metadata policies, the subset the IT-Wallet
  * profile relies on: operators `value`, `add`, `default`, `one_of`, `subset_of`,
  * `superset_of`, `essential`. Policies from superior statements are merged anchor-first
  * and applied to the leaf metadata; any conflict or violation fails trust evaluation.

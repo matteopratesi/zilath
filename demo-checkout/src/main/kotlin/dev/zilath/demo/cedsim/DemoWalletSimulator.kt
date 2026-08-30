@@ -29,7 +29,7 @@ import java.nio.file.Path
 import java.time.Clock
 
 /**
- * Demo wallet presenting the SIMULATED CED (VARCO-38).
+ * Demo wallet presenting the SIMULATED CED.
  *
  * Usage:
  *   init <keysDir>                 — generates the simulated federation keys

@@ -1,4 +1,4 @@
-# Conformance run — 2026-08-27 (VARCO-51)
+# Conformance run — 2026-08-27
 
 Tool: `@pagopa/it-wallet-conformance-tool` **1.2.1**, `test:presentation`, wallet **V1_4**.
 

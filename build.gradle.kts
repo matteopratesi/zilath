@@ -13,11 +13,11 @@ subprojects {
     version = "0.2.0-SNAPSHOT"
 }
 
-// Maven Central publishing for the library modules (VARCO-31). Produces artifacts
+// Maven Central publishing for the library modules. Produces artifacts
 // locally only: the upload is a documented manual step, see docs/releasing.md.
 apply(from = rootProject.file("gradle/publishing.gradle.kts"))
 
-// AGPL-3.0 license header enforced on every Kotlin source file (plan: docs/03 §1).
+// AGPL-3.0 license header enforced on every Kotlin source file.
 spotless {
     kotlin {
         target("*/src/**/*.kt")

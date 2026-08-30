@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.net.URI
 
 /**
- * The guided gate flow (VARCO-40): home → checklist + outcome form → signed receipt.
+ * The guided gate flow: home → checklist + outcome form → signed receipt.
  * The form has NO free-text notes on purpose: free text is where personal data leaks in.
  */
 @RestController

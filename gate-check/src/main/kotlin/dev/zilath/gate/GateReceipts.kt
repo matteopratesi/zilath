@@ -41,7 +41,7 @@ import java.util.UUID
  *
  * A receipt records that a verification happened at the gate and what its outcome was —
  * never who was verified: venue, entitlement, outcome, operator, method, timestamp.
- * No name, no document number, no health data. This is by design (VARCO-40 and the
+ * No name, no document number, no health data. This is by design (see the
  * Garante's own pattern for the CED: verify without retaining anything about the person).
  *
  * The `method` claim is the 2027 seam: today every receipt is issued with
