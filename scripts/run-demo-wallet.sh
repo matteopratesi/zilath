@@ -14,13 +14,14 @@ set -e
 TX="$1"
 [ -n "$TX" ] || { echo "usage: $0 <transactionId>" >&2; exit 1; }
 
-# The conformance tool needs Node >= 22 (it imports node:sqlite). On an older runtime it
-# fails deep inside an ESM import, or simply hangs — so check here, where the message can
-# still be useful.
-command -v node >/dev/null 2>&1 || { echo "node not found: the conformance tool needs Node >= 22" >&2; exit 1; }
-NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
-if [ "$NODE_MAJOR" -lt 22 ]; then
-    echo "Node $(node --version) is too old: the conformance tool needs >= 22." >&2
+# The conformance tool imports node:sqlite, and on a runtime without it the failure
+# happens deep inside an ESM import — or the process simply hangs. Probe the module rather
+# than the version number: unflagged node:sqlite landed in 22.13, so "major >= 22" would
+# wave through 22.0–22.12 and fail later anyway.
+command -v node >/dev/null 2>&1 || { echo "node not found: the conformance tool needs Node >= 22.13" >&2; exit 1; }
+if ! node -e 'require("node:sqlite")' >/dev/null 2>&1; then
+    echo "This Node cannot load node:sqlite, which the conformance tool needs." >&2
+    echo "Installed: $(node --version). Required: >= 22.13 (or >= 23)." >&2
     echo "With nvm:  source ~/.nvm/nvm.sh && nvm use 22" >&2
     echo "then run this script again from the same shell." >&2
     exit 1
@@ -46,8 +47,8 @@ echo
 STATUS=$(curl -sf "http://localhost:8080/demo/status/$TX" || true)
 case "$STATUS" in
     *'"verified"'*)
-        echo "Presentation verified — the companion ticket is unlocked:"
-        echo "    http://localhost:8080/demo/wait/$TX"
+        echo "Presentation verified — here is the companion ticket:"
+        echo "    http://localhost:8080/demo/ticket/$TX"
         [ -n "$TOOL_FAILED" ] && echo "(Some conformance assertions failed above: known gaps, docs/note-divergenze.md.)"
         exit 0
         ;;

@@ -56,9 +56,10 @@ Requires JDK 21 (a Gradle toolchain will pick it up).
 A fake event checkout that unlocks a companion ticket by presenting the test PID from a
 wallet, with the PagoPA conformance tool acting as the wallet.
 
-**Node >= 22 is required** — the tool imports `node:sqlite` and on an older runtime it
-hangs rather than failing cleanly. With `nvm`: `source ~/.nvm/nvm.sh && nvm use 22`, then
-run the steps below from that same shell.
+**Node >= 22.13 is required** (or any Node 23+) — the tool imports `node:sqlite`, which
+became available unflagged in 22.13, and on a runtime without it the tool hangs rather than
+failing cleanly. With `nvm`: `source ~/.nvm/nvm.sh && nvm use 22`, then run the steps below
+from that same shell. The script checks this for you before doing anything else.
 
 1. Generate a self-signed RP certificate (the wallet requires the `x509_hash` scheme):
 
