@@ -59,7 +59,7 @@ Each entry states:
 |---|---|
 | **Date** | or date range, cross-referenceable with `git log` |
 | **What** | the deliverable, and the commits or files it covers |
-| **Model** | name and version of the model used, or *none*. Named here because funding-body policy requires provenance to state which model was used *including version* — the product name is an accountability record, not an endorsement |
+| **Model** | name and version of the model used; `none` where no model was involved; `<name>, version not recorded` only for retrospective entries, where naming a version would be a guess. Named at all because funding-body policy requires provenance to state which model was used *including version* — the product name is an accountability record, not an endorsement |
 | **Assistance** | what the model actually did — drafting, refactoring, test generation, review, translation |
 | **Human contribution** | the decisions, corrections and domain knowledge that were not generated: this is the field that matters, and it is not a formality |
 | **Verification** | how the result was checked — tests, review, conformance run, external audit |
@@ -94,8 +94,8 @@ Template — copy and fill:
 - **What**: the whole repository at the point of public release — `verifier-core`,
   `verifier-openid4vp`, `verifier-trust-itwallet`, `verifier-spring-boot-starter`,
   `demo-checkout`, `gate-check`, documentation. 110 commits.
-- **Model**: Anthropic Claude — several versions over the seven days, not individually
-  logged at the time. This entry is retrospective, and its precision is the reason the
+- **Model**: Anthropic Claude, version not recorded — several versions over the seven days,
+  none logged at the time. This entry is retrospective, and that gap is the reason the
   register now exists: entries from here on name the version at the time of the work.
 - **Assistance**: drafting of implementation code and tests, documentation, and two
   internal security reviews.
