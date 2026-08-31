@@ -67,6 +67,14 @@ Each entry states:
 An entry with an empty *Human contribution* field is a warning sign about the work, not
 about the paperwork.
 
+**On the level of detail.** Funding-body policy asks for the prompts and resulting output
+*"or a summary thereof"*, and accepts a general description where the assistance concerned
+tests or documentation rather than code. The entries here are that summary. A verbatim
+transcript of every interaction would be neither maintainable nor readable, and a register
+nobody maintains proves nothing; what an auditor needs is which model, what it did, and
+what a person decided instead — which is what each entry states. Raw transcripts for a
+specific contribution can be produced on request while the sessions remain available.
+
 ## Register
 
 <!--
