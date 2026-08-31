@@ -54,7 +54,11 @@ Requires JDK 21 (a Gradle toolchain will pick it up).
 ## Try the demo
 
 A fake event checkout that unlocks a companion ticket by presenting the test PID from a
-wallet (the PagoPA conformance tool acts as the wallet — Node >= 22 required).
+wallet, with the PagoPA conformance tool acting as the wallet.
+
+**Node >= 22 is required** — the tool imports `node:sqlite` and on an older runtime it
+hangs rather than failing cleanly. With `nvm`: `source ~/.nvm/nvm.sh && nvm use 22`, then
+run the steps below from that same shell.
 
 1. Generate a self-signed RP certificate (the wallet requires the `x509_hash` scheme):
 
@@ -76,11 +80,23 @@ wallet (the PagoPA conformance tool acts as the wallet — Node >= 22 required).
 
 3. Open <http://localhost:8080/demo>, click "Ho diritto al biglietto accompagnatore" and
    copy the transaction id shown on the QR page.
-4. Let the test wallet present the PID:
+4. Let the test wallet present the PID (transactions live 5 minutes, so use a fresh id):
 
    ```sh
    ./scripts/run-demo-wallet.sh <transactionId>
    ```
+
+   The script runs only the conformance tool's happy-flow tests, and there is a reason:
+   the other suites deliberately post authorization *error* responses, and an OpenID4VP
+   transaction is single-use — the first error response consumes its nonce, so everything
+   after it correctly gets `REPLAY` and the happy flow finds the request endpoint already
+   closed. One transaction cannot serve the whole suite. For the full run, see
+   [docs/conformance](docs/conformance/).
+
+   Some conformance assertions fail even in the happy flow: they are the known gaps in
+   [docs/note-divergenze.md](docs/note-divergenze.md), not regressions. What decides
+   whether the presentation went through is the transaction status, which the script
+   reports at the end.
 
 5. The page turns into a nominative companion ticket; the "ricevuta di verifica" link is
    the signed receipt a venue would keep — outcome and timestamp, never a document.
