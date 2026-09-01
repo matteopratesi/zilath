@@ -43,9 +43,9 @@ back.
 The library modules are in scope: `verifier-core`, `verifier-openid4vp`,
 `verifier-trust-itwallet`, `verifier-spring-boot-starter`.
 
-`demo-checkout` and `gate-check` are demonstration applications, **not** production
-software, and are explicitly out of scope — see their own documentation for the limits
-they declare. Findings there are still welcome as ordinary issues.
+`demo-checkout` is a demonstration application, **not** production software, and is
+explicitly out of scope — see its own documentation for the limits it declares. Findings
+there are still welcome as ordinary issues.
 
 ## Boundaries the library does not defend
 
@@ -72,8 +72,9 @@ The cryptography and trust chain have had two internal reviews, both by the main
 both with their findings fixed and covered by tests in this repository:
 
 - **2026-08-29** — an adversarial audit across the whole codebase, nine lenses with paired
-  opposed reviewers. Of roughly 23 distinct findings, 21 were fixed; the two left open are
-  limits of the `gate-check` demo, declared in its own documentation.
+  opposed reviewers. Of roughly 23 distinct findings, 21 were fixed; the remaining two
+  were limits of the `gate-check` demo application, which has since been removed from the
+  repository — they were not fixed, they left with the module.
 - **2026-08-30** — a targeted review of signatures, encryption, hashing, nonces and the
   federation trust chain: every `main` source of the four library modules, read in full.
   Three findings, all fixed: an SSRF in the online trust-chain resolution, response-JWE

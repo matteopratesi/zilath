@@ -41,7 +41,6 @@ Born for accessibility rights: letting a person with a disability prove an entit
 | `verifier-trust-itwallet` | OpenID Federation trust chain evaluation, `metadata_policy`. |
 | `verifier-spring-boot-starter` | Spring Boot auto-configuration and endpoints. |
 | `demo-checkout` | Demo app: fake event checkout unlocking a companion ticket. |
-| `gate-check` | Self-hosted gate tool for venues: guided CED check, signed outcome-only receipts. |
 
 ## Build
 
@@ -128,40 +127,6 @@ ZILATH_DEMO_CREDENTIAL_MODE=ced-sim ./gradlew :demo-checkout:bootRun
 ```
 
 For the full conformance run against this RP, see [docs/conformance](docs/conformance/).
-
-## Gate check — the tool that helps today
-
-`gate-check` is a tiny self-hosted web app for the venue's entrance, usable **now**,
-before wallet verification opens to private relying parties: the operator follows a
-guided flow (person shows the European Disability Card, operator verifies its QR on the
-INPS service — exactly what the State expects), and the tool records **only a signed
-outcome receipt**: venue, entitlement, outcome, operator, timestamp, and the venue's own
-reference for the ticket or order the check authorised. Never a name, a document, a photo,
-a percentage. No free-text field exists, on purpose.
-
-The ticket reference is what makes the receipt a *replacement* for the document rather than
-a ritual: without it a receipt proves that a check happened but not what it allowed, which
-is exactly what a venue needs when reconciling takings months later. It is meant to be a
-commercial identifier — an order number, a seat. The tool rejects the shapes of personal
-data it can recognise (an email address, an Italian tax code), but it cannot tell a booking
-code from a surname: **keeping the field free of personal data is an instruction to the
-operator, not a guarantee the software can make.** The form says so where it is typed.
-
-```sh
-ZILATH_GATE_VENUE="Teatro di Prova" ./gradlew :gate-check:bootRun
-# then open http://localhost:8081/gate
-```
-
-Receipts (JWS, `zilath-gate-receipt+jwt`) and the venue signing key live under
-`ZILATH_GATE_DATA_DIR` (default `./gate-data`, created owner-only; forged lines in the
-receipts file are excluded on load). Trust model: the app binds to `127.0.0.1` by
-default; expose it on the venue LAN explicitly (`ZILATH_GATE_BIND=0.0.0.0`) and only
-behind the venue's own network — whoever can reach the pages can record receipts, so
-the network is the trust boundary (there is no user login by design: it is a
-single-venue, door-side tool). The `method` claim is the migration seam:
-today `manual-inps-qr`; when private relying parties can receive wallet presentations,
-the same receipt is issued as `wallet-openid4vp` by the library flow — the venue's
-process and records do not change.
 
 ## Contributing
 

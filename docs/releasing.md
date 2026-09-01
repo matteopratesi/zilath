@@ -173,7 +173,7 @@ revocation certificate.
      expected version, not by excluding one old version somebody remembered;
    - every artifact has its `.asc`, `.md5` and `.sha1`, derived from the bundle itself so a
      new artifact type is covered without editing the script;
-   - nothing from `demo-checkout`, `gate-check` or the test fixtures got in.
+   - nothing from `demo-checkout` or the test fixtures got in.
 
    On a bundle that is fine it prints one line. On a bundle that is not, it prints what is
    wrong and refuses — and nothing it reports is fixable after an upload. To eyeball the
@@ -225,7 +225,7 @@ revocation certificate.
 | `verifier-openid4vp` | yes |
 | `verifier-trust-itwallet` | yes |
 | `verifier-spring-boot-starter` | yes |
-| `demo-checkout`, `gate-check` | no — applications, not artifacts to depend on |
+| `demo-checkout` | no — an application, not an artifact to depend on |
 
 The test fixtures of `verifier-core` are deliberately excluded: they were written for our own
 tests, not as a supported API, and publishing them would commit us to keeping them stable
