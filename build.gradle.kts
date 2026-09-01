@@ -10,7 +10,7 @@ plugins {
 // project owns: Maven Central verifies namespace ownership through a DNS TXT record on it.
 subprojects {
     group = "dev.zilath"
-    version = "0.2.0-SNAPSHOT"
+    version = "0.2.0"
 }
 
 // Maven Central publishing for the library modules. Produces artifacts

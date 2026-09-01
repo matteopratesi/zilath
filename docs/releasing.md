@@ -233,10 +233,13 @@ forever. Adding them later is easy; removing them later is impossible.
 
 ## Before the first release
 
-One thing is outstanding and should not be released around:
+Nothing outstanding as of 2026-09-01. Both blockers that stood here are closed:
 
-- The repository is still private. Publishing artifacts whose POM points at a `404` on
-  GitHub would be worse than not publishing.
+- the repository is public since 2026-08-30, so the POM `url` and `scm` resolve;
+- the unverified status list signature is fixed — the token is validated before it is
+  believed.
 
-(The unverified status list signature is closed: the token is now validated
-before it is believed.)
+What remains is not a blocker but worth reading once: **the API is not frozen**. Publishing
+`0.2.0` puts these coordinates in front of people permanently, and a `0.x` line is the
+promise that they may still move. Say so in the release notes rather than letting somebody
+infer stability from the mere fact of a Central release.
