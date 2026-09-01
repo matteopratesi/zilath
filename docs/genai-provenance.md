@@ -143,9 +143,10 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   error naming a Spring property nobody sets. Both had been shipped as working. The general
   rule drawn from the two, and applied to the second: a message must name what the reader
   actually sets, not what the program happens to read.
-- **Verification**: the demo run by hand end to end; 179 tests; both directions of the
-  message invariant mutation-checked — the guard was removed and the tests watched to fail
-  before being put back.
+- **Verification**: the demo run by hand end to end; six tests added for the configuration
+  messages, and the invariant mutation-checked in both directions — each guard removed and
+  the tests watched to fail before it was put back. Automated review on the pull requests
+  caught two further inaccuracies in the same messages, both fixed.
 - **Funding status**: pre-existing.
 
 ### 2026-09-01 — gate-check: extended, then removed
@@ -161,8 +162,8 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   second: the tool adds work at the box office without buying anything, in time or in data
   protection, so nobody would adopt it. The model had built the module and then extended
   it; it did not question it until asked to.
-- **Verification**: `clean build` green, 161 tests after the removal (176 before; the 15
-  that went were the module's own).
+- **Verification**: `clean build` green; the removal took 15 tests with it, all the
+  module's own.
 - **Funding status**: pre-existing.
 
 > Part of the work in the last entry was thrown away. It is recorded because it happened: a
