@@ -54,12 +54,7 @@ Requires JDK 21 (a Gradle toolchain will pick it up).
 ## Try the demo
 
 A fake event checkout that unlocks a companion ticket by presenting the test PID from a
-wallet, with the PagoPA conformance tool acting as the wallet.
-
-**Node >= 22.13 is required** (or any Node 23+) — the tool imports `node:sqlite`, which
-became available unflagged in 22.13, and on a runtime without it the tool hangs rather than
-failing cleanly. With `nvm`: `source ~/.nvm/nvm.sh && nvm use 22`, then run the steps below
-from that same shell. The script checks this for you before doing anything else.
+wallet (the PagoPA conformance tool acts as the wallet — Node >= 22 required).
 
 1. Generate a self-signed RP certificate (the wallet requires the `x509_hash` scheme):
 
@@ -81,23 +76,11 @@ from that same shell. The script checks this for you before doing anything else.
 
 3. Open <http://localhost:8080/demo>, click "Ho diritto al biglietto accompagnatore" and
    copy the transaction id shown on the QR page.
-4. Let the test wallet present the PID (transactions live 5 minutes, so use a fresh id):
+4. Let the test wallet present the PID:
 
    ```sh
    ./scripts/run-demo-wallet.sh <transactionId>
    ```
-
-   The script runs only the conformance tool's happy-flow tests, and there is a reason:
-   the other suites deliberately post authorization *error* responses, and an OpenID4VP
-   transaction is single-use — the first error response consumes its nonce, so everything
-   after it correctly gets `REPLAY` and the happy flow finds the request endpoint already
-   closed. One transaction cannot serve the whole suite. For the full run, see
-   [docs/conformance](docs/conformance/).
-
-   Some conformance assertions fail even in the happy flow: they are the known gaps in
-   [docs/note-divergenze.md](docs/note-divergenze.md), not regressions. What decides
-   whether the presentation went through is the transaction status, which the script
-   reports at the end.
 
 5. The page turns into a nominative companion ticket; the "ricevuta di verifica" link is
    the signed receipt a venue would keep — outcome and timestamp, never a document.
@@ -135,8 +118,14 @@ For the full conformance run against this RP, see [docs/conformance](docs/confor
 before wallet verification opens to private relying parties: the operator follows a
 guided flow (person shows the European Disability Card, operator verifies its QR on the
 INPS service — exactly what the State expects), and the tool records **only a signed
-outcome receipt**: venue, entitlement, outcome, operator, timestamp. Never a name, a
-document, a photo, a percentage. No free-text field exists, on purpose.
+outcome receipt**: venue, entitlement, outcome, operator, timestamp, and the venue's own
+reference for the ticket or order the check authorised. Never a name, a document, a photo,
+a percentage. No free-text field exists, on purpose.
+
+The ticket reference is what makes the receipt usable as a *replacement* for the document
+rather than a ritual: without it a receipt proves that a check happened but not what it
+allowed, which is exactly what a venue needs when reconciling takings months later. It is a
+commercial identifier — an order number, a seat — and says nothing about who was checked.
 
 ```sh
 ZILATH_GATE_VENUE="Teatro di Prova" ./gradlew :gate-check:bootRun

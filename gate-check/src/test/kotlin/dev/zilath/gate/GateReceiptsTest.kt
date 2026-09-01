@@ -33,7 +33,7 @@ class GateReceiptsTest {
         @TempDir dir: Path,
     ) {
         val receipts = GateReceipts(dir, "Teatro di Prova", clock)
-        val receipt = receipts.issue("Biglietto accompagnatore", entitled = true, operator = "MP")
+        val receipt = receipts.issue("Biglietto accompagnatore", entitled = true, operator = "MP", reference = "ORD-1")
         val claims = SignedJWT.parse(receipt.jws).jwtClaimsSet
         assertThat(claims.getStringClaim("venue")).isEqualTo("Teatro di Prova")
         assertThat(claims.getStringClaim("entitlement")).isEqualTo("Biglietto accompagnatore")
@@ -51,7 +51,7 @@ class GateReceiptsTest {
         @TempDir dir: Path,
     ) {
         val receipts = GateReceipts(dir, "Teatro di Prova", clock)
-        val receipt = receipts.issue("Tariffa ridotta titolare", entitled = false, operator = "MP")
+        val receipt = receipts.issue("Tariffa ridotta titolare", entitled = false, operator = "MP", reference = "ORD-2")
         assertThat(receipt.outcome).isEqualTo(GateReceipts.OUTCOME_NOT_VERIFIED)
     }
 
@@ -60,7 +60,7 @@ class GateReceiptsTest {
         @TempDir dir: Path,
     ) {
         val first = GateReceipts(dir, "Teatro di Prova", clock)
-        val issued = first.issue("Accesso prioritario", entitled = true, operator = "GB")
+        val issued = first.issue("Accesso prioritario", entitled = true, operator = "GB", reference = "ORD-3")
         // A brand new instance over the same data dir: same key, same records.
         val second = GateReceipts(dir, "Teatro di Prova", clock)
         assertThat(second.today().map { it.id }).containsExactly(issued.id)
@@ -73,7 +73,7 @@ class GateReceiptsTest {
         @TempDir dir: Path,
     ) {
         val receipts = GateReceipts(dir, "Teatro di Prova", clock)
-        val genuine = receipts.issue("Biglietto accompagnatore", entitled = true, operator = "MP")
+        val genuine = receipts.issue("Biglietto accompagnatore", entitled = true, operator = "MP", reference = "ORD-1")
         // Same claims shape, but signed by a DIFFERENT key: only file write access needed.
         val forged =
             GateReceipts(
@@ -81,7 +81,7 @@ class GateReceiptsTest {
                     .createTempDirectory("forger"),
                 "Teatro di Prova",
                 clock,
-            ).issue("Biglietto accompagnatore", entitled = true, operator = "EVIL")
+            ).issue("Biglietto accompagnatore", entitled = true, operator = "EVIL", reference = "ORD-X")
         java.nio.file.Files.writeString(
             dir.resolve("gate-receipts.jsonl"),
             forged.jws + System.lineSeparator(),
@@ -114,7 +114,7 @@ class GateReceiptsTest {
         @TempDir dir: Path,
     ) {
         val receipts = GateReceipts(dir, "Teatro di Prova", clock)
-        val receipt = receipts.issue("Biglietto accompagnatore", entitled = false, operator = "MP")
+        val receipt = receipts.issue("Biglietto accompagnatore", entitled = false, operator = "MP", reference = "ORD-4")
         val parts = receipt.jws.split('.')
         val tampered = parts[0] + "." + parts[1] + "." + parts[2].reversed()
         assertThat(receipts.verifySignature(tampered)).isFalse()

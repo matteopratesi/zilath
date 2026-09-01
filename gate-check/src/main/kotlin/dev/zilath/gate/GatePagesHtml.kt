@@ -48,7 +48,10 @@ private fun page(
         h1 { font-size: 1.4rem; } .muted { color: #666; }
         .btn { display: inline-block; padding: .8rem 1.4rem; background: #14532d; color: #fff; border: 0;
                border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 1rem; cursor: pointer; }
-        .btn.no { background: #7f1d1d; }
+        /* color too, not just background: the bare .no rule below is also used for the
+           outcome text and has the same specificity, so without this the label inherits
+           #7f1d1d on a #7f1d1d button and disappears. */
+        .btn.no { background: #7f1d1d; color: #fff; }
         .ok { color: #14532d; font-weight: 700; } .no { color: #7f1d1d; font-weight: 700; }
         ol li { margin: .6rem 0; }
         .warn { background: #fef3c7; border-radius: 8px; padding: .8rem 1rem; }
@@ -100,11 +103,17 @@ internal fun newVerificationHtml(
               "A"</strong> stampata sul fronte della carta.</li>
         </ol>
         <p class="warn">Non trascrivere <strong>mai</strong> nome, codice fiscale o numero
-        della carta: la ricevuta registra soltanto esito, ora e operatore. Se il diritto
-        non risulta, si applica la tariffa ordinaria: nessun altro dato serve.</p>
+        della carta. Il riferimento è quello del <strong>biglietto</strong>, non della
+        persona: serve a collegare la verifica a ciò che ha autorizzato, ed è l'unico modo
+        perché questa ricevuta sostituisca davvero il documento nei vostri archivi. Se il
+        diritto non risulta, si applica la tariffa ordinaria: nessun altro dato serve.</p>
         <form method="post" action="/gate/record">
           <label>Agevolazione richiesta
             <select name="entitlement">$options</select>
+          </label>
+          <label>Riferimento biglietto o ordine
+            <input name="reference" maxlength="60" required
+                   placeholder="es. ORD-2026-0417 &middot; posto H12">
           </label>
           <label>Operatore (sigla o nome di servizio)
             <input name="operator" maxlength="40" required placeholder="es. MP">
@@ -136,6 +145,7 @@ internal fun receiptHtml(
         <p class="muted">${escape(venue)} — verifica al varco</p>
         $headline
         <p>${escape(receipt.entitlement)} — operatore ${escape(receipt.operator)}<br>
+        Riferimento: <strong>${escape(receipt.reference)}</strong><br>
         <span class="muted">${receipt.issuedAt}</span></p>
         <p class="muted">Questa ricevuta firmata è l'<strong>unica</strong> cosa che la
         struttura conserva: prova che la verifica è avvenuta e come è andata — mai chi era
@@ -154,7 +164,7 @@ internal fun todayHtml(
         receipts.joinToString("") { r ->
             val outcome = if (r.outcome == GateReceipts.OUTCOME_VERIFIED) "✔" else "✘"
             """<tr><td>${r.issuedAt}</td><td>${escape(r.entitlement)}</td>""" +
-                """<td>$outcome</td><td>${escape(r.operator)}</td>""" +
+                """<td>${escape(r.reference)}</td><td>$outcome</td><td>${escape(r.operator)}</td>""" +
                 """<td><a href="/gate/receipt/${escape(r.id)}">ricevuta</a></td></tr>"""
         }
     return page(
@@ -163,7 +173,7 @@ internal fun todayHtml(
         <p class="muted">${escape(venue)} — verifica al varco</p>
         <h1>Verifiche di oggi (${receipts.size})</h1>
         <table>
-          <tr><th>Ora</th><th>Agevolazione</th><th>Esito</th><th>Operatore</th><th></th></tr>
+          <tr><th>Ora</th><th>Agevolazione</th><th>Riferimento</th><th>Esito</th><th>Operatore</th><th></th></tr>
           $rows
         </table>
         <p><a class="btn" href="/gate/new">Nuova verifica</a> <a href="/gate">← Home</a></p>

@@ -59,12 +59,24 @@ class GateReceipts(
     private val receiptsFile: Path = dataDir.resolve(RECEIPTS_FILE)
     private val verifier = ECDSAVerifier(signingKey.toECPublicKey())
 
+    @Suppress("LongParameterList") // a receipt is a flat record: every field is one fact
     class Receipt(
         val id: String,
         val jws: String,
         val entitlement: String,
         val outcome: String,
         val operator: String,
+        /**
+         * The venue's own reference for what this check authorised — an order number, a
+         * ticket code, a seat. Required, because without it a receipt proves that *a*
+         * check happened but not *what it allowed*, which is precisely what a venue needs
+         * when reconciling takings months later.
+         *
+         * It is a commercial identifier, not a personal one: it says nothing about who
+         * was checked, and the red lines still hold — no name, no tax code, no card
+         * number, ever.
+         */
+        val reference: String,
         val issuedAt: Date,
     )
 
@@ -73,6 +85,7 @@ class GateReceipts(
         entitlement: String,
         entitled: Boolean,
         operator: String,
+        reference: String,
         method: String = METHOD_MANUAL_INPS_QR,
     ): Receipt {
         val id = UUID.randomUUID().toString()
@@ -87,6 +100,7 @@ class GateReceipts(
                 .claim("outcome", if (entitled) OUTCOME_VERIFIED else OUTCOME_NOT_VERIFIED)
                 .claim("entitled", entitled)
                 .claim("operator", operator)
+                .claim("reference", reference)
                 .claim("method", method)
                 .build()
         val header =
@@ -148,6 +162,9 @@ class GateReceipts(
             entitlement = claims.getStringClaim("entitlement"),
             outcome = claims.getStringClaim("outcome"),
             operator = claims.getStringClaim("operator"),
+            // Receipts written before the reference existed stay readable: an older file
+            // must not become unreadable because the format grew.
+            reference = claims.getStringClaim("reference") ?: "",
             issuedAt = claims.issueTime,
         )
     }

@@ -60,6 +60,7 @@ class GateController(
     fun record(
         @RequestParam entitlement: String,
         @RequestParam operator: String,
+        @RequestParam reference: String,
         @RequestParam outcome: String,
         @RequestHeader(name = "Sec-Fetch-Site", required = false) fetchSite: String?,
     ): ResponseEntity<Void> {
@@ -68,13 +69,20 @@ class GateController(
             entitlement in entitlements &&
                 operator.isNotBlank() &&
                 operator.length <= OPERATOR_MAX_LENGTH &&
+                reference.isNotBlank() &&
+                reference.length <= REFERENCE_MAX_LENGTH &&
                 outcome in setOf(OUTCOME_PARAM_VERIFIED, OUTCOME_PARAM_NOT_VERIFIED)
         return when {
             !sameOrigin -> ResponseEntity.status(HttpStatus.FORBIDDEN).build()
             !validRequest -> ResponseEntity.badRequest().build()
             else -> {
                 val receipt =
-                    receipts.issue(entitlement, outcome == OUTCOME_PARAM_VERIFIED, operator.trim())
+                    receipts.issue(
+                        entitlement,
+                        outcome == OUTCOME_PARAM_VERIFIED,
+                        operator.trim(),
+                        reference.trim(),
+                    )
                 ResponseEntity
                     .status(HttpStatus.FOUND)
                     .location(URI.create("/gate/receipt/${receipt.id}"))
@@ -98,6 +106,7 @@ class GateController(
 
     companion object {
         private const val OPERATOR_MAX_LENGTH = 40
+        private const val REFERENCE_MAX_LENGTH = 60
         private const val OUTCOME_PARAM_VERIFIED = "verified"
         private const val OUTCOME_PARAM_NOT_VERIFIED = "not-verified"
     }
