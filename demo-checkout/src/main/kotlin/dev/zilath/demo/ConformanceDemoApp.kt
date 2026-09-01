@@ -70,14 +70,38 @@ class ConformanceDemoApp {
         clock: Clock,
     ): TrustEvaluator {
         val fetcher = httpFetcher(insecureTls)
+        // The messages below name the ZILATH_* environment variables, not the Spring
+        // properties they feed: application.yml maps one to the other, and naming only the
+        // property leaves the reader to work that out before they can act on it.
         if (jwksPath.isNotBlank()) {
-            val keys = parseJwks(Files.readString(Path.of(jwksPath)))
-            require(keys.isNotEmpty()) { "no trust anchor keys found in $jwksPath" }
+            val document =
+                runCatching { Files.readString(Path.of(jwksPath)) }.getOrElse {
+                    throw IllegalArgumentException(
+                        "ZILATH_TRUST_ANCHOR_JWKS_PATH points at $jwksPath, which cannot be read: ${it.message}",
+                        it,
+                    )
+                }
+            val keys =
+                runCatching { parseJwks(document) }.getOrElse {
+                    throw IllegalArgumentException(
+                        "ZILATH_TRUST_ANCHOR_JWKS_PATH points at $jwksPath, which is not a key document. " +
+                            ACCEPTED_KEY_SHAPES,
+                        it,
+                    )
+                }
+            require(keys.isNotEmpty()) {
+                "ZILATH_TRUST_ANCHOR_JWKS_PATH points at $jwksPath, which contains no usable keys. " +
+                    ACCEPTED_KEY_SHAPES
+            }
             return FederationTrustEvaluator(TrustAnchorConfig(anchorId, keys), fetcher, clock)
         }
         require(tofu) {
-            "provide zilath.demo.trust-anchor-jwks-path, or explicitly opt into " +
-                "zilath.demo.trust-anchor-tofu=true (conformance runs only)"
+            "No trust anchor keys configured. Either set ZILATH_TRUST_ANCHOR_JWKS_PATH to a file " +
+                "holding the anchor's keys, or set ZILATH_TRUST_ANCHOR_TOFU=true to take them " +
+                "from the anchor itself at first use — acceptable against the conformance " +
+                "tool's ephemeral local anchor, never in production. " +
+                ACCEPTED_KEY_SHAPES +
+                " See the demo instructions in README.md."
         }
         // TOFU: the anchor keys are taken from the anchor's own entity configuration at
         // first use. Acceptable ONLY against the conformance tool's ephemeral local anchor,
@@ -209,6 +233,13 @@ class ConformanceDemoApp {
         const val FEDERATION_SCHEME = "openid-federation"
     }
 }
+
+/**
+ * What [parseJwks] accepts, in the words an operator needs. Kept beside it because the
+ * configuration errors quote this: if the parser changes, the message must change with it.
+ */
+internal const val ACCEPTED_KEY_SHAPES =
+    "Accepted: a JWKS document ({\"keys\": [ ... ]}) or a single JWK object."
 
 /** Parses either a JWK Set document (`{"keys":[...]}`) or a single JWK document. */
 internal fun parseJwks(document: String): List<JWK> =
