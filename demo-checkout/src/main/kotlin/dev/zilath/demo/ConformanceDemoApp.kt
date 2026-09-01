@@ -74,10 +74,24 @@ class ConformanceDemoApp {
         // properties they feed: application.yml maps one to the other, and naming only the
         // property leaves the reader to work that out before they can act on it.
         if (jwksPath.isNotBlank()) {
-            val keys = parseJwks(Files.readString(Path.of(jwksPath)))
+            val document =
+                runCatching { Files.readString(Path.of(jwksPath)) }.getOrElse {
+                    throw IllegalArgumentException(
+                        "ZILATH_TRUST_ANCHOR_JWKS_PATH points at $jwksPath, which cannot be read: ${it.message}",
+                        it,
+                    )
+                }
+            val keys =
+                runCatching { parseJwks(document) }.getOrElse {
+                    throw IllegalArgumentException(
+                        "ZILATH_TRUST_ANCHOR_JWKS_PATH points at $jwksPath, which is not a key document. " +
+                            ACCEPTED_KEY_SHAPES,
+                        it,
+                    )
+                }
             require(keys.isNotEmpty()) {
                 "ZILATH_TRUST_ANCHOR_JWKS_PATH points at $jwksPath, which contains no usable keys. " +
-                    "It must be a JWKS document: {\"keys\": [ ... ]}."
+                    ACCEPTED_KEY_SHAPES
             }
             return FederationTrustEvaluator(TrustAnchorConfig(anchorId, keys), fetcher, clock)
         }
@@ -218,6 +232,13 @@ class ConformanceDemoApp {
         const val FEDERATION_SCHEME = "openid-federation"
     }
 }
+
+/**
+ * What [parseJwks] accepts, in the words an operator needs. Kept beside it because the
+ * configuration errors quote this: if the parser changes, the message must change with it.
+ */
+internal const val ACCEPTED_KEY_SHAPES =
+    "It must be a JWKS document ({\"keys\": [ ... ]}) or a single JWK object."
 
 /** Parses either a JWK Set document (`{"keys":[...]}`) or a single JWK document. */
 internal fun parseJwks(document: String): List<JWK> =
