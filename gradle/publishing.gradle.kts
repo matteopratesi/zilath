@@ -33,6 +33,23 @@ val moduleDescriptions =
             "exposes the wallet-facing endpoints from properties.",
     )
 
+/**
+ * Root package of each module, published as `Automatic-Module-Name`.
+ *
+ * Mapped by hand because it is NOT derivable from the module name: `verifier-trust-itwallet`
+ * lives in `dev.zilath.verifier.trust`, and `verifier-spring-boot-starter` in
+ * `dev.zilath.verifier.spring`. Deriving it would mint module names for packages that do not
+ * exist — and once published, the name is a compatibility promise: changing it later breaks
+ * every consumer using the Java module system.
+ */
+val moduleAutomaticNames =
+    mapOf(
+        "verifier-core" to "dev.zilath.verifier.core",
+        "verifier-openid4vp" to "dev.zilath.verifier.openid4vp",
+        "verifier-trust-itwallet" to "dev.zilath.verifier.trust",
+        "verifier-spring-boot-starter" to "dev.zilath.verifier.spring",
+    )
+
 /** Where every module stages its artifacts, so one bundle can carry them all. */
 val stagingDir = rootProject.layout.buildDirectory.dir("staging-deploy")
 
@@ -80,6 +97,28 @@ configure(subprojects.filter { it.name in publishedModules }) {
                 archiveClassifier.set("javadoc")
                 from(tasks.named("dokkaGeneratePublicationHtml"))
             }
+
+        // AGPL section 4 asks that a copy of the licence travel with the program. Every
+        // source file carries the header, but the binary jar is what people actually receive
+        // and redistribute, and for a project whose commercial licence rests entirely on the
+        // copyleft holding, shipping the artifact without the licence text is the one gap
+        // worth not having. It goes in all three: jar, sources and javadoc are all published.
+        listOf(tasks.named<Jar>("jar"), tasks.named<Jar>("sourcesJar"), javadocJar).forEach { jarTask ->
+            jarTask.configure { metaInf { from(rootProject.file("LICENSE")) } }
+        }
+
+        // Nothing about the build machine goes in here — no Built-By, no Build-Jdk, no
+        // timestamp: they leak the environment and defeat reproducible builds.
+        tasks.named<Jar>("jar") {
+            manifest {
+                attributes(
+                    "Automatic-Module-Name" to
+                        (moduleAutomaticNames[project.name] ?: error("no module name for ${project.name}")),
+                    "Implementation-Title" to project.name,
+                    "Implementation-Version" to project.version,
+                )
+            }
+        }
 
         extensions.configure<PublishingExtension> {
             repositories {
