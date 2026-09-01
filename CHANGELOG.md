@@ -8,7 +8,9 @@ Until 1.0.0 the public API may change between minor versions. Anything that chan
 verifier accepts or rejects is called out explicitly, because that is the kind of change
 that can silently let something through.
 
-## [Unreleased]
+## [0.2.0] — 2026-09-01
+
+First release published to Maven Central, under the name Zilath.
 
 ### Added
 

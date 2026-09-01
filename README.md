@@ -42,6 +42,25 @@ Born for accessibility rights: letting a person with a disability prove an entit
 | `verifier-spring-boot-starter` | Spring Boot auto-configuration and endpoints. |
 | `demo-checkout` | Demo app: fake event checkout unlocking a companion ticket. |
 
+## Using it
+
+Published to Maven Central as `dev.zilath`. Take `verifier-spring-boot-starter` for a Spring
+Boot application — it brings the rest with it — or `verifier-core` alone to verify
+credentials with no framework and no network I/O.
+
+```kotlin
+dependencies {
+    implementation("dev.zilath:verifier-spring-boot-starter:0.2.0")
+}
+```
+
+Artifacts are signed with key [`392ABDC140E3041A`](https://keys.openpgp.org/search?q=392ABDC140E3041A).
+
+**The API is not frozen.** This is a `0.x` line: anything can still move between minor
+versions, and the [changelog](CHANGELOG.md) calls out separately every change that alters
+what a verifier accepts or rejects — those are the ones that can quietly let something
+through.
+
 ## Build
 
 Requires JDK 21 (a Gradle toolchain will pick it up).
