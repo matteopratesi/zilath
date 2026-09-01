@@ -109,3 +109,62 @@ Template — copy and fill:
 - **Funding status**: **pre-existing.** Not claimed as output of any funded work.
 
 <!-- New entries go below, newest last. -->
+
+Model attribution for the entries below: three versions were in use across these two days —
+**Anthropic Claude Fable 5, Opus 5 and Opus 4.8** — often alternating within a single
+session. Which one produced a given commit was not recorded at the time and is not
+reconstructed here; naming the three is accurate, apportioning them would not be.
+
+### 2026-08-31 — This register
+
+- **What**: `docs/genai-provenance.md` and the pointer to it in `README.md`
+  (`c9049c1`..`d0bcab5`, PR #28).
+- **Model**: Anthropic Claude — Fable 5, Opus 5, Opus 4.8.
+- **Assistance**: drafting the document and its schema.
+- **Human contribution**: the decision to start a register before the funded work rather
+  than reconstruct one after it. The refusal to use commit co-author trailers — commit
+  authorship records who takes responsibility, and that is a person. The instruction to name
+  the model only where policy requires it and not otherwise. The judgement on detail: a
+  summary, not a transcript, checked against what the funding body actually asks for rather
+  than against a worst-case reading of it.
+- **Verification**: no code. Automated review on the pull request.
+- **Funding status**: pre-existing. Written before the call opened on 2026-09-03.
+
+### 2026-08-31 → 2026-09-01 — Making the demo runnable by somebody else
+
+- **What**: `scripts/run-demo-wallet.sh` rewritten; `README.md` demo section (the Node
+  22.13 requirement, and what the happy flow does); the configuration error messages in
+  `ConformanceDemoApp.kt` with `ConfigurationMessagesTest` (`e121da1`, `e99b3d7`, PR #29;
+  `cbaffc9`, PR #31).
+- **Model**: Anthropic Claude — Fable 5, Opus 5, Opus 4.8.
+- **Assistance**: diagnosing the script, rewriting it, generating the tests.
+- **Human contribution**: **the defect was found by the maintainer running the demo**, not
+  by the model, and twice over — first the script that hung at step 4, then the startup
+  error naming a Spring property nobody sets. Both had been shipped as working. The general
+  rule drawn from the two, and applied to the second: a message must name what the reader
+  actually sets, not what the program happens to read.
+- **Verification**: the demo run by hand end to end; 179 tests; both directions of the
+  message invariant mutation-checked — the guard was removed and the tests watched to fail
+  before being put back.
+- **Funding status**: pre-existing.
+
+### 2026-09-01 — gate-check: extended, then removed
+
+- **What**: first the ticket reference on the gate receipt, with validation of what gets
+  stored (`a9cfd44`, `21a3b4d`, PR #30); then the removal of the whole module and its
+  traces across six documents (`f8a452f`, PR #32).
+- **Model**: Anthropic Claude — Fable 5, Opus 5, Opus 4.8.
+- **Assistance**: implementing the reference field; later, surveying every reference to the
+  module and rewriting the documents around its absence.
+- **Human contribution**: the question that started the first half — *there has to be a
+  ticket somewhere, otherwise what is the check for?* — and the judgement that ended the
+  second: the tool adds work at the box office without buying anything, in time or in data
+  protection, so nobody would adopt it. The model had built the module and then extended
+  it; it did not question it until asked to.
+- **Verification**: `clean build` green, 161 tests after the removal (176 before; the 15
+  that went were the module's own).
+- **Funding status**: pre-existing.
+
+> Part of the work in the last entry was thrown away. It is recorded because it happened: a
+> register that keeps only what survived describes a process nobody actually followed, and
+> would be worth less to a reader trying to judge how this project is built.
