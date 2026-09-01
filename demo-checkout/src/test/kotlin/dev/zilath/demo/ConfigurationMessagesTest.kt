@@ -82,12 +82,23 @@ class ConfigurationMessagesTest {
                     .toJSONString(),
             )
 
-        // A single JWK object is accepted, so no message may claim a JWKS is required.
+        // A single JWK object parses, so no message may claim a JWKS document is required.
         assertThat(parseJwks(java.io.File(single).readText())).hasSize(1)
         assertThat(ACCEPTED_KEY_SHAPES).contains("single JWK object")
+    }
 
-        val message = messageFrom(jwksPath = jwksFile("{\"not\": \"keys\"}"), tofu = false)
-        assertThat(message).contains(ACCEPTED_KEY_SHAPES)
+    @Test
+    fun `every message that names the key file describes the same accepted formats`() {
+        val messages =
+            listOf(
+                messageFrom(jwksPath = "", tofu = false),
+                messageFrom(jwksPath = emptyJwks(), tofu = false),
+                messageFrom(jwksPath = jwksFile("{\"not\": \"keys\"}"), tofu = false),
+            )
+
+        // Including the one for a configuration that is missing entirely: it tells the reader
+        // what to put in the file, so it has to agree with the paths that read one.
+        assertThat(messages).allSatisfy { assertThat(it).contains(ACCEPTED_KEY_SHAPES) }
     }
 
     @Test

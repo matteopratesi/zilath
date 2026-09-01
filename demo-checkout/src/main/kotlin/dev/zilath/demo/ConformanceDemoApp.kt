@@ -96,11 +96,12 @@ class ConformanceDemoApp {
             return FederationTrustEvaluator(TrustAnchorConfig(anchorId, keys), fetcher, clock)
         }
         require(tofu) {
-            "No trust anchor keys configured. Either set ZILATH_TRUST_ANCHOR_JWKS_PATH to a " +
-                "JWKS file with the anchor's keys, or set ZILATH_TRUST_ANCHOR_TOFU=true to take " +
-                "them from the anchor itself at first use — acceptable against the conformance " +
+            "No trust anchor keys configured. Either set ZILATH_TRUST_ANCHOR_JWKS_PATH to a file " +
+                "holding the anchor's keys, or set ZILATH_TRUST_ANCHOR_TOFU=true to take them " +
+                "from the anchor itself at first use — acceptable against the conformance " +
                 "tool's ephemeral local anchor, never in production. " +
-                "See the demo instructions in README.md."
+                ACCEPTED_KEY_SHAPES +
+                " See the demo instructions in README.md."
         }
         // TOFU: the anchor keys are taken from the anchor's own entity configuration at
         // first use. Acceptable ONLY against the conformance tool's ephemeral local anchor,
@@ -238,7 +239,7 @@ class ConformanceDemoApp {
  * configuration errors quote this: if the parser changes, the message must change with it.
  */
 internal const val ACCEPTED_KEY_SHAPES =
-    "It must be a JWKS document ({\"keys\": [ ... ]}) or a single JWK object."
+    "Accepted: a JWKS document ({\"keys\": [ ... ]}) or a single JWK object."
 
 /** Parses either a JWK Set document (`{"keys":[...]}`) or a single JWK document. */
 internal fun parseJwks(document: String): List<JWK> =
