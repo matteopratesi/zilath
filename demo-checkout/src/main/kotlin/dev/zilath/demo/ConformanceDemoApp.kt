@@ -70,14 +70,23 @@ class ConformanceDemoApp {
         clock: Clock,
     ): TrustEvaluator {
         val fetcher = httpFetcher(insecureTls)
+        // The messages below name the ZILATH_* environment variables, not the Spring
+        // properties they feed: application.yml maps one to the other, and naming only the
+        // property leaves the reader to work that out before they can act on it.
         if (jwksPath.isNotBlank()) {
             val keys = parseJwks(Files.readString(Path.of(jwksPath)))
-            require(keys.isNotEmpty()) { "no trust anchor keys found in $jwksPath" }
+            require(keys.isNotEmpty()) {
+                "ZILATH_TRUST_ANCHOR_JWKS_PATH points at $jwksPath, which contains no usable keys. " +
+                    "It must be a JWKS document: {\"keys\": [ ... ]}."
+            }
             return FederationTrustEvaluator(TrustAnchorConfig(anchorId, keys), fetcher, clock)
         }
         require(tofu) {
-            "provide zilath.demo.trust-anchor-jwks-path, or explicitly opt into " +
-                "zilath.demo.trust-anchor-tofu=true (conformance runs only)"
+            "No trust anchor keys configured. Either set ZILATH_TRUST_ANCHOR_JWKS_PATH to a " +
+                "JWKS file with the anchor's keys, or set ZILATH_TRUST_ANCHOR_TOFU=true to take " +
+                "them from the anchor itself at first use — acceptable against the conformance " +
+                "tool's ephemeral local anchor, never in production. " +
+                "See the demo instructions in README.md."
         }
         // TOFU: the anchor keys are taken from the anchor's own entity configuration at
         // first use. Acceptable ONLY against the conformance tool's ephemeral local anchor,
