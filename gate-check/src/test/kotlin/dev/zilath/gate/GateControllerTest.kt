@@ -41,6 +41,7 @@ class GateControllerTest(
                     header("Sec-Fetch-Site", "same-origin")
                     param("entitlement", "Biglietto accompagnatore")
                     param("operator", "MP")
+                    param("reference", "ORD-2026-0417")
                     param("outcome", "verified")
                 }.andExpect { status { isFound() } }
                 .andReturn()
@@ -63,12 +64,104 @@ class GateControllerTest(
     }
 
     @Test
+    fun `a receipt without a ticket reference is refused`() {
+        // Without it a receipt proves that a check happened but not what it authorised,
+        // which is the one thing a venue needs when reconciling takings later. The field
+        // is a commercial identifier — an order number, a seat — never a person.
+        mockMvc
+            .post("/gate/record") {
+                header("Sec-Fetch-Site", "same-origin")
+                param("entitlement", "Biglietto accompagnatore")
+                param("operator", "MP")
+                param("reference", "   ")
+                param("outcome", "verified")
+            }.andExpect { status { isBadRequest() } }
+    }
+
+    @Test
+    fun `a reference that is plainly personal data is refused`() {
+        // The field cannot tell a booking code from a surname, so this is not a guarantee —
+        // but an email address and a tax code are unambiguous, and catching them keeps an
+        // obvious paste from ending up in a signed receipt.
+        listOf("mario.rossi@example.com", "RSSMRA80A01H501U").forEach { personal ->
+            mockMvc
+                .post("/gate/record") {
+                    header("Sec-Fetch-Site", "same-origin")
+                    param("entitlement", "Biglietto accompagnatore")
+                    param("operator", "MP")
+                    param("reference", personal)
+                    param("outcome", "verified")
+                }.andExpect { status { isBadRequest() } }
+        }
+    }
+
+    @Test
+    fun `a reference is validated after trimming, not before`() {
+        // Regression: the length check ran on the raw value while the stored one was
+        // trimmed, so a full-length reference with pasted whitespace was rejected for a
+        // length it never actually had.
+        val padded = "  " + "A".repeat(60) + "  "
+        mockMvc
+            .post("/gate/record") {
+                header("Sec-Fetch-Site", "same-origin")
+                param("entitlement", "Biglietto accompagnatore")
+                param("operator", "MP")
+                param("reference", padded)
+                param("outcome", "verified")
+            }.andExpect { status { isFound() } }
+    }
+
+    @Test
+    fun `the reference reaches the signed receipt and the day's list`() {
+        val redirect =
+            mockMvc
+                .post("/gate/record") {
+                    header("Sec-Fetch-Site", "same-origin")
+                    param("entitlement", "Biglietto accompagnatore")
+                    param("operator", "MP")
+                    param("reference", "ORD-2026-0417 posto H12")
+                    param("outcome", "verified")
+                }.andReturn()
+                .response
+                .getHeader("Location")!!
+        val receiptPage =
+            mockMvc
+                .get(redirect)
+                .andReturn()
+                .response.contentAsString
+        assertThat(receiptPage).contains("ORD-2026-0417 posto H12")
+
+        val today =
+            mockMvc
+                .get("/gate/today")
+                .andReturn()
+                .response.contentAsString
+        assertThat(today).contains("ORD-2026-0417 posto H12")
+    }
+
+    @Test
+    fun `both outcome buttons are legible, not just present`() {
+        // Regression: the red button carried `class="btn no"`, and the bare `.no` rule —
+        // shared with the outcome text — set the same colour as its background at equal
+        // specificity. The label was in the markup and invisible on screen, at a contrast
+        // ratio of 1:1, on a tool whose whole subject is accessibility.
+        val page =
+            mockMvc
+                .get("/gate/new")
+                .andReturn()
+                .response.contentAsString
+        assertThat(page).contains("Diritto verificato", "Diritto non verificato")
+        assertThat(page).contains(".btn.no { background: #7f1d1d; color: #fff; }")
+    }
+
+    @Test
     fun `an unknown entitlement or a blank operator is refused`() {
         mockMvc
             .post("/gate/record") {
                 header("Sec-Fetch-Site", "same-origin")
                 param("entitlement", "Sconto inventato")
                 param("operator", "MP")
+                param("reference", "ORD-2026-0417")
                 param("outcome", "verified")
             }.andExpect { status { isBadRequest() } }
         mockMvc
@@ -76,6 +169,7 @@ class GateControllerTest(
                 header("Sec-Fetch-Site", "same-origin")
                 param("entitlement", "Biglietto accompagnatore")
                 param("operator", "  ")
+                param("reference", "ORD-2026-0417")
                 param("outcome", "verified")
             }.andExpect { status { isBadRequest() } }
     }
@@ -92,6 +186,7 @@ class GateControllerTest(
                     if (site != null) header("Sec-Fetch-Site", site)
                     param("entitlement", "Biglietto accompagnatore")
                     param("operator", "MP")
+                    param("reference", "ORD-2026-0417")
                     param("outcome", "verified")
                 }.andExpect { status { isForbidden() } }
         }

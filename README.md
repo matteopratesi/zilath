@@ -135,8 +135,17 @@ For the full conformance run against this RP, see [docs/conformance](docs/confor
 before wallet verification opens to private relying parties: the operator follows a
 guided flow (person shows the European Disability Card, operator verifies its QR on the
 INPS service — exactly what the State expects), and the tool records **only a signed
-outcome receipt**: venue, entitlement, outcome, operator, timestamp. Never a name, a
-document, a photo, a percentage. No free-text field exists, on purpose.
+outcome receipt**: venue, entitlement, outcome, operator, timestamp, and the venue's own
+reference for the ticket or order the check authorised. Never a name, a document, a photo,
+a percentage. No free-text field exists, on purpose.
+
+The ticket reference is what makes the receipt a *replacement* for the document rather than
+a ritual: without it a receipt proves that a check happened but not what it allowed, which
+is exactly what a venue needs when reconciling takings months later. It is meant to be a
+commercial identifier — an order number, a seat. The tool rejects the shapes of personal
+data it can recognise (an email address, an Italian tax code), but it cannot tell a booking
+code from a surname: **keeping the field free of personal data is an instruction to the
+operator, not a guarantee the software can make.** The form says so where it is typed.
 
 ```sh
 ZILATH_GATE_VENUE="Teatro di Prova" ./gradlew :gate-check:bootRun
