@@ -65,12 +65,17 @@ class GateController(
         @RequestHeader(name = "Sec-Fetch-Site", required = false) fetchSite: String?,
     ): ResponseEntity<Void> {
         val sameOrigin = fetchSite == "same-origin"
+        // Validate what will actually be stored, not what arrived: a pasted reference with
+        // surrounding whitespace was rejected for a length the trimmed value never had.
+        val cleanOperator = operator.trim()
+        val cleanReference = reference.trim()
         val validRequest =
             entitlement in entitlements &&
-                operator.isNotBlank() &&
-                operator.length <= OPERATOR_MAX_LENGTH &&
-                reference.isNotBlank() &&
-                reference.length <= REFERENCE_MAX_LENGTH &&
+                cleanOperator.isNotBlank() &&
+                cleanOperator.length <= OPERATOR_MAX_LENGTH &&
+                cleanReference.isNotBlank() &&
+                cleanReference.length <= REFERENCE_MAX_LENGTH &&
+                !looksPersonal(cleanReference) &&
                 outcome in setOf(OUTCOME_PARAM_VERIFIED, OUTCOME_PARAM_NOT_VERIFIED)
         return when {
             !sameOrigin -> ResponseEntity.status(HttpStatus.FORBIDDEN).build()
@@ -80,8 +85,8 @@ class GateController(
                     receipts.issue(
                         entitlement,
                         outcome == OUTCOME_PARAM_VERIFIED,
-                        operator.trim(),
-                        reference.trim(),
+                        cleanOperator,
+                        cleanReference,
                     )
                 ResponseEntity
                     .status(HttpStatus.FOUND)
@@ -107,6 +112,21 @@ class GateController(
     companion object {
         private const val OPERATOR_MAX_LENGTH = 40
         private const val REFERENCE_MAX_LENGTH = 60
+
+        /** An Italian tax code: six letters, then the date/place pattern, sixteen in all. */
+        private val TAX_CODE = Regex("^[A-Za-z]{6}\\d{2}[A-Za-z]\\d{2}[A-Za-z]\\d{3}[A-Za-z]$")
+
+        /**
+         * Refuses the shapes of personal data this field can recognise.
+         *
+         * It cannot do more than that: a booking code and a surname are the same thing to a
+         * regular expression, so keeping the reference free of personal data remains an
+         * instruction to the operator — stated on the form, and in the README. What this
+         * catches is the two cases where someone pastes the wrong thing and the mistake is
+         * unambiguous.
+         */
+        private fun looksPersonal(reference: String): Boolean = reference.contains('@') || TAX_CODE.matches(reference)
+
         private const val OUTCOME_PARAM_VERIFIED = "verified"
         private const val OUTCOME_PARAM_NOT_VERIFIED = "not-verified"
     }

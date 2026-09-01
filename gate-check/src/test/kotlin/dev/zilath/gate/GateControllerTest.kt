@@ -79,6 +79,39 @@ class GateControllerTest(
     }
 
     @Test
+    fun `a reference that is plainly personal data is refused`() {
+        // The field cannot tell a booking code from a surname, so this is not a guarantee —
+        // but an email address and a tax code are unambiguous, and catching them keeps an
+        // obvious paste from ending up in a signed receipt.
+        listOf("mario.rossi@example.com", "RSSMRA80A01H501U").forEach { personal ->
+            mockMvc
+                .post("/gate/record") {
+                    header("Sec-Fetch-Site", "same-origin")
+                    param("entitlement", "Biglietto accompagnatore")
+                    param("operator", "MP")
+                    param("reference", personal)
+                    param("outcome", "verified")
+                }.andExpect { status { isBadRequest() } }
+        }
+    }
+
+    @Test
+    fun `a reference is validated after trimming, not before`() {
+        // Regression: the length check ran on the raw value while the stored one was
+        // trimmed, so a full-length reference with pasted whitespace was rejected for a
+        // length it never actually had.
+        val padded = "  " + "A".repeat(60) + "  "
+        mockMvc
+            .post("/gate/record") {
+                header("Sec-Fetch-Site", "same-origin")
+                param("entitlement", "Biglietto accompagnatore")
+                param("operator", "MP")
+                param("reference", padded)
+                param("outcome", "verified")
+            }.andExpect { status { isFound() } }
+    }
+
+    @Test
     fun `the reference reaches the signed receipt and the day's list`() {
         val redirect =
             mockMvc

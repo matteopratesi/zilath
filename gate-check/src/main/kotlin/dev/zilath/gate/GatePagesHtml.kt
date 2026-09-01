@@ -114,6 +114,7 @@ internal fun newVerificationHtml(
           <label>Riferimento biglietto o ordine
             <input name="reference" maxlength="60" required
                    placeholder="es. ORD-2026-0417 &middot; posto H12">
+            <span class="muted">Il codice del biglietto, non il nome di chi lo usa.</span>
           </label>
           <label>Operatore (sigla o nome di servizio)
             <input name="operator" maxlength="40" required placeholder="es. MP">
