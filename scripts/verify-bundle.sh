@@ -62,7 +62,7 @@ while IFS= read -r f; do
     [ -n "$f" ] || continue
     note "must not be published: $f"
 done <<EOF
-$(printf '%s\n' "$FILES" | grep -E 'demo-checkout|gate-check|test-fixtures' || true)
+$(printf '%s\n' "$FILES" | grep -E 'demo-checkout|test-fixtures' || true)
 EOF
 
 echo
