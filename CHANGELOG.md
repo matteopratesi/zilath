@@ -62,6 +62,15 @@ review (2026-08-30). Every item below could change a verification outcome:
 - `StatusChecker.check` takes a `StatusIssuerTrust` argument: a status answer is only worth
   the signature on it, so the checker needs to know which keys the issuer was trusted with.
 
+### Removed
+
+- **`gate-check`**, the self-hosted door tool. The operator established the outcome
+  elsewhere — on the INPS service — and then recorded it here, so the signed receipt
+  attested that somebody had entered a verdict, not that a check had taken place; and the
+  module never called the library it shipped alongside. What it stood for, a receipt in
+  place of a retained document, lives in `VerificationReceipts`, where the outcome comes
+  from a verification the software performed. The code remains in the git history.
+
 ## [0.1.0] — 2026-08-24
 
 First working version, released under the project's earlier name.

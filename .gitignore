@@ -5,7 +5,3 @@ build/
 .DS_Store
 local.properties
 demo-keys/
-# gate-check writes its signing key and receipts here at runtime. The key is private and
-# the receipts are operational records: neither belongs in the repository, and a stray
-# `git add` of the module directory must not be able to pull them in.
-gate-check/gate-data/
