@@ -145,10 +145,11 @@ So the window is not the thing to optimise. Take the order that leaves room to t
 | 1 | Open the release pull request: version, changelog, README, migration note |
 | 2 | **Wait for the review to finish.** No deadline is pressing; nothing is published yet |
 | 3 | Merge |
-| 4 | From `main`: build the signed bundle, verify it, upload, publish |
-| 5 | **Tag `vX.Y.Z` only now**, on the merge commit |
+| 4 | From `main`: build the signed bundle, verify it, upload |
+| 5 | **Release the staged deployment in the Portal.** Validation is not publication |
+| 6 | **Tag `vX.Y.Z` only now**, on the merge commit, signed with the artifact key |
 
-Between step 3 and step 4 the README names a version not yet on Central. That is minutes,
+Between step 3 and step 5 the README names a version not yet on Central. That is minutes,
 under your hand, and the tag is what settles it: **a tag exists only for a version that is
 actually published**, so `git tag` is the honest answer to "what is out there", not the
 README. If an upload fails, no tag is created and the next attempt costs nothing.
@@ -236,29 +237,34 @@ README. If an upload fails, no tag is created and the next attempt costs nothing
    The API shape has changed before; if the call is rejected, trust the Portal documentation
    over this file and correct this file afterwards.
 
-7. **Tag and push, only once the release is actually out.**
+7. **Tag and push, only once the Portal says the deployment is PUBLISHED.**
+
+   Not after the upload, and not after validation: a staged deployment that validated is not
+   a release, and a tag on one claims a version nobody can download.
 
    ```sh
-   git tag -a v<version> -m "v<version>"
+   git tag -s -u 6A207A58428BC47BA9AC0029392ABDC140E3041A v<version> -m "v<version>"
    git push origin v<version>
    ```
 
+   `-u` names the key explicitly, and it is not decoration. `git tag -s` on its own signs
+   with `user.signingKey`, or — when that is unset, as it is here — with whatever key git can
+   find for the committer's email address. That may happen to be the release key today and
+   silently be a different one tomorrow, which would leave tags and jars making different
+   claims of authorship. The fingerprint is the same one `ZILATH_SIGNING_KEY` carries, so the
+   tag and the artifacts say the same thing. (Configuring `user.signingKey` is the other way;
+   naming it here keeps the command true regardless of anyone's git config.)
+
+   Verify before pushing, because a tag pushed wrong is a tag someone has to be told about:
+
+   ```sh
+   git tag -v v<version>
+   ```
+
    Tagging after publication rather than before keeps the repository from claiming a release
-   that does not exist.
+   that does not exist — and makes `git tag` the honest answer to "what is out there".
 
 8. **Set the next development version** back to `-SNAPSHOT` and commit.
-
-## After the upload
-
-**Tag the merge commit, and only now.**
-
-```sh
-git tag -s v0.3.0 -m "0.3.0" && git push origin v0.3.0
-```
-
-Signed with the same key as the artifacts, so the tag and the jars carry the same claim of
-authorship. The tag is the record of what is actually on Central: the README can be ahead of
-reality for a few minutes, a tag never is.
 
 ## What gets published
 
