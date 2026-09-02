@@ -17,9 +17,13 @@ what the library is willing to reach for:
 
 - **The issuer envelope no longer reaches the application.** `Verified.claims` carried
   `iat`, `exp` and `nbf` alongside the disclosed claims — stable per credential, and so a
-  handle for linking two verifications of the same person across venues and months. Only the
-  disclosed claims plus `iss` and `vct` are returned now. **Code that read `iat` or `exp`
-  from the claims will find them gone.**
+  handle for linking two verifications of the same person across venues and months. The
+  registered envelope claims (`cnf`, `status`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti`,
+  `_sd_alg`) are now stripped; `iss` and `vct` are kept because they are identical for every
+  holder of a credential type. **Code that read `iat` or `exp` from the claims will find them
+  gone.** This is a blocklist: a claim an issuer places in the credential unprotected, under
+  a name of its own, is still passed through — see the known limits in
+  `docs/privacy-by-design.md`.
 - **Numeric hosts are refused in the trust-chain walk.** `https://2130706433/…` passed the
   IP-literal check as a hostname and resolves to 127.0.0.1 on the JVM; `2851995650` lands in
   the link-local range. Any host made only of digits and dots is refused — no valid hostname

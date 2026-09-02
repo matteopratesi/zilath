@@ -197,6 +197,19 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
      *
      * `iss` and `vct` stay: they name the issuer and the credential type, are identical for
      * every holder of that type, and are what an application needs to know what it verified.
+     *
+     * **This is a blocklist, and a blocklist is not a guarantee.** It removes the envelope
+     * this specification defines; a claim the ISSUER chose to put in the credential
+     * unprotected — outside selective disclosure, under a name of its own invention — is
+     * neither disclosed by the holder nor listed here, and it survives. Nothing in the
+     * verifier can tell such a claim from a legitimate always-visible attribute. The
+     * airtight form is an allowlist of the names the holder actually disclosed, which means
+     * telling disclosed claims apart from the issuer's plaintext ones: computable as the
+     * difference between the recreated claims and the issuer JWT payload, except that a
+     * plaintext object with selectively disclosed members inside it would then lose them.
+     * Getting that right needs the nested case covered by tests against a real issuer, so
+     * it is recorded as a known limit (docs/privacy-by-design.md) rather than guessed at
+     * here. Raised by automated review on this pull request.
      */
     private fun withoutInternalClaims(claims: JsonObject): JsonObject =
         JsonObject(claims.filterKeys { it !in ENVELOPE_CLAIMS })

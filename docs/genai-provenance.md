@@ -110,7 +110,9 @@ Template — copy and fill:
 
 <!-- New entries go below, newest last. -->
 
-Model attribution for the entries below: three versions were in use across these two days —
+Model attribution for the three entries that follow, covering 2026-08-31 and 2026-09-01
+up to the release — later entries carry their own: three versions were in use across those
+two days —
 **Anthropic Claude Fable 5, Opus 5 and Opus 4.8** — often alternating within a single
 session. Which one produced a given commit was not recorded at the time and is not
 reconstructed here; naming the three is accurate, apportioning them would not be.

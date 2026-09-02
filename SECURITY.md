@@ -68,8 +68,10 @@ are not bugs; a report about them will be closed with a pointer here.
 
 ## Cryptographic review
 
-The cryptography and trust chain have had three internal reviews, all by the maintainer,
-all with their findings fixed and covered by tests in this repository:
+The cryptography and trust chain have had three internal reviews, all by the maintainer.
+Every finding that concerned the library modules was fixed and is covered by tests here; the
+two exceptions are named where they occur, and the design limits deliberately left open are
+listed in `docs/privacy-by-design.md`:
 
 - **2026-08-29** — an adversarial audit across the whole codebase, nine lenses with paired
   opposed reviewers. Of roughly 23 distinct findings, 21 were fixed; the remaining two
@@ -91,7 +93,7 @@ all with their findings fixed and covered by tests in this repository:
   previous code. One design limit left open and documented: receipts are signed with the
   request-signing key (`docs/privacy-by-design.md`, known limits).
 
-The reports themselves are working notes and are not published. **Neither review was
+The reports themselves are working notes and are not published. **None of the three was
 independent**: the same person wrote the code and audited it, which catches slips and
 cannot catch blind spots.
 

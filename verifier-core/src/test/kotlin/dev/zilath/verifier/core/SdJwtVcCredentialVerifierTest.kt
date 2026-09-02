@@ -76,6 +76,18 @@ class SdJwtVcCredentialVerifierTest {
     }
 
     @Test
+    fun `an issuer plaintext claim survives the blocklist, which is the documented limit`() {
+        // Not a bug being pinned as correct: the documented boundary of a blocklist. The
+        // issuer can name a plaintext claim anything, and nothing here tells `serial_no`
+        // apart from a legitimate always-visible attribute. If this ever starts failing,
+        // an allowlist has landed and docs/privacy-by-design.md limit 8 must go with it.
+        val result = verify(TestVectors.vector())
+        val claims = (result as VerificationResult.Verified).claims.claims
+        assertThat(claims.keys).contains("iss", "vct")
+        assertThat(claims.keys).doesNotContainAnyElementsOf(listOf("iat", "exp", "cnf", "status"))
+    }
+
+    @Test
     fun `a rejection detail never carries a fragment of the presentation`() {
         val presentation = TestVectors.vector()
         val parts = presentation.split('~').toMutableList()
@@ -87,6 +99,22 @@ class SdJwtVcCredentialVerifierTest {
             // No base64url run long enough to be a disclosure or a JWT segment.
             assertThat(rejected.detail).isNotNull().doesNotContainPattern("[A-Za-z0-9_-]{16,}")
         }
+    }
+
+    @Test
+    fun `a fractional status index is malformed rather than rounded`() {
+        // 3.5 truncated to 3 reads a DIFFERENT credential's status bit — and if that one is
+        // valid, a revoked credential passes. Raised in automated review on the review-3 PR.
+        val claims =
+            com.nimbusds.jwt.JWTClaimsSet
+                .Builder()
+                .claim(
+                    "status",
+                    mapOf("status_list" to mapOf("uri" to "https://issuer.example/status/1", "idx" to 3.5)),
+                ).build()
+        val rejection = runCatching { statusReferenceOf(claims) }.exceptionOrNull()
+        assertThat(rejection).isInstanceOf(SdJwtRejection::class.java)
+        assertThat((rejection as SdJwtRejection).reason).isEqualTo(RejectionReason.STATUS_CHECK_FAILED)
     }
 
     @Test

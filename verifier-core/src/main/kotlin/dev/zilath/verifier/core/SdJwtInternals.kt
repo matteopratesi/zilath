@@ -153,11 +153,13 @@ internal fun statusReferenceOf(issuerClaims: JWTClaimsSet): StatusReference? {
         status["status_list"] as? Map<*, *>
             ?: reject(RejectionReason.STATUS_CHECK_FAILED, "status claim without a status_list reference")
     val uri = statusList["uri"] as? String
-    // Through toLong, not toInt: Number.toInt() silently keeps the low 32 bits of a larger
-    // value, and the checker would then read another credential's entry. An index that does
-    // not fit is malformed, whatever the issuer meant by it.
+    // Two ways a Number can quietly become the wrong entry, and both read somebody else's
+    // status bit: toInt() keeps the low 32 bits of anything larger, and toLong() truncates
+    // 3.5 to 3. An index that is not a whole number in range is malformed, whatever the
+    // issuer meant by it — it is not ours to round.
     val index =
         (statusList["idx"] as? Number)
+            ?.takeIf { it.toDouble() == kotlin.math.floor(it.toDouble()) }
             ?.toLong()
             ?.takeIf { it in 0..Int.MAX_VALUE.toLong() }
             ?.toInt()
