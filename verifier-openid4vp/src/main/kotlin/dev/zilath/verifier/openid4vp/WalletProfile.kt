@@ -124,6 +124,16 @@ internal fun publicEncryptionJwk(config: RelyingPartyConfiguration): com.nimbusd
         .keyUse(com.nimbusds.jose.jwk.KeyUse.ENCRYPTION)
         .build()
 
+/**
+ * The SD-JWT issuer and key-binding algorithms this verifier advertises, in the request
+ * object's `client_metadata` AND in the federation entity configuration — one constant so the
+ * two cannot disagree. They did: the entity configuration said ES256/384/512 while the request
+ * object said ES256 alone (third review). `jwsVerifierFor` accepts every EC curve and RSA;
+ * what is advertised is the EC family the IT-Wallet profile names.
+ */
+internal val SUPPORTED_SD_JWT_ALGS = listOf("ES256", "ES384", "ES512")
+internal val SUPPORTED_KB_JWT_ALGS = listOf("ES256")
+
 /** The members every profile shares: RP encryption key, supported encodings and formats. */
 internal fun baselineClientMetadata(config: RelyingPartyConfiguration): Map<String, Any> =
     mapOf(
@@ -140,8 +150,8 @@ internal fun baselineClientMetadata(config: RelyingPartyConfiguration): Map<Stri
             mapOf(
                 "dc+sd-jwt" to
                     mapOf(
-                        "sd-jwt_alg_values" to listOf("ES256"),
-                        "kb-jwt_alg_values" to listOf("ES256"),
+                        "sd-jwt_alg_values" to SUPPORTED_SD_JWT_ALGS,
+                        "kb-jwt_alg_values" to SUPPORTED_KB_JWT_ALGS,
                     ),
             ),
     )

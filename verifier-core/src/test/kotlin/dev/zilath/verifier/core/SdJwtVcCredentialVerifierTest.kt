@@ -64,6 +64,48 @@ class SdJwtVcCredentialVerifierTest {
     }
 
     @Test
+    fun `the issuer envelope never reaches the application`() {
+        val result = verify(TestVectors.vector(nbf = TestVectors.NOW.minusSeconds(60)))
+        val claims = (result as VerificationResult.Verified).claims.claims
+        // Every one of these is stable per credential: a handle for linking two verifications.
+        assertThat(
+            claims.keys,
+        ).doesNotContainAnyElementsOf(listOf("iat", "exp", "nbf", "cnf", "status", "jti", "sub", "_sd_alg"))
+        // What was disclosed, plus what says which kind of credential answered.
+        assertThat(claims.keys).containsExactlyInAnyOrder("given_name", "family_name", "entitled", "iss", "vct")
+    }
+
+    @Test
+    fun `a rejection detail never carries a fragment of the presentation`() {
+        val presentation = TestVectors.vector()
+        val parts = presentation.split('~').toMutableList()
+        parts.add(1, parts[1])
+        val duplicated = verify(parts.joinToString("~")) as VerificationResult.Rejected
+        val tampered = verify(TestVectors.withTamperedDisclosure(presentation)) as VerificationResult.Rejected
+        for (rejected in listOf(duplicated, tampered)) {
+            assertThat(rejected.reason).isEqualTo(RejectionReason.DISCLOSURE_TAMPERED)
+            // No base64url run long enough to be a disclosure or a JWT segment.
+            assertThat(rejected.detail).isNotNull().doesNotContainPattern("[A-Za-z0-9_-]{16,}")
+        }
+    }
+
+    @Test
+    fun `a status index that does not fit an int is malformed rather than truncated`() {
+        val claims =
+            com.nimbusds.jwt.JWTClaimsSet
+                .Builder()
+                .claim(
+                    "status",
+                    mapOf(
+                        "status_list" to mapOf("uri" to "https://issuer.example/status/1", "idx" to (1L shl 32) + 5),
+                    ),
+                ).build()
+        val rejection = runCatching { statusReferenceOf(claims) }.exceptionOrNull()
+        assertThat(rejection).isInstanceOf(SdJwtRejection::class.java)
+        assertThat((rejection as SdJwtRejection).reason).isEqualTo(RejectionReason.STATUS_CHECK_FAILED)
+    }
+
+    @Test
     fun `valid presentation with RSA issuer is verified`() {
         val result = verify(TestVectors.vector(useRsaIssuer = true), context(trust = TestVectors.trustIssuerRsa()))
         assertThat(result).isInstanceOf(VerificationResult.Verified::class.java)

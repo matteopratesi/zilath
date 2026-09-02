@@ -157,7 +157,14 @@ An honest list is more useful than a short one.
    from an issuer you already trust — but a fetcher able to reach arbitrary hosts is one
    compromised issuer away from being a request-forgery tool inside your network. An
    allow-list of expected status hosts costs nothing.
-8. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
+8. **Receipts are signed with the request-signing key.** A request object lives five minutes;
+   a receipt is archived for years. When that key is rotated — and it should be — every
+   receipt already issued verifies only against the retired public key, so whoever archives
+   receipts must keep the history of the RP's published keys, and this library offers no
+   function that verifies a receipt for them. A dedicated receipt key, rotated on its own
+   schedule as the federation key already is, is the fix; it is an API change and is planned
+   for 0.3. (Third review, 2026-09-01.)
+9. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
 
 ## 6. What you still have to do
 

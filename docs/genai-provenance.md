@@ -169,3 +169,25 @@ reconstructed here; naming the three is accurate, apportioning them would not be
 > Part of the work in the last entry was thrown away. It is recorded because it happened: a
 > register that keeps only what survived describes a process nobody actually followed, and
 > would be worth less to a reader trying to judge how this project is built.
+
+### 2026-09-01 — Third internal review of the cryptography and trust chain
+
+- **What**: every `main` source of the four library modules read in full (3,466 lines, none
+  changed since the second review), two suspected findings tested against the running library,
+  fixes with tests on branch `security/review-3`; `SECURITY.md`, `CHANGELOG.md` and
+  `docs/privacy-by-design.md` updated. The working notes are the maintainer's files and are not
+  published.
+- **Model**: Anthropic Claude Fable 5.1 — requested the day that version became available.
+- **Assistance**: the reading, the adversarial reasoning, the two probes, the fixes and their
+  tests, and the mutation checks showing each test fails against the previous code.
+- **Human contribution**: the request itself, deliberately a third pass over unchanged code;
+  the earlier decision that `detail` must never carry a claim value — the guarantee this review
+  found resting on a dependency's accident rather than on the code; and acceptance of the
+  fixes, including the one that removes `iat` and `exp` from what integrators receive, which
+  is a behaviour change.
+- **Verification**: one suspected finding — disclosure content leaking into `detail` — was
+  tested and **found not to occur today**; it is recorded as hardening, not as a vulnerability.
+  The IP-literal bypass was reproduced against `InetAddress` before being reported. Three
+  mutation checks; `clean build` green with the new tests.
+- **Funding status**: pre-existing.
+

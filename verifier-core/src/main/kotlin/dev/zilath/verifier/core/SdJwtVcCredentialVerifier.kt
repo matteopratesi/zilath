@@ -183,18 +183,23 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
     }
 
     /**
-     * Strips the claims that exist for verification and have no business reaching the
-     * application.
+     * Strips the issuer envelope, keeping what the holder disclosed plus the two envelope
+     * claims that say WHAT was verified without saying WHICH copy.
      *
-     * `recreateClaims` returns the whole issuer envelope, not only what the holder chose to
-     * disclose: `cnf` carries the holder's public key and `status` carries the index of this
-     * credential in its issuer's revocation list. Both are STABLE PER CREDENTIAL, so handing
-     * them over would let an integrator — or anything downstream of them — link two
-     * verifications of the same person across venues and across months. The library has
-     * finished with them by the time it returns; nobody else needs them.
+     * `recreateClaims` returns the whole issuer-signed payload, not only what the holder chose
+     * to disclose. Most of that envelope is stable per credential: `cnf` (the holder key),
+     * `status` (the index in the issuer's revocation list), and just as much `iat`, `exp`,
+     * `nbf`, `jti`, `sub` — an issuance instant at second granularity, together with `iss` and
+     * `vct`, singles out one credential almost as surely as a serial number would. Handing any
+     * of them over would let an integrator, or anything downstream, link two verifications of
+     * the same person across venues and across months. The third internal review found that
+     * only `cnf` and `status` were being removed.
+     *
+     * `iss` and `vct` stay: they name the issuer and the credential type, are identical for
+     * every holder of that type, and are what an application needs to know what it verified.
      */
     private fun withoutInternalClaims(claims: JsonObject): JsonObject =
-        JsonObject(claims.filterKeys { it !in INTERNAL_CLAIMS })
+        JsonObject(claims.filterKeys { it !in ENVELOPE_CLAIMS })
 
     private fun checkStatus(
         issuerClaims: JWTClaimsSet,
@@ -212,8 +217,13 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
     }
 
     private companion object {
-        /** Verification machinery, and stable identifiers: never part of an outcome. */
-        private val INTERNAL_CLAIMS = setOf("cnf", "status")
+        /**
+         * The issuer envelope: every RFC 7519 registered claim that dates or identifies the
+         * credential, plus the SD-JWT VC machinery. Never part of an outcome — see
+         * [withoutInternalClaims] for why, and for why `iss` and `vct` are not listed.
+         */
+        private val ENVELOPE_CLAIMS =
+            setOf("cnf", "status", "sub", "aud", "exp", "nbf", "iat", "jti", "_sd_alg")
 
         /** `dc+sd-jwt` is the current media type; `vc+sd-jwt` is the earlier draft, still in the wild. */
         private val ISSUER_JWT_TYPS = setOf("dc+sd-jwt", "vc+sd-jwt")

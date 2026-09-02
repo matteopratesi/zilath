@@ -130,9 +130,10 @@ class OAuthStatusListChecker(
         require(claims.subject == statusRef.uri) { "status list sub does not match the referenced uri" }
         val now = clock.instant()
         claims.expirationTime?.let { expiry ->
-            // Strictly before, per RFC 7519 §4.1.4, and matching how the credential's own
-            // exp is treated in SdJwtVcCredentialVerifier: two temporal checks in the same
-            // pipeline disagreeing on the boundary instant is a bug waiting for a clock.
+            // Strictly before, per RFC 7519 §4.1.4, and deliberately WITHOUT the minute of
+            // tolerance the credential's own exp gets in SdJwtVcCredentialVerifier: a stale
+            // status list is refetched, a stale credential is turned away — the asymmetry is
+            // the point. (The third review found this comment still claiming parity.)
             require(now.isBefore(expiry.toInstant())) { "status list token is expired" }
         }
         // exp is only RECOMMENDED by the draft (§5.1), so a compliant token may carry none

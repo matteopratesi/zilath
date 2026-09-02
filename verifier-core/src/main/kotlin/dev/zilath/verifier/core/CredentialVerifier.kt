@@ -98,8 +98,10 @@ data class VerificationContext(
 /** The outcome of a single verification. Exhaustive: there is no third state. */
 sealed interface VerificationResult {
     /**
-     * Every check passed. [claims] holds only what the holder chose to disclose — never
-     * the whole credential, and never anything the DCQL query did not ask for.
+     * Every check passed. [claims] holds what the holder chose to disclose plus `iss` and
+     * `vct` — never the rest of the issuer envelope (`iat`, `exp`, `nbf`, `jti`, `sub`, `cnf`,
+     * `status`), every member of which is stable per credential and would let a consumer link
+     * two verifications of the same person. `SdJwtVcCredentialVerifier` holds the list.
      */
     data class Verified(
         val claims: DisclosedClaims,

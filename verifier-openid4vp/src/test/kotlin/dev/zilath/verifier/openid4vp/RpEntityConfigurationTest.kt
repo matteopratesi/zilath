@@ -186,4 +186,22 @@ class RpEntityConfigurationTest {
         val bare = SignedJWT.parse(buildRequestJwt(base, transaction, clock.instant()))
         assertThat(bare.header.getCustomParam("trust_chain")).isNull()
     }
+
+    @Test
+    fun `the entity configuration and the request object advertise the same algorithms`() {
+        val config = config("openid_federation:https://rp.example")
+        val statement = SignedJWT.parse(RpEntityConfiguration.build(config, federation(), clock))
+        val verifier = statement.jwtClaimsSet.getJSONObjectClaim("metadata")["openid_credential_verifier"] as Map<*, *>
+        val published = (verifier["vp_formats_supported"] as Map<*, *>)["dc+sd-jwt"]
+        val requested = (config.profile.clientMetadataFor(config)["vp_formats_supported"] as Map<*, *>)["dc+sd-jwt"]
+        // A wallet reads one, a federation the other: they must be told the same thing.
+        assertThat(published).isEqualTo(requested)
+    }
+
+    @Test
+    fun `a non-positive transaction time to live is refused at construction`() {
+        assertThatIllegalArgumentException().isThrownBy {
+            config("x509_hash:abc").copy(transactionTimeToLive = java.time.Duration.ZERO)
+        }
+    }
 }
