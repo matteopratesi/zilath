@@ -172,7 +172,7 @@ reconstructed here; naming the three is accurate, apportioning them would not be
 > register that keeps only what survived describes a process nobody actually followed, and
 > would be worth less to a reader trying to judge how this project is built.
 
-### 2026-09-01 — Third internal review of the cryptography and trust chain
+### 2026-09-02 — Third internal review of the cryptography and trust chain
 
 - **What**: every `main` source of the four library modules read in full (3,466 lines, none
   changed since the second review), two suspected findings tested against the running library,
@@ -193,12 +193,13 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   mutation checks; `clean build` green with the new tests.
 - **Funding status**: pre-existing.
 
-### 2026-09-01 — First publication to Maven Central (0.2.0), then 0.3.0
+### 2026-09-01 → 2026-09-02 — First publication to Maven Central (0.2.0), then 0.3.0
 
 - **What**: cutting `0.2.0`, verifying the bundle and publishing it under `dev.zilath`; two
   fixes found by inspecting the bundle after Central had validated it and before publishing
   (`META-INF/LICENSE` absent from every jar, `Automatic-Module-Name` absent from every
-  manifest); then `0.3.0` carrying the third review's fixes. Pull requests #34 and this one.
+  manifest), published on 2026-09-01; then `0.3.0` carrying the third review's fixes,
+  published on 2026-09-02. Pull requests #34 and #36.
 - **Model**: Anthropic Claude Opus 5 for the release work, Fable 5.1 for the review whose
   fixes `0.3.0` ships.
 - **Assistance**: the release preparation, the verification of signatures and checksums

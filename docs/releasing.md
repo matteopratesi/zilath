@@ -122,6 +122,38 @@ holds the revocation certificate can revoke your key; whoever holds both can rev
 sign as you. Encrypted backup for the key, somewhere separate and offline for the
 revocation certificate.
 
+## The order, and why it is this one
+
+**Merge the release pull request BEFORE uploading, then tag only after the upload
+succeeded.** Not the other way round, and this is worth stating because the other way round
+is tempting and was tried once, on `0.3.0`, at a cost.
+
+The temptation: the release pull request bumps the version in `README.md`, so it advertises
+a version Central does not have yet, and merging it first feels like publishing a lie. So
+the upload goes first, and then the merge has to follow within minutes — otherwise `main`
+says `0.2.0` while the world downloads `0.3.0`, which is the same lie pointing the other
+way. That window is too narrow for a review to fit in, and on `0.3.0` the merge landed
+while automated review was still running: **merging a pull request stops the review, the
+slot is spent, and the reading never happens.** What it would have caught that day was a
+wrong date in the changelog and in the provenance register — the register whose only
+guarantee is that it can be checked against `git log`.
+
+So the window is not the thing to optimise. Take the order that leaves room to think:
+
+| | |
+|---|---|
+| 1 | Open the release pull request: version, changelog, README, migration note |
+| 2 | **Wait for the review to finish.** No deadline is pressing; nothing is published yet |
+| 3 | Merge |
+| 4 | From `main`: build the signed bundle, verify it, upload |
+| 5 | **Release the staged deployment in the Portal.** Validation is not publication |
+| 6 | **Tag `vX.Y.Z` only now**, on the merge commit, signed with the artifact key |
+
+Between step 3 and step 5 the README names a version not yet on Central. That is minutes,
+under your hand, and the tag is what settles it: **a tag exists only for a version that is
+actually published**, so `git tag` is the honest answer to "what is out there", not the
+README. If an upload fails, no tag is created and the next attempt costs nothing.
+
 ## Cutting a release
 
 1. **Decide the version and make it real.** Set it in `build.gradle.kts` (the `subprojects`
@@ -205,15 +237,32 @@ revocation certificate.
    The API shape has changed before; if the call is rejected, trust the Portal documentation
    over this file and correct this file afterwards.
 
-7. **Tag and push, only once the release is actually out.**
+7. **Tag and push, only once the Portal says the deployment is PUBLISHED.**
+
+   Not after the upload, and not after validation: a staged deployment that validated is not
+   a release, and a tag on one claims a version nobody can download.
 
    ```sh
-   git tag -a v<version> -m "v<version>"
+   git tag -s -u 6A207A58428BC47BA9AC0029392ABDC140E3041A v<version> -m "v<version>"
    git push origin v<version>
    ```
 
+   `-u` names the key explicitly, and it is not decoration. `git tag -s` on its own signs
+   with `user.signingKey`, or — when that is unset, as it is here — with whatever key git can
+   find for the committer's email address. That may happen to be the release key today and
+   silently be a different one tomorrow, which would leave tags and jars making different
+   claims of authorship. The fingerprint is the same one `ZILATH_SIGNING_KEY` carries, so the
+   tag and the artifacts say the same thing. (Configuring `user.signingKey` is the other way;
+   naming it here keeps the command true regardless of anyone's git config.)
+
+   Verify before pushing, because a tag pushed wrong is a tag someone has to be told about:
+
+   ```sh
+   git tag -v v<version>
+   ```
+
    Tagging after publication rather than before keeps the repository from claiming a release
-   that does not exist.
+   that does not exist — and makes `git tag` the honest answer to "what is out there".
 
 8. **Set the next development version** back to `-SNAPSHOT` and commit.
 

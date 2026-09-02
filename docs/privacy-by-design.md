@@ -166,7 +166,7 @@ An honest list is more useful than a short one.
    legitimate always-visible attribute. **If you consume the claims, treat unexpected names
    as suspect rather than as data.** The airtight form is an allowlist of what the holder
    actually disclosed; it needs the nested-object case settled against a real issuer first,
-   so it is a limit today and not a promise. (Third review, 2026-09-01, raised in automated
+   so it is a limit today and not a promise. (Third review, 2026-09-02, raised in automated
    review.)
 9. **Receipts are signed with the request-signing key.** A request object lives five minutes
    by default — `RelyingPartyConfiguration.transactionTimeToLive`, which the request object's
@@ -176,7 +176,7 @@ An honest list is more useful than a short one.
    receipts must keep the history of the RP's published keys, and this library offers no
    function that verifies a receipt for them. A dedicated receipt key, rotated on its own
    schedule as the federation key already is, is the fix; it is an API change and is planned
-   for 0.3. (Third review, 2026-09-01.)
+   for 0.3. (Third review, 2026-09-02.)
 10. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
 
 ## 6. What you still have to do
