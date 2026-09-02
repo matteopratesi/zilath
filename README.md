@@ -50,7 +50,7 @@ credentials with no framework and no network I/O.
 
 ```kotlin
 dependencies {
-    implementation("dev.zilath:verifier-spring-boot-starter:0.2.0")
+    implementation("dev.zilath:verifier-spring-boot-starter:0.3.0")
 }
 ```
 
@@ -60,6 +60,11 @@ Artifacts are signed with key [`392ABDC140E3041A`](https://keys.openpgp.org/sear
 versions, and the [changelog](CHANGELOG.md) calls out separately every change that alters
 what a verifier accepts or rejects — those are the ones that can quietly let something
 through.
+
+Coming from **0.2.0**: `Verified.claims` no longer carries the issuer envelope. `iat`, `exp`,
+`nbf`, `cnf`, `status`, `sub`, `aud` and `jti` are stripped — each is stable per credential,
+so passing them on would let anything downstream link two verifications of the same person.
+Code that read `iat` or `exp` from the claims must stop.
 
 ## Build
 
