@@ -154,6 +154,30 @@ under your hand, and the tag is what settles it: **a tag exists only for a versi
 actually published**, so `git tag` is the honest answer to "what is out there", not the
 README. If an upload fails, no tag is created and the next attempt costs nothing.
 
+## Before you sign anything: `GPG_TTY`
+
+```sh
+export GPG_TTY=$(tty)
+```
+
+In the shell you are releasing from, once per shell — or in your profile, once and for all.
+
+Without it `git tag -s` fails with `gpg: signing failed: Inappropriate ioctl for device`,
+which names the symptom and hides the cause: `pinentry-curses` needs to know which terminal
+to draw the passphrase prompt on, and only `GPG_TTY` tells it.
+
+The confusing part, and the reason this is easy to hit late: **exporting the signing key
+works without it.** `gpg --armor --export-secret-keys` is run by your interactive shell and
+inherits its terminal, so step 3 below succeeds and the bundle gets signed. `git tag -s`
+invokes gpg with its own redirected streams, so the prompt has nowhere to appear. The
+release therefore fails at the very last step, after the artifacts are already published and
+irreversible — which is a bad place to discover a missing environment variable. (Hit on
+2026-09-02, tagging 0.2.0 and 0.3.0 after both were on Central.)
+
+If `pinentry-mac` is installable on your machine it is the nicer answer — a graphical prompt
+that can keep the passphrase in the Keychain — but it needs a writable Homebrew, so it is not
+available everywhere and `GPG_TTY` is what this file assumes.
+
 ## Cutting a release
 
 1. **Decide the version and make it real.** Set it in `build.gradle.kts` (the `subprojects`
@@ -243,6 +267,7 @@ README. If an upload fails, no tag is created and the next attempt costs nothing
    a release, and a tag on one claims a version nobody can download.
 
    ```sh
+   export GPG_TTY=$(tty)   # if you have not already; see the section above
    git tag -s -u 6A207A58428BC47BA9AC0029392ABDC140E3041A v<version> -m "v<version>"
    git push origin v<version>
    ```
