@@ -106,23 +106,31 @@ internal fun jwsVerifierFor(key: JWK): JWSVerifier? =
         else -> null
     }
 
-/** Maps failures raised by the EUDI SD-JWT library onto stable [RejectionReason]s. */
-internal fun rejectionOf(failure: Throwable): SdJwtRejection {
-    val reason =
-        when ((failure as? SdJwtVerificationException)?.reason) {
-            is VerificationError.InvalidJwt -> RejectionReason.INVALID_ISSUER_SIGNATURE
-            is VerificationError.KeyBindingFailed -> RejectionReason.INVALID_KEY_BINDING
-            is VerificationError.InvalidDisclosures,
-            is VerificationError.UnsupportedHashingAlgorithm,
-            is VerificationError.NonUniqueDisclosures,
-            is VerificationError.NonUniqueDisclosureDigests,
-            is VerificationError.MissingDigests,
-            -> RejectionReason.DISCLOSURE_TAMPERED
-            is VerificationError.ParsingError -> RejectionReason.MALFORMED
-            else -> RejectionReason.MALFORMED
-        }
-    return SdJwtRejection(reason, failure.message)
-}
+/**
+ * Maps failures raised by the EUDI SD-JWT library onto stable [RejectionReason]s.
+ *
+ * The library's message is deliberately NOT carried as `detail`. Its `InvalidDisclosures`,
+ * `NonUniqueDisclosures` and `MissingDigests` errors are data classes holding the offending
+ * disclosures — claim name and value, base64url-encoded — with a `toString` that prints them.
+ * Today the exception message is null and nothing leaks; a library version that fills it in
+ * would send someone's claim values to the verifier's log on the failure path. The guarantee
+ * that `detail` never carries a claim value has to hold by construction, not by a dependency's
+ * current habit, so the detail is a fixed phrase per reason.
+ */
+internal fun rejectionOf(failure: Throwable): SdJwtRejection =
+    when ((failure as? SdJwtVerificationException)?.reason) {
+        is VerificationError.InvalidJwt ->
+            SdJwtRejection(RejectionReason.INVALID_ISSUER_SIGNATURE, "issuer signature does not verify")
+        is VerificationError.KeyBindingFailed ->
+            SdJwtRejection(RejectionReason.INVALID_KEY_BINDING, "key binding does not verify")
+        is VerificationError.InvalidDisclosures,
+        is VerificationError.UnsupportedHashingAlgorithm,
+        is VerificationError.NonUniqueDisclosures,
+        is VerificationError.NonUniqueDisclosureDigests,
+        is VerificationError.MissingDigests,
+        -> SdJwtRejection(RejectionReason.DISCLOSURE_TAMPERED, "disclosures do not match the credential")
+        else -> SdJwtRejection(RejectionReason.MALFORMED, "presentation does not parse")
+    }
 
 /** Recomputes the `sd_hash` the key binding must commit to: SHA-256 over `issuer-jwt~d1~...~`. */
 internal fun sdHashOf(compact: String): String {
@@ -145,7 +153,16 @@ internal fun statusReferenceOf(issuerClaims: JWTClaimsSet): StatusReference? {
         status["status_list"] as? Map<*, *>
             ?: reject(RejectionReason.STATUS_CHECK_FAILED, "status claim without a status_list reference")
     val uri = statusList["uri"] as? String
-    val index = (statusList["idx"] as? Number)?.toInt()
+    // Two ways a Number can quietly become the wrong entry, and both read somebody else's
+    // status bit: toInt() keeps the low 32 bits of anything larger, and toLong() truncates
+    // 3.5 to 3. An index that is not a whole number in range is malformed, whatever the
+    // issuer meant by it — it is not ours to round.
+    val index =
+        (statusList["idx"] as? Number)
+            ?.takeIf { it.toDouble() == kotlin.math.floor(it.toDouble()) }
+            ?.toLong()
+            ?.takeIf { it in 0..Int.MAX_VALUE.toLong() }
+            ?.toInt()
     if (uri == null || index == null) {
         reject(RejectionReason.STATUS_CHECK_FAILED, "malformed status_list reference")
     }

@@ -68,8 +68,10 @@ are not bugs; a report about them will be closed with a pointer here.
 
 ## Cryptographic review
 
-The cryptography and trust chain have had two internal reviews, both by the maintainer,
-both with their findings fixed and covered by tests in this repository:
+The cryptography and trust chain have had three internal reviews, all by the maintainer.
+Every finding that concerned the library modules was fixed and is covered by tests here; the
+two exceptions are named where they occur, and the design limits deliberately left open are
+listed in `docs/privacy-by-design.md`:
 
 - **2026-08-29** — an adversarial audit across the whole codebase, nine lenses with paired
   opposed reviewers. Of roughly 23 distinct findings, 21 were fixed; the remaining two
@@ -79,8 +81,19 @@ both with their findings fixed and covered by tests in this repository:
   federation trust chain: every `main` source of the four library modules, read in full.
   Three findings, all fixed: an SSRF in the online trust-chain resolution, response-JWE
   confinement, and a missing clock tolerance on credential `exp`/`nbf`.
+- **2026-09-01** — a third reading of the same, unchanged code, all four library modules in
+  full, with two suspected findings tested against the running library rather than argued.
+  Nothing cryptographic was wrong. What it found sat around the cryptography: the claims
+  handed to the application still carried `iat`, `exp` and `nbf` — stable per credential and
+  so a handle for linking two verifications of one person — while only `cnf` and `status`
+  were being stripped; the rule refusing IP-literal hosts in the trust-chain walk missed the
+  forms the JVM resolver accepts (`https://2130706433/` is 127.0.0.1); and a rejection
+  `detail` passed through a dependency's exception message, harmless today only because that
+  message happens to be null. All three fixed, each with a test that fails against the
+  previous code. One design limit left open and documented: receipts are signed with the
+  request-signing key (`docs/privacy-by-design.md`, known limits).
 
-The reports themselves are working notes and are not published. **Neither review was
+The reports themselves are working notes and are not published. **None of the three was
 independent**: the same person wrote the code and audited it, which catches slips and
 cannot catch blind spots.
 

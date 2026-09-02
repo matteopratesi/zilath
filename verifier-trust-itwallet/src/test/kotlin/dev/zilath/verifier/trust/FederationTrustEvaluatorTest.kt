@@ -365,6 +365,11 @@ class FederationTrustEvaluatorTest {
                 "http://internal.example/fetch",
                 "https://user@ta.example/fetch",
                 "https://169.254.169.254/latest",
+                // The forms the JVM resolver accepts that a dotted-quad pattern does not see:
+                // decimal 127.0.0.1, decimal 169.254.0.2, and a four-digit first octet.
+                "https://2130706433/fetch",
+                "https://2851995650/fetch",
+                "https://0177.0.0.1/fetch",
             )
         for (bad in poisoned) {
             val fetched = mutableListOf<String>()

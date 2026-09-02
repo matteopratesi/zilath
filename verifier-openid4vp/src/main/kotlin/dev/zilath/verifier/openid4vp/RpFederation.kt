@@ -181,8 +181,8 @@ object RpEntityConfiguration {
                         mapOf(
                             "dc+sd-jwt" to
                                 mapOf(
-                                    "sd-jwt_alg_values" to listOf("ES256", "ES384", "ES512"),
-                                    "kb-jwt_alg_values" to listOf("ES256"),
+                                    "sd-jwt_alg_values" to SUPPORTED_SD_JWT_ALGS,
+                                    "kb-jwt_alg_values" to SUPPORTED_KB_JWT_ALGS,
                                 ),
                         ),
                     "authorization_encrypted_response_alg" to RESPONSE_ENCRYPTION_ALG,

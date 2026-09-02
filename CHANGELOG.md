@@ -8,6 +8,37 @@ Until 1.0.0 the public API may change between minor versions. Anything that chan
 verifier accepts or rejects is called out explicitly, because that is the kind of change
 that can silently let something through.
 
+## [Unreleased]
+
+### Security
+
+Findings of the third internal review (2026-09-01). Each changes what a consumer receives or
+what the library is willing to reach for:
+
+- **The issuer envelope no longer reaches the application.** `Verified.claims` carried
+  `iat`, `exp` and `nbf` alongside the disclosed claims — stable per credential, and so a
+  handle for linking two verifications of the same person across venues and months. The
+  registered envelope claims (`cnf`, `status`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti`,
+  `_sd_alg`) are now stripped; `iss` and `vct` are kept because they are identical for every
+  holder of a credential type. **Code that read `iat` or `exp` from the claims will find them
+  gone.** This is a blocklist: a claim an issuer places in the credential unprotected, under
+  a name of its own, is still passed through — see the known limits in
+  `docs/privacy-by-design.md`.
+- **Numeric hosts are refused in the trust-chain walk.** `https://2130706433/…` passed the
+  IP-literal check as a hostname and resolves to 127.0.0.1 on the JVM; `2851995650` lands in
+  the link-local range. Any host made only of digits and dots is refused — no valid hostname
+  has that shape.
+- **Rejection details are fixed phrases.** The EUDI library's exception message is no longer
+  passed through as `detail`: its disclosure errors carry the disclosures themselves, and the
+  guarantee that `detail` holds no claim value has to hold by construction.
+- A status list `idx` that does not fit an `Int` is malformed rather than silently truncated.
+
+### Changed
+
+- `RelyingPartyConfiguration` refuses a non-positive `transactionTimeToLive`.
+- The request object and the federation entity configuration advertise the same SD-JWT
+  algorithms (`ES256`, `ES384`, `ES512`); they used to disagree.
+
 ## [0.2.0] — 2026-09-01
 
 First release published to Maven Central, under the name Zilath.

@@ -101,6 +101,9 @@ data class RelyingPartyConfiguration(
     val federation: RpFederationConfig? = null,
 ) {
     init {
+        require(transactionTimeToLive > Duration.ZERO) {
+            "transactionTimeToLive must be positive: zero or less expires every transaction as it is created"
+        }
         // Under the openid_federation scheme the wallet resolves us through the trust
         // chain and checks client_id against our entity configuration `sub` (WP_086):
         // a config without federation identity, or with a mismatched one, can never work.

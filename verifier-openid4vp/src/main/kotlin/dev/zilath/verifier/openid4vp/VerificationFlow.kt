@@ -238,8 +238,9 @@ sealed interface FlowOutcome {
     ) : FlowOutcome
 
     /**
-     * The presentation was verified. [claims] holds only what the wallet disclosed for this
-     * query — the credential itself is already gone by the time this is returned.
+     * The presentation was verified. [claims] holds what the wallet disclosed for this query
+     * plus `iss` and `vct`, and nothing else of the issuer envelope — the credential itself
+     * is already gone by the time this is returned.
      */
     data class Verified(
         val claims: DisclosedClaims,

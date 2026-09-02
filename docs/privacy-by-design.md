@@ -157,7 +157,27 @@ An honest list is more useful than a short one.
    from an issuer you already trust — but a fetcher able to reach arbitrary hosts is one
    compromised issuer away from being a request-forgery tool inside your network. An
    allow-list of expected status hosts costs nothing.
-8. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
+8. **What is stripped from the returned claims is a blocklist.** The verifier removes the
+   SD-JWT VC envelope — `cnf`, `status`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti`, `_sd_alg`
+   — because every one of them is stable per credential and would let a consumer link two
+   verifications of the same person. It cannot remove what it cannot recognise: a claim the
+   ISSUER puts in the credential unprotected, outside selective disclosure and under a name
+   of its own, reaches your application, and nothing in the verifier distinguishes it from a
+   legitimate always-visible attribute. **If you consume the claims, treat unexpected names
+   as suspect rather than as data.** The airtight form is an allowlist of what the holder
+   actually disclosed; it needs the nested-object case settled against a real issuer first,
+   so it is a limit today and not a promise. (Third review, 2026-09-01, raised in automated
+   review.)
+9. **Receipts are signed with the request-signing key.** A request object lives five minutes
+   by default — `RelyingPartyConfiguration.transactionTimeToLive`, which the request object's
+   `exp` follows;
+   a receipt is archived for years. When that key is rotated — and it should be — every
+   receipt already issued verifies only against the retired public key, so whoever archives
+   receipts must keep the history of the RP's published keys, and this library offers no
+   function that verifies a receipt for them. A dedicated receipt key, rotated on its own
+   schedule as the federation key already is, is the fix; it is an API change and is planned
+   for 0.3. (Third review, 2026-09-01.)
+10. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
 
 ## 6. What you still have to do
 

@@ -78,9 +78,18 @@ private fun usableFetchUrlOrNull(value: String): java.net.URI? {
     return if (usable) uri else null
 }
 
-/** Bracketed IPv6, or anything shaped like dotted-quad IPv4 (validity does not matter). */
-private fun isIpLiteral(host: String): Boolean = host.startsWith("[") || IPV4_SHAPED.matches(host)
+/**
+ * Bracketed IPv6, or anything made only of digits and dots.
+ *
+ * Not only the dotted quad. The JVM's resolver reads `2130706433` as 127.0.0.1 and
+ * `2851995650` as 169.254.0.2, and `0177.0.0.1` has four digits where a quad pattern allowed
+ * three: every one of those passed the earlier check as a "hostname" and reached the fetcher
+ * (third review, reproduced against `InetAddress`). No valid hostname consists solely of
+ * digits and dots — RFC 1123 §2.1, the top-level label is never all-numeric — so refusing
+ * the whole class costs no legitimate entity.
+ */
+private fun isIpLiteral(host: String): Boolean = host.startsWith("[") || NUMERIC_HOST.matches(host)
 
-private val IPV4_SHAPED = Regex("""\d{1,3}(\.\d{1,3}){3}""")
+private val NUMERIC_HOST = Regex("""[0-9.]+""")
 
 private val LOCALHOST_HOSTS = setOf("localhost", "127.0.0.1", "[::1]", "::1")
