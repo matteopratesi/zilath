@@ -193,3 +193,25 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   mutation checks; `clean build` green with the new tests.
 - **Funding status**: pre-existing.
 
+### 2026-09-01 — First publication to Maven Central (0.2.0), then 0.3.0
+
+- **What**: cutting `0.2.0`, verifying the bundle and publishing it under `dev.zilath`; two
+  fixes found by inspecting the bundle after Central had validated it and before publishing
+  (`META-INF/LICENSE` absent from every jar, `Automatic-Module-Name` absent from every
+  manifest); then `0.3.0` carrying the third review's fixes. Pull requests #34 and this one.
+- **Model**: Anthropic Claude Opus 5 for the release work, Fable 5.1 for the review whose
+  fixes `0.3.0` ships.
+- **Assistance**: the release preparation, the verification of signatures and checksums
+  against the artifacts as downloaded from Central, and the scan of the jars.
+- **Human contribution**: the decision to publish at all and when; the instruction to look
+  inside the bundle before the irreversible step — *"vuoi fare un giro sul codice prima che
+  sia troppo tardi?"* — which is what caught the missing licence, in a project whose entire
+  commercial model rests on the copyleft; and the release-numbering decision recorded here:
+  `0.3.0` rather than `0.2.1`, because removing claims from `Verified.claims` breaks callers
+  and this project promises that only minor versions may do that.
+- **Verification**: the four modules downloaded back from `repo1.maven.org` after publication
+  and checked byte-for-byte against the locally built jars (sha256 identical), signatures
+  verified against the published public key, `META-INF/LICENSE` confirmed present in all
+  twelve artifacts. `clean build` green, 174 tests.
+- **Funding status**: pre-existing.
+

@@ -163,7 +163,7 @@ revocation certificate.
    reversible.
 
    ```sh
-   ./scripts/verify-bundle.sh 0.2.0     # the version you are releasing
+   ./scripts/verify-bundle.sh 0.3.0     # the version you are releasing
    ```
 
    It checks three things and **exits non-zero** if any fails, because a check that only
@@ -240,6 +240,6 @@ Nothing outstanding as of 2026-09-01. Both blockers that stood here are closed:
   believed.
 
 What remains is not a blocker but worth reading once: **the API is not frozen**. Publishing
-`0.2.0` puts these coordinates in front of people permanently, and a `0.x` line is the
+a release puts these coordinates in front of people permanently, and a `0.x` line is the
 promise that they may still move. Say so in the release notes rather than letting somebody
 infer stability from the mere fact of a Central release.

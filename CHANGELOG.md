@@ -8,7 +8,11 @@ Until 1.0.0 the public API may change between minor versions. Anything that chan
 verifier accepts or rejects is called out explicitly, because that is the kind of change
 that can silently let something through.
 
-## [Unreleased]
+## [0.3.0] — 2026-09-01
+
+A minor, not a patch: the first item below **removes claims that 0.2.0 returned**, and this
+project's rule is that the API may move between minor versions until 1.0.0. A `0.2.1` would
+have promised that nothing breaks.
 
 ### Security
 
