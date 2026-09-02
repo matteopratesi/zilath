@@ -81,7 +81,7 @@ listed in `docs/privacy-by-design.md`:
   federation trust chain: every `main` source of the four library modules, read in full.
   Three findings, all fixed: an SSRF in the online trust-chain resolution, response-JWE
   confinement, and a missing clock tolerance on credential `exp`/`nbf`.
-- **2026-09-01** — a third reading of the same, unchanged code, all four library modules in
+- **2026-09-02** — a third reading of the same, unchanged code, all four library modules in
   full, with two suspected findings tested against the running library rather than argued.
   Nothing cryptographic was wrong. What it found sat around the cryptography: the claims
   handed to the application still carried `iat`, `exp` and `nbf` — stable per credential and

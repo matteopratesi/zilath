@@ -8,7 +8,7 @@ Until 1.0.0 the public API may change between minor versions. Anything that chan
 verifier accepts or rejects is called out explicitly, because that is the kind of change
 that can silently let something through.
 
-## [0.3.0] — 2026-09-01
+## [0.3.0] — 2026-09-02
 
 A minor, not a patch: the first item below **removes claims that 0.2.0 returned**, and this
 project's rule is that the API may move between minor versions until 1.0.0. A `0.2.1` would
@@ -16,7 +16,7 @@ have promised that nothing breaks.
 
 ### Security
 
-Findings of the third internal review (2026-09-01). Each changes what a consumer receives or
+Findings of the third internal review (2026-09-02). Each changes what a consumer receives or
 what the library is willing to reach for:
 
 - **The issuer envelope no longer reaches the application.** `Verified.claims` carried

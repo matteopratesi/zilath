@@ -122,6 +122,37 @@ holds the revocation certificate can revoke your key; whoever holds both can rev
 sign as you. Encrypted backup for the key, somewhere separate and offline for the
 revocation certificate.
 
+## The order, and why it is this one
+
+**Merge the release pull request BEFORE uploading, then tag only after the upload
+succeeded.** Not the other way round, and this is worth stating because the other way round
+is tempting and was tried once, on `0.3.0`, at a cost.
+
+The temptation: the release pull request bumps the version in `README.md`, so it advertises
+a version Central does not have yet, and merging it first feels like publishing a lie. So
+the upload goes first, and then the merge has to follow within minutes — otherwise `main`
+says `0.2.0` while the world downloads `0.3.0`, which is the same lie pointing the other
+way. That window is too narrow for a review to fit in, and on `0.3.0` the merge landed
+while automated review was still running: **merging a pull request stops the review, the
+slot is spent, and the reading never happens.** What it would have caught that day was a
+wrong date in the changelog and in the provenance register — the register whose only
+guarantee is that it can be checked against `git log`.
+
+So the window is not the thing to optimise. Take the order that leaves room to think:
+
+| | |
+|---|---|
+| 1 | Open the release pull request: version, changelog, README, migration note |
+| 2 | **Wait for the review to finish.** No deadline is pressing; nothing is published yet |
+| 3 | Merge |
+| 4 | From `main`: build the signed bundle, verify it, upload, publish |
+| 5 | **Tag `vX.Y.Z` only now**, on the merge commit |
+
+Between step 3 and step 4 the README names a version not yet on Central. That is minutes,
+under your hand, and the tag is what settles it: **a tag exists only for a version that is
+actually published**, so `git tag` is the honest answer to "what is out there", not the
+README. If an upload fails, no tag is created and the next attempt costs nothing.
+
 ## Cutting a release
 
 1. **Decide the version and make it real.** Set it in `build.gradle.kts` (the `subprojects`
@@ -216,6 +247,18 @@ revocation certificate.
    that does not exist.
 
 8. **Set the next development version** back to `-SNAPSHOT` and commit.
+
+## After the upload
+
+**Tag the merge commit, and only now.**
+
+```sh
+git tag -s v0.3.0 -m "0.3.0" && git push origin v0.3.0
+```
+
+Signed with the same key as the artifacts, so the tag and the jars carry the same claim of
+authorship. The tag is the record of what is actually on Central: the README can be ahead of
+reality for a few minutes, a tag never is.
 
 ## What gets published
 
