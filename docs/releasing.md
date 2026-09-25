@@ -200,12 +200,15 @@ available everywhere and `GPG_TTY` is what this file assumes.
    Every dependency and plugin is checked against the SHA-256 recorded in
    `gradle/verification-metadata.xml`, and the build fails on anything missing or different.
    A pull request that changes a version, adds a dependency or a plugin regenerates the file
-   in the same pull request, with every task run so that every configuration is resolved:
+   in the same pull request, from an EMPTY Gradle home and with every task run, so that
+   every configuration is resolved the way CI resolves it. A warm cache hides metadata files
+   a fresh machine downloads: the first version of the file passed locally and failed in CI.
 
    ```sh
+   export GRADLE_USER_HOME="$(mktemp -d)"
    ./gradlew --write-verification-metadata sha256 clean build dokkaGeneratePublicationHtml \
        javadocJar sourcesJar --rerun-tasks --no-build-cache
-   ./gradlew clean build --offline   # must pass from the cache alone
+   ./gradlew clean build --offline   # must pass from that cache alone
    ```
 
    Read the diff of the file before committing it: every new line is an artifact the
