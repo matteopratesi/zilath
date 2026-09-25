@@ -16,6 +16,8 @@
  */
 package dev.zilath.verifier.spring
 
+import dev.zilath.verifier.core.InternalZilathApi
+import dev.zilath.verifier.core.boundedPrintable
 import dev.zilath.verifier.openid4vp.DirectPostBody
 import dev.zilath.verifier.openid4vp.FlowOutcome
 import dev.zilath.verifier.openid4vp.HandledResponse
@@ -76,7 +78,7 @@ class OpenId4VpController(
             }
             is FlowOutcome.Rejected -> {
                 // detail is a server-side diagnostic: only the reason code reaches the wallet.
-                logger.warn("wallet response rejected: {} ({})", outcome.reason, outcome.detail)
+                logger.warn("wallet response rejected: {} ({})", outcome.reason, forLog(outcome.detail))
                 badRequest(outcome.reason.name)
             }
             FlowOutcome.Expired -> badRequest("transaction expired")
@@ -94,16 +96,16 @@ class OpenId4VpController(
         handled.redirectUri?.let { mapOf("redirect_uri" to it) } ?: emptyMap()
 
     /**
-     * Anyone who knows a transaction id can put an arbitrary string in `error` and have it
-     * written to the log. Bound the length and strip the control characters, so an
-     * unauthenticated caller cannot forge log lines or flood the file.
+     * Anyone who knows a transaction id can post to the response endpoint, and what it posts
+     * reaches the log: the wallet's `error`, and a rejection's `detail`, which a
+     * [dev.zilath.verifier.core.TrustEvaluator] or a [dev.zilath.verifier.core.CredentialVerifier]
+     * of the application's may write from the presentation. Both go through the library's one
+     * rule for text it did not write, so that an unauthenticated caller can neither forge log
+     * lines nor flood the file. The fourth internal review found the detail logged raw, and
+     * the error bounded by a second copy of that rule.
      */
-    private fun forLog(value: String?): String =
-        value
-            .orEmpty()
-            .take(MAX_LOGGED_ERROR)
-            .map { if (it.isISOControl()) '?' else it }
-            .joinToString("")
+    @OptIn(InternalZilathApi::class)
+    private fun forLog(value: String?): String = boundedPrintable(value.orEmpty())
 
     private fun badRequest(description: String): ResponseEntity<Map<String, String>> =
         ResponseEntity
@@ -113,7 +115,5 @@ class OpenId4VpController(
     companion object {
         const val REQUEST_OBJECT_MEDIA_TYPE = "application/oauth-authz-req+jwt"
         private val logger = org.slf4j.LoggerFactory.getLogger(OpenId4VpController::class.java)
-
-        private const val MAX_LOGGED_ERROR = 200
     }
 }
