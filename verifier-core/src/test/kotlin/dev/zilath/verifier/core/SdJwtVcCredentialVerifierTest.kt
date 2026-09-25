@@ -245,6 +245,40 @@ class SdJwtVcCredentialVerifierTest {
     }
 
     @Test
+    fun `a suspended credential and one in an application-specific state are rejected as such`() {
+        val compact = TestVectors.vector(statusUri = "https://status.example/1", statusIndex = 3)
+        assertThat(verify(compact, context(status = { _, _ -> CredentialStatus.SUSPENDED })))
+            .isEqualTo(VerificationResult.Rejected(RejectionReason.SUSPENDED, "credential is suspended"))
+        assertThat(verify(compact, context(status = { _, _ -> CredentialStatus.APPLICATION_SPECIFIC })))
+            .isEqualTo(VerificationResult.Rejected(RejectionReason.STATUS_NOT_VALID, "credential status is not valid"))
+    }
+
+    @Test
+    fun `a credential whose status uri is not a usable https url never reaches the status checker`() {
+        // SECURITY.md B1 promised this shape rule for the status list URI; the fourth
+        // internal review found that a credential pointing at a cloud metadata address was
+        // handed straight to the fetcher, and verified when the fetch failed open.
+        val checked = mutableListOf<StatusReference>()
+        val recording = StatusChecker { ref, _ -> CredentialStatus.VALID.also { checked.add(ref) } }
+        for (bad in listOf(
+            "http://169.254.169.254/latest/meta-data/",
+            "file:///etc/passwd",
+            "https://[fe80::1]:8080/s",
+        )) {
+            val compact = TestVectors.vector(statusUri = bad, statusIndex = 0)
+            assertThat(verify(compact, context(status = recording)))
+                .`as`(bad)
+                .isEqualTo(
+                    VerificationResult.Rejected(
+                        RejectionReason.STATUS_CHECK_FAILED,
+                        "status_list uri is not a usable https url",
+                    ),
+                )
+        }
+        assertThat(checked).isEmpty()
+    }
+
+    @Test
     fun `unknown status is rejected as status check failure`() {
         val compact = TestVectors.vector(statusUri = "https://status.example/1", statusIndex = 3)
         val result = verify(compact, context(status = StatusChecker { _, _ -> CredentialStatus.UNKNOWN }))

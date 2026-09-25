@@ -133,7 +133,18 @@ internal fun sdHashOf(compact: String): String {
     return Base64URL.encode(digest).toString()
 }
 
-/** Extracts the OAuth Status List reference, if the credential carries one. */
+/**
+ * Extracts the OAuth Status List reference, if the credential carries one.
+ *
+ * Only the Token Status List mechanism (`status.status_list`) is evaluated. A `status`
+ * object that carries other members and no `status_list` — IT-Wallet's earlier
+ * `status_assertion` and `status_attestation`, which the production disability card issuer
+ * still advertises — is well formed (draft-ietf-oauth-status-list §6.1 lets other
+ * specifications define members), but the library cannot evaluate it, so the credential is
+ * rejected. Its own phrase says so, where the fourth internal review found the same words
+ * as for a broken reference: an operator must be able to tell "unsupported" from "wrong".
+ */
+@OptIn(InternalZilathApi::class)
 internal fun statusReferenceOf(issuerClaims: JWTClaimsSet): StatusReference? {
     // Absent is fine: not every credential is revocable. Present but not an object is NOT
     // fine — swallowing that would skip the revocation check entirely, while the sibling
@@ -144,8 +155,16 @@ internal fun statusReferenceOf(issuerClaims: JWTClaimsSet): StatusReference? {
         runCatching { issuerClaims.getJSONObjectClaim("status") }.getOrNull()
             ?: reject(RejectionReason.STATUS_CHECK_FAILED, "status claim is not an object")
     val statusList =
-        status["status_list"] as? Map<*, *>
-            ?: reject(RejectionReason.STATUS_CHECK_FAILED, "status claim without a status_list reference")
+        when (val member = status["status_list"]) {
+            is Map<*, *> -> member
+            null ->
+                if (status.isEmpty()) {
+                    reject(RejectionReason.STATUS_CHECK_FAILED, "status claim without a status_list reference")
+                } else {
+                    reject(RejectionReason.STATUS_CHECK_FAILED, "status mechanism not supported")
+                }
+            else -> reject(RejectionReason.STATUS_CHECK_FAILED, "malformed status_list reference")
+        }
     val uri = statusList["uri"] as? String
     // Two ways a Number can quietly become the wrong entry, and both read somebody else's
     // status bit: toInt() keeps the low 32 bits of anything larger, and toLong() truncates
@@ -159,6 +178,13 @@ internal fun statusReferenceOf(issuerClaims: JWTClaimsSet): StatusReference? {
             ?.toInt()
     if (uri == null || index == null) {
         reject(RejectionReason.STATUS_CHECK_FAILED, "malformed status_list reference")
+    }
+    // The fetcher is handed this URI, and the issuer chose it: SECURITY.md B1 promises the
+    // same shape rule as for federation URLs, which the fourth internal review found was
+    // never applied here — file:, http: to a metadata address, userinfo and bare IPs all
+    // reached the fetcher.
+    if (usableHttpsUriOrNull(uri) == null) {
+        reject(RejectionReason.STATUS_CHECK_FAILED, "status_list uri is not a usable https url")
     }
     return StatusReference(uri, index)
 }

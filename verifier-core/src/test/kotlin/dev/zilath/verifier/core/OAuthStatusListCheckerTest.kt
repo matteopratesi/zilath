@@ -27,6 +27,7 @@ import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayOutputStream
 import java.time.Clock
@@ -93,6 +94,15 @@ class OAuthStatusListCheckerTest {
 
     private fun checkerFor(token: String) = OAuthStatusListChecker({ token }, clock)
 
+    /** A fetcher that records every URI it is asked for, and serves [token]. */
+    private class RecordingFetcher(
+        private val token: String,
+    ) : StatusListFetcher {
+        val asked = mutableListOf<String>()
+
+        override fun fetch(uri: String): String = token.also { asked.add(uri) }
+    }
+
     private fun statusOf(
         token: String,
         index: Int = 0,
@@ -114,8 +124,24 @@ class OAuthStatusListCheckerTest {
     fun `two bit entries are decoded at the right offset`() {
         // bits=2, one byte holding entries [0..3]: entry 1 has value 2 -> 0b0000_1000
         val t = token(bits = 2, rawList = byteArrayOf(0b0000_1000))
-        assertThat(statusOf(t, index = 1)).isEqualTo(CredentialStatus.REVOKED)
+        assertThat(statusOf(t, index = 1)).isEqualTo(CredentialStatus.SUSPENDED)
         assertThat(statusOf(t, index = 0)).isEqualTo(CredentialStatus.VALID)
+    }
+
+    @Test
+    fun `each status type is reported as what it is, and only zero is valid`() {
+        // bits=4, two entries per byte, low nibble first (draft §4.1):
+        // idx0=0x0 idx1=0x1 | idx2=0x2 idx3=0xF | idx4=0x3 idx5=0x0
+        // Before the fourth internal review every non-zero value came back REVOKED, so a
+        // suspended card, or one IT-Wallet merely asks the wallet to refresh (UPDATE 0x03,
+        // ATTRIBUTE_UPDATE 0x0F), was logged and receipted as withdrawn for good.
+        val t = token(bits = 4, rawList = byteArrayOf(0x10, 0xF2.toByte(), 0x03))
+        assertThat(statusOf(t, index = 0)).isEqualTo(CredentialStatus.VALID)
+        assertThat(statusOf(t, index = 1)).isEqualTo(CredentialStatus.REVOKED)
+        assertThat(statusOf(t, index = 2)).isEqualTo(CredentialStatus.SUSPENDED)
+        assertThat(statusOf(t, index = 3)).isEqualTo(CredentialStatus.APPLICATION_SPECIFIC)
+        assertThat(statusOf(t, index = 4)).isEqualTo(CredentialStatus.APPLICATION_SPECIFIC)
+        assertThat(statusOf(t, index = 5)).isEqualTo(CredentialStatus.VALID)
     }
 
     // --- the checks that decide whether to believe it at all ---------------------------
@@ -149,6 +175,48 @@ class OAuthStatusListCheckerTest {
     }
 
     @Test
+    fun `a token without iss signed by the issuer key is believed`() {
+        // Neither the draft (§5.1) nor IT-Wallet 1.4.6 requires iss, and both examples omit
+        // it: requiring it denied every holder of such an issuer. The signature under the
+        // issuer's own key is what binds the token to it; an iss that IS present must still
+        // match (the test above).
+        assertThat(statusOf(token(iss = null, rawList = byteArrayOf(0b0000_0010)), index = 1))
+            .isEqualTo(CredentialStatus.REVOKED)
+        assertThat(statusOf(token(iss = null))).isEqualTo(CredentialStatus.VALID)
+        assertThat(statusOf(token(iss = null, signWith = attackerKey))).isEqualTo(CredentialStatus.UNKNOWN)
+    }
+
+    @Test
+    fun `a status uri that is not a usable https url never reaches the fetcher`() {
+        // For a caller building a StatusReference by hand; the verifier refuses such a
+        // credential before it gets here. The same shape rule as the federation URLs.
+        listOf(
+            "http://169.254.169.254/latest/meta-data/",
+            "file:///etc/passwd",
+            "https://user:pw@status.example/1",
+            "https://2130706433/status/1",
+            "https://[fe80::1]:8080/status",
+            "ftp://status.example/1",
+            "not a uri at all",
+            "",
+        ).forEach { bad ->
+            val fetcher = RecordingFetcher(token(sub = bad))
+            val status = OAuthStatusListChecker(fetcher, clock).check(StatusReference(bad, 0), trust)
+            assertThat(status).`as`(bad).isEqualTo(CredentialStatus.UNKNOWN)
+            assertThat(fetcher.asked).`as`(bad).isEmpty()
+        }
+    }
+
+    @Test
+    fun `a status uri with a query string is fetched`() {
+        val withQuery = "https://status.example/lists?id=1"
+        val fetcher = RecordingFetcher(token(sub = withQuery))
+        val status = OAuthStatusListChecker(fetcher, clock).check(StatusReference(withQuery, 0), trust)
+        assertThat(status).isEqualTo(CredentialStatus.VALID)
+        assertThat(fetcher.asked).containsExactly(withQuery)
+    }
+
+    @Test
     fun `a token whose sub does not match the referenced uri is unknown`() {
         // A genuine, correctly signed token for a DIFFERENT list must not be replayed here.
         val otherList = token(sub = "https://status.example/999")
@@ -159,6 +227,17 @@ class OAuthStatusListCheckerTest {
     fun `a token without the statuslist typ is unknown`() {
         assertThat(statusOf(token(typ = null))).isEqualTo(CredentialStatus.UNKNOWN)
         assertThat(statusOf(token(typ = "JWT"))).isEqualTo(CredentialStatus.UNKNOWN)
+        listOf("statuslist+cwt", "jwt", "application/statuslist+jwt;x=1", "foo/statuslist+jwt").forEach {
+            assertThat(statusOf(token(typ = it))).`as`(it).isEqualTo(CredentialStatus.UNKNOWN)
+        }
+    }
+
+    @Test
+    fun `the typ forms rfc 7515 makes equivalent are all believed`() {
+        // application/ is implied and media types are case-insensitive (RFC 7515 §4.1.9):
+        // a literal comparison turned these genuine tokens into denials.
+        listOf("statuslist+jwt", "application/statuslist+jwt", "StatusList+JWT", "APPLICATION/statuslist+jwt")
+            .forEach { assertThat(statusOf(token(typ = it))).`as`(it).isEqualTo(CredentialStatus.VALID) }
     }
 
     @Test
@@ -245,8 +324,51 @@ class OAuthStatusListCheckerTest {
 
     @Test
     fun `oversized status list degrades to unknown instead of exhausting the heap`() {
-        // 4 MiB of zeros compresses to a few KiB: a classic zip-bomb shape.
-        assertThat(statusOf(token(rawList = ByteArray(4 * 1024 * 1024)))).isEqualTo(CredentialStatus.UNKNOWN)
+        // Twice the default cap in zeros compresses to a few tens of KiB: a zip-bomb shape.
+        val bomb = ByteArray(2 * OAuthStatusListChecker.DEFAULT_MAX_INFLATED_BYTES)
+        assertThat(statusOf(token(rawList = bomb))).isEqualTo(CredentialStatus.UNKNOWN)
+    }
+
+    @Test
+    fun `an eight bit list of more than a million entries is read`() {
+        // 2^20 + 1 entries at bits=8: one byte beyond the cap the fourth internal review
+        // found, which turned every lookup in a large IT-Wallet list into a denial.
+        val entries = (1 shl 20) + 1
+        val list = ByteArray(entries).also { it[entries - 1] = 0x02 }
+        val t = token(bits = 8, rawList = list)
+        assertThat(statusOf(t, index = entries - 1)).isEqualTo(CredentialStatus.SUSPENDED)
+        assertThat(statusOf(t, index = 0)).isEqualTo(CredentialStatus.VALID)
+    }
+
+    @Test
+    fun `the inflation cap is configurable and bites exactly past it`() {
+        val atCap = token(rawList = ByteArray(1024))
+        val overCap = token(rawList = ByteArray(1025))
+        val capped = { t: String -> OAuthStatusListChecker({ t }, clock, maxInflatedBytes = 1024) }
+        assertThat(capped(atCap).check(StatusReference(uri, 1024 * 8 - 1), trust)).isEqualTo(CredentialStatus.VALID)
+        assertThat(capped(overCap).check(StatusReference(uri, 0), trust)).isEqualTo(CredentialStatus.UNKNOWN)
+        assertThatThrownBy { OAuthStatusListChecker({ atCap }, clock, maxInflatedBytes = 0) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `a token longer than any list under the cap could make is not parsed`() {
+        // 1 KiB of inflated list allows 2 KiB plus 64 KiB of everything else; this token is
+        // correctly signed and would otherwise be believed.
+        val padded =
+            SignedJWT(
+                JWSHeader.Builder(JWSAlgorithm.ES256).type(JOSEObjectType("statuslist+jwt")).build(),
+                JWTClaimsSet
+                    .Builder()
+                    .subject(uri)
+                    .issueTime(Date.from(now))
+                    .claim("pad", "x".repeat(70_000))
+                    .claim("status_list", mapOf("bits" to 1, "lst" to deflate(byteArrayOf(0))))
+                    .build(),
+            ).apply { sign(ECDSASigner(issuerKey)) }.serialize()
+        val capped = OAuthStatusListChecker({ padded }, clock, maxInflatedBytes = 1024)
+        assertThat(capped.check(StatusReference(uri, 0), trust)).isEqualTo(CredentialStatus.UNKNOWN)
+        assertThat(checkerFor(padded).check(StatusReference(uri, 0), trust)).isEqualTo(CredentialStatus.VALID)
     }
 
     @Test
