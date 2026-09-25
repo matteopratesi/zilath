@@ -173,18 +173,18 @@ class FederationTrustEvaluatorTest {
 
     @Test
     fun `a violated metadata_policy makes the chain untrusted`() {
+        // The leaf IS a credential issuer and publishes its keys: the only thing wrong is
+        // the parameter the anchor's policy makes essential. This test used to use a leaf
+        // with no metadata at all, and passed only because policies were applied to entity
+        // types the leaf does not publish — the very defect that rejected the production
+        // IT-Wallet issuer.
         val chain =
             listOf(
-                FederationFixtures.leafConfiguration(includeCredentialKeys = false),
-                FederationFixtures.signedStatement(
-                    FederationFixtures.anchorKey,
-                    FederationFixtures.ANCHOR_ID,
-                    FederationFixtures.LEAF_ID,
-                ) {
-                    claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey))
+                FederationFixtures.leafConfiguration(),
+                FederationFixtures.anchorStatementAboutLeaf {
                     claim(
                         "metadata_policy",
-                        mapOf("openid_credential_issuer" to mapOf("jwks" to mapOf("essential" to true))),
+                        mapOf("openid_credential_issuer" to mapOf("credential_endpoint" to mapOf("essential" to true))),
                     )
                 },
             )
@@ -192,6 +192,49 @@ class FederationTrustEvaluatorTest {
             evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
         assertThat((decision as TrustDecision.Untrusted).reason).contains("essential")
+    }
+
+    @Test
+    fun `a policy for an entity type the leaf does not publish is not applied to it`() {
+        // The shape of the production anchor's statement: one policy for several entity
+        // types, some essential parameters under a type this leaf is not.
+        val chain =
+            listOf(
+                FederationFixtures.leafConfiguration(),
+                FederationFixtures.anchorStatementAboutLeaf {
+                    claim(
+                        "metadata_policy",
+                        mapOf(
+                            "openid_credential_issuer" to mapOf("jwks" to mapOf("essential" to true)),
+                            "wallet_provider" to mapOf("jwks" to mapOf("essential" to true)),
+                        ),
+                    )
+                },
+            )
+        val decision =
+            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+        assertTrustedWithIssuerKey(decision)
+    }
+
+    @Test
+    fun `a superior cannot graft a credential issuer section onto a leaf that never claimed one`() {
+        val grafted = ECKeyGenerator(Curve.P_256).keyID("grafted").generate()
+        val chain =
+            listOf(
+                FederationFixtures.leafConfiguration(
+                    metadata = mapOf("federation_entity" to mapOf("organization_name" to "Not an issuer")),
+                ),
+                FederationFixtures.anchorStatementAboutLeaf {
+                    claim(
+                        "metadata",
+                        mapOf("openid_credential_issuer" to mapOf("jwks" to FederationFixtures.jwksClaim(grafted))),
+                    )
+                },
+            )
+        val decision =
+            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+        assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+        assertThat((decision as TrustDecision.Untrusted).reason).contains("no credential signing keys")
     }
 
     @Test

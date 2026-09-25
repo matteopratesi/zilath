@@ -246,6 +246,47 @@ class MetadataPolicyTest {
     }
 
     @Test
+    fun `a policy is applied only to the entity types the leaf publishes`() {
+        val resolved =
+            MetadataPolicy.resolve(
+                metadata("jwks" to mapOf("keys" to emptyList<Any>())),
+                listOf(
+                    mapOf(
+                        "openid_credential_issuer" to mapOf("jwks" to mapOf("essential" to true)),
+                        // Essential parameters of a type the leaf is not: no failure...
+                        "wallet_provider" to mapOf("aal_values_supported" to mapOf("essential" to true)),
+                        // ...and no section fabricated for it either.
+                        "openid_relying_party" to mapOf("redirect_uris" to mapOf("default" to listOf("https://x"))),
+                    ),
+                ),
+            )
+        assertThat(resolved.keys).containsExactly("openid_credential_issuer")
+    }
+
+    @Test
+    fun `a malformed policy for a type the leaf does not publish still invalidates the chain`() {
+        // Validation covers the whole chain's policy (OID-FED §6.1.4.1); only its
+        // application is limited to the types present.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata("a" to "x"),
+                    listOf(mapOf("wallet_provider" to mapOf("grant_types_supported" to mapOf("add" to "not-a-list")))),
+                )
+            }.withMessageContaining("must be an array")
+    }
+
+    @Test
+    fun `superior metadata is not grafted onto an entity type the leaf does not publish`() {
+        val overlaid =
+            MetadataPolicy.overlay(
+                mapOf("federation_entity" to mapOf("organization_name" to "leaf")),
+                mapOf("openid_credential_issuer" to mapOf("jwks" to mapOf("keys" to emptyList<Any>()))),
+            )
+        assertThat(overlaid.keys).containsExactly("federation_entity")
+    }
+
+    @Test
     fun `the immediate superior statement metadata overrides the leaf`() {
         val overlaid =
             MetadataPolicy.overlay(

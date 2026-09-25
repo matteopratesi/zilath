@@ -78,20 +78,28 @@ object FederationFixtures {
 
     fun jwksClaim(vararg keys: JWK): Map<String, Any> = mapOf("keys" to keys.map { it.toPublicJWK().toJSONObject() })
 
+    /** The leaf's `openid_credential_issuer` section: its credential keys plus [extra] parameters. */
+    fun credentialIssuerSection(vararg extra: Pair<String, Any?>): Map<String, Any?> =
+        mapOf("jwks" to jwksClaim(TestVectors.issuerEcKey)) + extra
+
     fun leafConfiguration(
         authorityHint: String = ANCHOR_ID,
         includeCredentialKeys: Boolean = true,
         federationKey: ECKey = leafFederationKey,
+        metadata: Map<String, Any?>? =
+            if (includeCredentialKeys) mapOf("openid_credential_issuer" to credentialIssuerSection()) else null,
     ): String =
         signedStatement(federationKey, LEAF_ID, LEAF_ID) {
             claim("jwks", jwksClaim(federationKey))
             claim("authority_hints", listOf(authorityHint))
-            if (includeCredentialKeys) {
-                claim(
-                    "metadata",
-                    mapOf("openid_credential_issuer" to mapOf("jwks" to jwksClaim(TestVectors.issuerEcKey))),
-                )
-            }
+            if (metadata != null) claim("metadata", metadata)
+        }
+
+    /** The anchor's statement about the leaf, attesting its federation key, plus [configure]. */
+    fun anchorStatementAboutLeaf(configure: JWTClaimsSet.Builder.() -> Unit = {}): String =
+        signedStatement(anchorKey, ANCHOR_ID, LEAF_ID) {
+            claim("jwks", jwksClaim(leafFederationKey))
+            configure()
         }
 
     fun anchorConfiguration(fetchEndpoint: String = "$ANCHOR_ID/fetch"): String =

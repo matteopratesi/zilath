@@ -26,6 +26,15 @@ internal object MetadataPolicy {
     /**
      * Resolves the leaf [metadata] against the [policies] of its superiors, ordered
      * anchor-first. Returns the resolved metadata (per metadata type).
+     *
+     * Every policy is merged and validated, for every entity type it names (OID-FED
+     * §6.1.4.1: a policy error anywhere in the chain invalidates it), but a type's merged
+     * policy is APPLIED only when the leaf publishes that type: §6.1.1 scopes a policy to
+     * "Subordinate Entities of that type". Applying it to every type in the policy made
+     * the production IT-Wallet anchor, whose single statement carries one policy for five
+     * entity types with `wallet_provider.jwks` essential, reject its own disability card
+     * issuer — which is not a wallet provider — and fabricated sections (via `default`,
+     * `add`, `value`) that the leaf never published.
      */
     fun resolve(
         metadata: Map<*, *>?,
@@ -34,7 +43,7 @@ internal object MetadataPolicy {
         val merged = policies.fold(emptyMap<String, Map<String, Map<String, Any?>>>(), ::mergePolicy)
         val resolved = metadata.orEmpty().entries.associate { (type, section) -> type.toString() to section }
         return merged.entries.fold(resolved) { current, (type, typePolicy) ->
-            val section = current[type] as? Map<*, *>
+            val section = current[type] as? Map<*, *> ?: return@fold current
             current + (type to applyTypePolicy(type, section, typePolicy))
         }
     }
@@ -239,6 +248,12 @@ internal object MetadataPolicy {
      * Overlays the immediate superior's subordinate-statement metadata onto the leaf's
      * (OID-FED §6.1: statement metadata takes precedence, per parameter, and is applied
      * BEFORE the merged policy).
+     *
+     * Only onto entity types the leaf publishes: OID-FED §3.1.1 says a subordinate
+     * statement's metadata "applies only to those Entity Types that are present in the
+     * subject's Entity Configuration". Grafting a whole section instead let a superior
+     * turn an entity that is not a credential issuer — a relying party under the same
+     * anchor — into one, `jwks` included, without that entity ever claiming the role.
      */
     fun overlay(
         leaf: Map<*, *>?,
@@ -252,7 +267,7 @@ internal object MetadataPolicy {
                 .toMutableMap()
         for ((type, section) in superior.orEmpty()) {
             if (section !is Map<*, *>) trustFail("subordinate statement metadata for $type is not an object")
-            val base = (result[type.toString()] as? Map<*, *>).orEmpty()
+            val base = result[type.toString()] as? Map<*, *> ?: continue
             result[type.toString()] =
                 base.entries.associate { (k, v) -> k.toString() to v } +
                 section.entries.associate { (k, v) -> k.toString() to v }
