@@ -23,9 +23,9 @@ package dev.zilath.verifier.core
  * carry — which keys a signature may be checked with, which URLs may be dereferenced,
  * how a `typ` header compares — must be ONE rule across `verifier-core`,
  * `verifier-trust-itwallet` and `verifier-openid4vp`, not three copies that drift apart.
- * The fourth internal review found exactly that drift: a key-strength check that did not
- * exist anywhere, duplicated in two modules, and an URL shape rule that one module
- * enforced and the other did not.
+ * The fourth internal review found exactly that drift: the same key switch copied into two
+ * modules with no strength check in either, and a URL shape rule that one module enforced
+ * and the other did not.
  *
  * Not part of the supported API: signatures may change in any release, without notice.
  */
