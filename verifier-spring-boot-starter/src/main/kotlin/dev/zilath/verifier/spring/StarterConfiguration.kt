@@ -87,7 +87,7 @@ private fun federationOf(
     trustChainSource: TrustChainSource?,
 ): RpFederationConfig? {
     if (federation.entityId.isBlank()) {
-        require(federation == OpenId4VpProperties.Federation()) {
+        require(federation.copy(entityId = "") == OpenId4VpProperties.Federation()) {
             "zilath.openid4vp.federation.* is set without zilath.openid4vp.federation.entity-id"
         }
         require(trustChainSource == null) {

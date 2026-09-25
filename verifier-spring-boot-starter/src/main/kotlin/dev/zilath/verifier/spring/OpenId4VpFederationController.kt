@@ -31,7 +31,7 @@ import java.time.Clock
  * The path is the application's root: the entity configuration lives at the entity id
  * followed by `/.well-known/openid-federation`, so an entity id with a path of its own needs
  * the application served under that path. Signed anew for every request, since its `exp`
- * follows its `iat` by a day.
+ * follows its `iat` by the statement validity, a day by default.
  */
 @RestController
 class OpenId4VpFederationController(

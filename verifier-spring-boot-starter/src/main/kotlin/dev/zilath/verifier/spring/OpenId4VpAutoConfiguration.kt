@@ -44,6 +44,11 @@ import java.time.Clock
  * Wires a [VerificationFlow] and its HTTP endpoints from `zilath.openid4vp.*` properties.
  * The integrating application MUST provide [TrustEvaluator] and [StatusChecker] beans:
  * deciding who to trust is never a library default.
+ *
+ * It MAY declare a [TransactionStore] (a shared one, when it runs on more than one node), a
+ * [WalletProfile], a [TrustChainSource] for an `openid_federation:` relying party, a
+ * [CredentialVerifier] and a [Clock]: each is used where the starter would otherwise use
+ * its own default, or nothing.
  */
 @AutoConfiguration
 @EnableConfigurationProperties(OpenId4VpProperties::class)
