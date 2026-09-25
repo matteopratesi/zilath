@@ -24,8 +24,36 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Keeps in-flight transactions between [VerificationFlow.start] and the wallet response.
- * The default is [InMemoryTransactionStore]; production deployments may plug a shared
- * store, but nothing here ever contains credential data — only nonces and outcomes.
+ *
+ * The default, [InMemoryTransactionStore], serves one process. A deployment with more than
+ * one node needs a shared store of its own, and the flow's guarantees — a nonce accepted
+ * once, a response code consumed once, a same-device user sent back to the relying party —
+ * hold only if that store has these properties:
+ *
+ * 1. **Previous value.** [compareAndUpdate] returns the value it REPLACED, never the one it
+ *    stored, and null only when no entry existed at the moment the operation took effect.
+ *    (Returning the new value, as `computeIfPresent` does, turns every presentation into a
+ *    replay without a single error.)
+ * 2. **Linearizable per id.** Concurrent updates of one entry take effect one after the
+ *    other, each applied to the result of the one before: none is lost, none applied twice.
+ * 3. **Re-runnable update.** The update function may be invoked more than once, as an
+ *    optimistic store does when it retries; the flow's functions are pure for that reason.
+ *    Only the invocation whose result is committed counts, and the value returned is the
+ *    one THAT invocation received.
+ * 4. **Read-your-writes.** [get] observes every [put], [compareAndUpdate] and [remove] that
+ *    has already returned, from any thread or node: a read served by a lagging replica is
+ *    not allowed.
+ * 5. **Lossless.** A transaction reads back equal to what was written — every field, the
+ *    [FlowOutcome] and its claims included (instants to the millisecond at least).
+ *
+ * `TransactionStoreContractTest`, in this module's test fixtures, checks exactly these:
+ * extend it with a factory for your store and run it. The fourth internal review found the
+ * list implicit and unchecked, and every one of these properties missing from some
+ * plausible store (an eventually consistent read, a minimising codec, the new value in
+ * place of the old) with nothing in the library to notice.
+ *
+ * What a transaction holds is not only nonces: once verified, its [Transaction.outcome]
+ * carries the DISCLOSED CLAIMS. Treat any store, and its logs, accordingly.
  */
 interface TransactionStore {
     /** Stores [transaction], replacing any entry with the same id. */
@@ -52,8 +80,9 @@ interface TransactionStore {
     fun get(id: TransactionId): Transaction?
 
     /**
-     * Atomically applies [update] to the stored transaction and returns the previous
-     * value, or null if absent. Used to consume the nonce exactly once.
+     * Atomically applies [update] to the stored transaction and returns the value it
+     * replaced, or null if there was none — properties 1 to 3 above. The flow consumes the
+     * nonce and the response code through this, and decides from the returned value.
      */
     fun compareAndUpdate(
         id: TransactionId,
