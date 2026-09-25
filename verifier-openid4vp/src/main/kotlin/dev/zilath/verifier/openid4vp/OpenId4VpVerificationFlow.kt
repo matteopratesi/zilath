@@ -70,6 +70,7 @@ class OpenId4VpVerificationFlow(
                 request = request,
                 pollTokenHash = pollTokenHashOf(pollToken.value),
                 mode = mode,
+                responseEncryptionKey = newTransactionEncryptionKey(),
             ),
         )
         val requestUri = "${config.endpoints.requestUriBase}/${id.value}"
@@ -95,7 +96,9 @@ class OpenId4VpVerificationFlow(
         val before =
             store.compareAndUpdate(txId) { current ->
                 if (current.state == TransactionState.CREATED && !current.isExpired(now)) {
-                    current.copy(state = TransactionState.PRESENTED)
+                    // The decryption key leaves the store with the nonce: this call decrypts
+                    // with the copy it holds, and no later response could be accepted anyway.
+                    current.copy(state = TransactionState.PRESENTED, responseEncryptionKey = null)
                 } else {
                     current
                 }
@@ -182,7 +185,7 @@ class OpenId4VpVerificationFlow(
     ): FlowOutcome =
         runCatching {
             checkWalletResponseSize(body, config)
-            val payload = config.profile.decodeWalletResponse(body, config)
+            val payload = config.profile.decodeWalletResponse(body, config, transaction.responseEncryptionKey)
             checkState(payload, transaction)
             checkEchoedNonce(payload, transaction)
             val compact =

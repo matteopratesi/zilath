@@ -16,6 +16,8 @@
  */
 package dev.zilath.verifier.openid4vp
 
+import com.nimbusds.jose.jwk.Curve
+import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import dev.zilath.verifier.core.DisclosedClaims
 import dev.zilath.verifier.core.RejectionReason
 import kotlinx.serialization.json.Json
@@ -185,6 +187,8 @@ abstract class TransactionStoreContractTest {
             mode = FlowMode.SAME_DEVICE,
             responseCode = "response-code-$id",
             returned = false,
+            // Private key material: a store keeps it, whole, for the transaction's life.
+            responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("tx-key-$id").generate(),
         )
     }
 

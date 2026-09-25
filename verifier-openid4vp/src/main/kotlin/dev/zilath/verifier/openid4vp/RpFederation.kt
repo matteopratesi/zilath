@@ -190,14 +190,16 @@ object RpEntityConfiguration {
                     // The SAME published JWKs as the request object's client_metadata:
                     // a wallet resolving us through the federation must find the very key
                     // it is asked to encrypt to (matching kid, and use "enc").
+                    // The static encryption key only when the RP accepts it: publishing a key the
+                    // response endpoint then refuses would deny every wallet that used it.
                     "jwks" to
                         mapOf(
                             "keys" to
-                                listOf(
+                                listOfNotNull(
                                     config.keys.requestSigningKey
                                         .toPublicJWK()
                                         .toJSONObject(),
-                                    publicEncryptionJwk(config).toJSONObject(),
+                                    config.keys.responseEncryptionKey?.let { publicEncryptionJwk(it).toJSONObject() },
                                 ),
                         ),
                 ),

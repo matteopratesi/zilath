@@ -16,6 +16,7 @@
  */
 package dev.zilath.verifier.openid4vp
 
+import com.nimbusds.jose.jwk.ECKey
 import dev.zilath.verifier.core.RejectionReason
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -54,16 +55,25 @@ interface WalletProfile {
      */
     val acceptsBareVpToken: Boolean get() = false
 
-    /** The `client_metadata` object embedded in the request object. */
-    fun clientMetadataFor(config: RelyingPartyConfiguration): Map<String, Any>
+    /**
+     * The `client_metadata` object embedded in the request object. [responseEncryptionJwk]
+     * is the PUBLIC half of the transaction's own encryption key, the one to publish.
+     */
+    fun clientMetadataFor(
+        config: RelyingPartyConfiguration,
+        responseEncryptionJwk: ECKey,
+    ): Map<String, Any>
 
     /**
      * Decodes the wallet's authorization response body into the response JSON
      * (`vp_token`, `state`, ...). Throws a flow rejection on undecodable input.
+     * [transactionKey] is the transaction's own encryption key, private half included, or
+     * null when the transaction holds none.
      */
     fun decodeWalletResponse(
         body: DirectPostBody,
         config: RelyingPartyConfiguration,
+        transactionKey: ECKey?,
     ): JsonObject
 }
 
@@ -75,8 +85,11 @@ object ItWalletProfile : WalletProfile {
     override val name: String = "it-wallet-1.4"
     override val responseMode: String = "direct_post.jwt"
 
-    override fun clientMetadataFor(config: RelyingPartyConfiguration): Map<String, Any> =
-        baselineClientMetadata(config) +
+    override fun clientMetadataFor(
+        config: RelyingPartyConfiguration,
+        responseEncryptionJwk: ECKey,
+    ): Map<String, Any> =
+        baselineClientMetadata(responseEncryptionJwk) +
             mapOf(
                 // Legacy JARM member names, kept as harmless extras for older wallets.
                 "authorization_encrypted_response_alg" to RESPONSE_ENCRYPTION_ALG,
@@ -86,9 +99,10 @@ object ItWalletProfile : WalletProfile {
     override fun decodeWalletResponse(
         body: DirectPostBody,
         config: RelyingPartyConfiguration,
+        transactionKey: ECKey?,
     ): JsonObject {
         val jwe = body.response ?: flowReject(RejectionReason.MALFORMED, "missing response parameter")
-        return decryptWalletResponse(jwe, config)
+        return decryptWalletResponse(jwe, config, transactionKey)
     }
 }
 
@@ -108,11 +122,15 @@ object ArfBaselineProfile : WalletProfile {
      */
     override val acceptsBareVpToken: Boolean = true
 
-    override fun clientMetadataFor(config: RelyingPartyConfiguration): Map<String, Any> = baselineClientMetadata(config)
+    override fun clientMetadataFor(
+        config: RelyingPartyConfiguration,
+        responseEncryptionJwk: ECKey,
+    ): Map<String, Any> = baselineClientMetadata(responseEncryptionJwk)
 
     override fun decodeWalletResponse(
         body: DirectPostBody,
         config: RelyingPartyConfiguration,
+        transactionKey: ECKey?,
     ): JsonObject {
         val vpToken = body.parameters["vp_token"] ?: flowReject(RejectionReason.MALFORMED, "missing vp_token parameter")
         // The form parameter is either the JSON object of OpenID4VP 1.0 or, in the legacy
@@ -132,18 +150,13 @@ object ArfBaselineProfile : WalletProfile {
 }
 
 /**
- * The RP response-encryption key as published: public half, `alg` (so the wallet can pick
- * it) and `use: "enc"` — verifiers are expected to advertise the key USE, and the same
- * JWK is published in the federation entity configuration.
+ * A response-encryption key as published: public half, `alg` (so the wallet can pick it)
+ * and `use: "enc"` — verifiers are expected to advertise the key USE.
  */
-internal fun publicEncryptionJwk(config: RelyingPartyConfiguration): com.nimbusds.jose.jwk.ECKey =
-    com.nimbusds.jose.jwk
-        .ECKey
-        .Builder(
-            config.keys.responseEncryptionKey
-                .toPublicJWK()
-                .toECKey(),
-        ).algorithm(com.nimbusds.jose.JWEAlgorithm.ECDH_ES)
+internal fun publicEncryptionJwk(key: ECKey): ECKey =
+    ECKey
+        .Builder(key.toPublicJWK())
+        .algorithm(com.nimbusds.jose.JWEAlgorithm.ECDH_ES)
         .keyUse(com.nimbusds.jose.jwk.KeyUse.ENCRYPTION)
         .build()
 
@@ -157,15 +170,18 @@ internal fun publicEncryptionJwk(config: RelyingPartyConfiguration): com.nimbusd
 internal val SUPPORTED_SD_JWT_ALGS = listOf("ES256", "ES384", "ES512")
 internal val SUPPORTED_KB_JWT_ALGS = listOf("ES256")
 
-/** The members every profile shares: RP encryption key, supported encodings and formats. */
-internal fun baselineClientMetadata(config: RelyingPartyConfiguration): Map<String, Any> =
+/**
+ * The members every profile shares: the transaction's encryption key — the only key the
+ * request publishes — and the supported encodings and formats.
+ */
+internal fun baselineClientMetadata(responseEncryptionJwk: ECKey): Map<String, Any> =
     mapOf(
         "jwks" to
             mapOf(
                 "keys" to
                     listOf(
                         // The wallet selects the response encryption key by its alg.
-                        publicEncryptionJwk(config).toJSONObject(),
+                        publicEncryptionJwk(responseEncryptionJwk).toJSONObject(),
                     ),
             ),
         "encrypted_response_enc_values_supported" to ACCEPTED_RESPONSE_ENCS,

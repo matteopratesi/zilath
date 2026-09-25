@@ -102,6 +102,23 @@ class RpEntityConfigurationTest {
     }
 
     @Test
+    fun `the entity configuration publishes the static encryption key only when it is accepted`() {
+        // Without a static key every response must be encrypted to its transaction's own key:
+        // publishing one the response endpoint would refuse would deny every wallet using it.
+        val base = config("openid_federation:https://rp.example")
+        val ephemeralOnly = base.copy(keys = RpKeys(requestSigningKey = base.keys.requestSigningKey))
+        val jwt = SignedJWT.parse(RpEntityConfiguration.build(ephemeralOnly, ephemeralOnly.federation!!, clock))
+
+        @Suppress("UNCHECKED_CAST")
+        val verifier =
+            jwt.jwtClaimsSet.getJSONObjectClaim("metadata")["openid_credential_verifier"] as Map<String, Any?>
+
+        @Suppress("UNCHECKED_CAST")
+        val keys = (verifier["jwks"] as Map<String, Any?>)["keys"] as List<Map<String, Any?>>
+        assertThat(keys.map { it["kid"] }).containsExactly("rp-sign")
+    }
+
+    @Test
     fun `the federation jwks never leaks private key material`() {
         val config = config("openid_federation:https://rp.example")
         val jwt = SignedJWT.parse(RpEntityConfiguration.build(config, config.federation!!, clock))
@@ -195,7 +212,8 @@ class RpEntityConfigurationTest {
         val statement = SignedJWT.parse(RpEntityConfiguration.build(config, federation(), clock))
         val verifier = statement.jwtClaimsSet.getJSONObjectClaim("metadata")["openid_credential_verifier"] as Map<*, *>
         val published = (verifier["vp_formats_supported"] as Map<*, *>)["dc+sd-jwt"]
-        val requested = (config.profile.clientMetadataFor(config)["vp_formats_supported"] as Map<*, *>)["dc+sd-jwt"]
+        val metadata = config.profile.clientMetadataFor(config, newTransactionEncryptionKey().toPublicJWK())
+        val requested = (metadata["vp_formats_supported"] as Map<*, *>)["dc+sd-jwt"]
         // A wallet reads one, a federation the other: they must be told the same thing.
         assertThat(published).isEqualTo(requested)
     }

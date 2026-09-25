@@ -36,19 +36,34 @@ data class RpEndpoints(
 )
 
 /**
- * The two key pairs the relying party needs. Both carry PRIVATE material, so an instance
- * must never be logged or serialized — [toString] is overridden to print only the kids,
- * and that override is a safety measure, not a formatting choice.
+ * The relying party's long-lived keys. They carry PRIVATE material, so an instance must
+ * never be logged or serialized — [toString] is overridden to print only the kids, and that
+ * override is a safety measure, not a formatting choice.
  */
 data class RpKeys(
     /** EC P-256 key (with kid) signing the request objects. */
     val requestSigningKey: ECKey,
-    /** EC P-256 key (with kid) the wallet encrypts responses to (`direct_post.jwt`). */
-    val responseEncryptionKey: ECKey,
+    /**
+     * An OPTIONAL long-lived EC P-256 key (with kid) for responses (`direct_post.jwt`).
+     *
+     * Every transaction gets an encryption key of its own, and the request object publishes
+     * only that one (IT-Wallet 1.4.6 WP_092 recommends ephemeral keys; under the
+     * `openid_federation` prefix `client_metadata.jwks` is exactly the place for keys
+     * specific to one request). Its private half lives with the transaction and is dropped
+     * when the response arrives or the transaction expires, so a response captured today
+     * cannot be decrypted with a key stolen tomorrow. Before the fourth internal review this
+     * one key encrypted every response of the RP's life.
+     *
+     * Setting this key is the opt-in to a FALLBACK: it is published in the federation entity
+     * configuration and a response encrypted to it is accepted, for wallets that encrypt to
+     * the key resolved from the federation rather than the one in the request. Leave it null
+     * unless such a wallet has to be served.
+     */
+    val responseEncryptionKey: ECKey? = null,
 ) {
     init {
         requireProfileKey("requestSigningKey", requestSigningKey)
-        requireProfileKey("responseEncryptionKey", responseEncryptionKey)
+        responseEncryptionKey?.let { requireProfileKey("responseEncryptionKey", it) }
     }
 
     private fun requireProfileKey(
@@ -63,7 +78,7 @@ data class RpKeys(
     /** Nimbus keys serialize their private parameters: never let them reach a log. */
     override fun toString(): String =
         "RpKeys(requestSigningKey=kid:${requestSigningKey.keyID}, " +
-            "responseEncryptionKey=kid:${responseEncryptionKey.keyID})"
+            "responseEncryptionKey=${responseEncryptionKey?.let { "kid:${it.keyID}" } ?: "none"})"
 }
 
 /**

@@ -20,6 +20,7 @@ import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSASigner
+import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
@@ -123,8 +124,10 @@ internal fun buildRequestJwt(
             .claim("nonce", transaction.nonce)
             .claim("state", transaction.id.value)
             .claim("dcql_query", jsonToMap(transaction.request.dcqlQuery))
-            .claim("client_metadata", config.profile.clientMetadataFor(config))
-            .issueTime(Date.from(now))
+            .claim(
+                "client_metadata",
+                config.profile.clientMetadataFor(config, responseEncryptionKeyOf(config, transaction)),
+            ).issueTime(Date.from(now))
             // The JAR must not advertise a validity window outliving the transaction itself.
             .expirationTime(Date.from(transaction.expiresAt))
             .build()
@@ -148,6 +151,18 @@ internal fun buildRequestJwt(
     jwt.sign(ECDSASigner(config.keys.requestSigningKey))
     return jwt.serialize()
 }
+
+/**
+ * The key a request object publishes for [transaction]: its own, or the static fallback for
+ * a transaction a store handed back without one. Neither is a store that lost the key.
+ */
+private fun responseEncryptionKeyOf(
+    config: RelyingPartyConfiguration,
+    transaction: Transaction,
+): ECKey =
+    checkNotNull(transaction.responseEncryptionKey ?: config.keys.responseEncryptionKey) {
+        "the transaction holds no response encryption key and no static one is configured"
+    }
 
 private fun jsonToMap(json: JsonObject): Map<String, Any?> =
     com.nimbusds.jose.util.JSONObjectUtils

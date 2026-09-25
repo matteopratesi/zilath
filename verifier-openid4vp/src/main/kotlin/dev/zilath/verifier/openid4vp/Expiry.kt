@@ -26,9 +26,10 @@ import java.time.Instant
 
 /**
  * What is left of [this] once it has expired: its kind and state, nothing a person could be
- * found in — no claims, no wallet text, no response code.
+ * found in — no claims, no wallet text, no response code — and no decryption key.
  */
-internal fun Transaction.redactedForExpiry(): Transaction = copy(outcome = tombstoneOf(outcome), responseCode = null)
+internal fun Transaction.redactedForExpiry(): Transaction =
+    copy(outcome = tombstoneOf(outcome), responseCode = null, responseEncryptionKey = null)
 
 /** An expired outcome keeps its kind and loses everything a person could be found in. Idempotent. */
 internal fun tombstoneOf(outcome: FlowOutcome?): FlowOutcome? =

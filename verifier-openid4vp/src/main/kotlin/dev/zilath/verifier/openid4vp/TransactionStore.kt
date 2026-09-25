@@ -16,6 +16,7 @@
  */
 package dev.zilath.verifier.openid4vp
 
+import com.nimbusds.jose.jwk.ECKey
 import java.time.Instant
 
 /**
@@ -137,6 +138,14 @@ data class Transaction(
     val responseCode: String? = null,
     /** True once the user-agent came back through the response-code exchange (WP_094). */
     val returned: Boolean = false,
+    /**
+     * This transaction's own response encryption key, PRIVATE half included: the request
+     * object publishes its public half, and the wallet's response is decrypted with it. The
+     * flow drops it from the store as soon as a response arrives and when the transaction
+     * expires. A store that persists transactions persists this key with them, for that
+     * time: another reason not to write them to disk or backups.
+     */
+    val responseEncryptionKey: ECKey? = null,
 ) {
     /** Whether [now] is strictly after [expiresAt]: the boundary instant itself still counts as valid. */
     fun isExpired(now: Instant): Boolean = expiresAt.isBefore(now)

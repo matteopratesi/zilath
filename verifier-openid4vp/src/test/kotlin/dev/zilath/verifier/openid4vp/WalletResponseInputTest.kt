@@ -21,6 +21,7 @@ import com.nimbusds.jose.EncryptionMethod
 import com.nimbusds.jose.JWEAlgorithm
 import com.nimbusds.jose.JWEHeader
 import com.nimbusds.jose.jwk.Curve
+import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import dev.zilath.verifier.core.RejectionReason
 import dev.zilath.verifier.core.SdJwtVcCredentialVerifier
@@ -160,7 +161,14 @@ class WalletResponseInputTest : FlowTestSupport() {
                 override fun decodeWalletResponse(
                     body: DirectPostBody,
                     config: RelyingPartyConfiguration,
-                ): JsonObject = ItWalletProfile.decodeWalletResponse(body, config).also { decoded.incrementAndGet() }
+                    transactionKey: ECKey?,
+                ): JsonObject =
+                    ItWalletProfile
+                        .decodeWalletResponse(
+                            body,
+                            config,
+                            transactionKey,
+                        ).also { decoded.incrementAndGet() }
             }
         val store = InMemoryTransactionStore(clock)
         val starter = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), store, clock)
