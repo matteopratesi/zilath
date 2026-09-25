@@ -137,7 +137,7 @@ private fun verifyTopDown(
     for (index in statements.indices.reversed()) {
         val statement = statements[index]
         checkValidityWindow(statement, now)
-        if (!verifiesWithAny(statement.jwt, trustedKeys)) {
+        if (!verifiesWithAny(statement.jwt, listOf(keyNamedBy(statement, trustedKeys)))) {
             trustFail("signature of the statement about ${statement.subject} does not verify")
         }
         if (index > 0 && statement.issuer == statement.subject) continue
@@ -149,6 +149,24 @@ private fun verifyTopDown(
                 trustFail("the statement about ${statement.subject} carries no federation keys")
             }
     }
+}
+
+/**
+ * OID-FED 1.0 §3: an entity statement "MUST include the kid (Key ID) header parameter",
+ * and it MUST exactly match the `kid` of a key in the set that verifies it. Every trusted
+ * key used to be tried in turn, with no `kid` at all or with one naming a key the set does
+ * not have. Harmless while every key in the set is attested by the superior, but a
+ * rollover or historical-keys mechanism indexed by `kid` would have inherited the
+ * ambiguity; now the statement is verified with the one key its `kid` names.
+ */
+internal fun keyNamedBy(
+    statement: EntityStatement,
+    trustedKeys: List<JWK>,
+): JWK {
+    val kid =
+        statement.jwt.header.keyID
+            ?.takeIf { it.isNotEmpty() } ?: trustFail("an entity statement has no kid")
+    return trustedKeys.singleOrNull { it.keyID == kid } ?: trustFail("no trusted key matches an entity statement's kid")
 }
 
 /**

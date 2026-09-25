@@ -81,13 +81,24 @@ class FederationTrustEvaluator(
     }
 }
 
-/** The trust anchor identity and federation keys, obtained out-of-band. */
+/**
+ * The trust anchor identity and federation keys, obtained out-of-band.
+ *
+ * Every key needs a `kid`, unique among them: the anchor's statements name the key that
+ * signed them (OID-FED 1.0 §3), and only that key verifies them. The anchor's own entity
+ * configuration publishes its keys with their `kid`s; copying that `jwks` is the way to
+ * configure them.
+ */
 data class TrustAnchorConfig(
     val entityId: String,
     val federationKeys: List<JWK>,
 ) {
     init {
         require(federationKeys.isNotEmpty()) { "the trust anchor needs at least one federation key" }
+        val kids = federationKeys.map { it.keyID }
+        require(kids.none { it.isNullOrEmpty() } && kids.toSet().size == kids.size) {
+            "every trust anchor federation key needs a kid, unique among them"
+        }
     }
 }
 

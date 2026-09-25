@@ -49,9 +49,23 @@ internal class EntityStatement(
     val authorityHints: List<String>
         get() = runCatching { claims.getStringListClaim("authority_hints") }.getOrNull().orEmpty()
 
-    /** The federation keys of the entity this statement is about (`jwks.keys`). */
+    /**
+     * The federation keys of the entity this statement is about (`jwks.keys`).
+     *
+     * OID-FED 1.0 §3.1.1: "Every JWK in the JWK Set MUST have a unique kid". A key without
+     * one, or two with the same, fail the chain: the next statement down is verified with
+     * the key its `kid` names, and a set in which a `kid` names nothing, or two keys, cannot
+     * answer that.
+     */
     val federationJwks: List<JWK>
-        get() = jwksOf(runCatching { claims.getJSONObjectClaim("jwks") }.getOrNull())
+        get() {
+            val container = runCatching { claims.getJSONObjectClaim("jwks") }.getOrNull()
+            val kids = (container?.get("keys") as? List<*>).orEmpty().map { (it as? Map<*, *>)?.get("kid") as? String }
+            if (kids.any { it.isNullOrEmpty() } || kids.toSet().size != kids.size) {
+                trustFail("an entity statement's jwks has a key without a unique kid")
+            }
+            return jwksOf(container)
+        }
 
     /** The keys the entity signs credentials with (`metadata.openid_credential_issuer.jwks`). */
     val credentialIssuerJwks: List<JWK>

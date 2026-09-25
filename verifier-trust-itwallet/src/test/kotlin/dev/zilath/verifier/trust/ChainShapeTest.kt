@@ -98,8 +98,9 @@ class ChainShapeTest {
     fun `behind the anchor's own configuration its statement is still checked against the configured keys`() {
         // The configuration is signed by the configured key but publishes another one; the
         // anchor's statement is signed with that other key. §4: the out-of-band keys verify
-        // both, and what the configuration says about itself does not replace them.
-        val unconfigured = ECKeyGenerator(Curve.P_256).keyID("not-configured").generate()
+        // both, and what the configuration says about itself does not replace them. The
+        // other key even reuses the configured kid, so only the key material tells them apart.
+        val unconfigured = ECKeyGenerator(Curve.P_256).keyID(anchorKey.keyID).generate()
         val chain =
             listOf(
                 leafConfiguration(),
