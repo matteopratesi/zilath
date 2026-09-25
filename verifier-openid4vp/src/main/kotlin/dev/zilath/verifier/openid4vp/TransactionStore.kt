@@ -135,4 +135,14 @@ data class Transaction(
 ) {
     /** Whether [now] is strictly after [expiresAt]: the boundary instant itself still counts as valid. */
     fun isExpired(now: Instant): Boolean = expiresAt.isBefore(now)
+
+    /**
+     * Never the nonce, the response code or the claims: the first two are bearer secrets for
+     * the time to live, the last are the person. A data class prints every property, and the
+     * interface invites stores that may log what they hold; the fourth internal review found
+     * exactly that, next to key holders whose toString the library already redacted.
+     */
+    override fun toString(): String =
+        "Transaction(id=${id.value}, state=$state, mode=$mode, createdAt=$createdAt, expiresAt=$expiresAt, " +
+            "outcome=${outcome?.javaClass?.simpleName}, hasResponseCode=${responseCode != null}, returned=$returned)"
 }

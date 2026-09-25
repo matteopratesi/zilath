@@ -263,7 +263,10 @@ sealed interface FlowOutcome {
      */
     data class Verified(
         val claims: DisclosedClaims,
-    ) : FlowOutcome
+    ) : FlowOutcome {
+        /** The NAMES of the disclosed claims, never their values: an outcome ends up in logs. */
+        override fun toString(): String = "Verified(claims=${claims.claims.keys})"
+    }
 
     /**
      * The presentation arrived but did not pass. As in [dev.zilath.verifier.core.VerificationResult.Rejected],

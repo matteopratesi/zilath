@@ -16,6 +16,7 @@
  */
 package dev.zilath.verifier.openid4vp
 
+import dev.zilath.verifier.core.SdJwtVcCredentialVerifier
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
@@ -56,5 +57,27 @@ class SameDeviceFlowTest : FlowTestSupport() {
         val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
         val cancelled = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
         assertThat(flow.sameDeviceRedirectFor(started.id, cancelled)).contains("response_code=")
+    }
+
+    @Test
+    fun `a transaction prints neither its secrets nor the person`() {
+        // A data class prints every property: the nonce and the response code — bearer
+        // secrets for the whole time to live — and, once verified, the disclosed claims.
+        val retaining = RetainingTransactionStore()
+        val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
+        val started =
+            retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        val verified = retainingFlow.handleWalletResponse(started.id, walletBody(started, source = retainingFlow))
+        checkNotNull(retainingFlow.sameDeviceRedirectFor(started.id, verified))
+        val stored = checkNotNull(retaining.get(started.id))
+        assertThat(stored.responseCode).isNotNull()
+        assertThat(stored.outcome).isInstanceOf(FlowOutcome.Verified::class.java)
+
+        val printed = stored.toString()
+        assertThat(printed)
+            .contains(started.id.value, "VERIFIED", "Verified")
+            .doesNotContain(stored.nonce, stored.responseCode, "Ada", "Lovelace")
+        // The outcome on its own names the claims and nothing more.
+        assertThat(verified.toString()).contains("given_name").doesNotContain("Ada", "Lovelace", "true")
     }
 }
