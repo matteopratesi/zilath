@@ -17,10 +17,11 @@
 package dev.zilath.verifier.trust
 
 /*
- * OpenID Federation 1.0 §6.1 metadata policies, the subset the IT-Wallet
- * profile relies on: operators `value`, `add`, `default`, `one_of`, `subset_of`,
- * `superset_of`, `essential`. Policies from superior statements are merged anchor-first
- * and applied to the leaf metadata; any conflict or violation fails trust evaluation.
+ * OpenID Federation 1.0 §6.1 metadata policies with the standard operators `value`, `add`,
+ * `default`, `one_of`, `subset_of`, `superset_of`, `essential`; any other operator is
+ * ignored unless the chain declares it critical, and then the chain fails (§6.1.3.2).
+ * Policies from superior statements are merged anchor-first and applied to the entity
+ * types the leaf publishes; any conflict or violation fails trust evaluation.
  */
 internal object MetadataPolicy {
     /**
@@ -68,7 +69,7 @@ internal object MetadataPolicy {
         if (section.values.any { it == null }) trustFail("a metadata parameter is null")
     }
 
-    /** Merges one superior's policy into the accumulated one (OID-FED §6.1.4). */
+    /** Merges one superior's policy into the accumulated one (OID-FED §6.1.4.1). */
     private fun mergePolicy(
         accumulated: Map<String, Map<String, Map<String, Any?>>>,
         policy: Map<*, *>,
@@ -133,7 +134,7 @@ internal object MetadataPolicy {
         return intersection
     }
 
-    /** Applies the merged policy of one metadata type to its section (OID-FED §6.1.5). */
+    /** Applies the merged policy of one metadata type to its section (OID-FED §6.1.4.2). */
     private fun applyTypePolicy(
         section: Map<*, *>?,
         typePolicy: Map<String, Map<String, Any?>>,

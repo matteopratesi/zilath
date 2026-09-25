@@ -183,21 +183,20 @@ internal fun requireGenuineAnchorConfiguration(
     rules: ChainRules,
 ) {
     checkValidityWindow(configuration, rules.clock.instant())
-    val key = rules.anchor.federationKeys.singleOrNull { it.keyID == configuration.jwt.header.keyID }
-    if (key == null || !verifiesWithAny(configuration.jwt, listOf(key))) {
+    if (!verifiesWithAny(configuration.jwt, listOf(keyNamedBy(configuration, rules.anchor.federationKeys)))) {
         trustFail("the trust anchor's entity configuration does not verify with the configured keys")
     }
 }
 
 /**
  * OID-FED 1.0 §3: an entity statement "MUST include the kid (Key ID) header parameter",
- * and it MUST exactly match the `kid` of a key in the set that verifies it. Every trusted
- * key used to be tried in turn, with no `kid` at all or with one naming a key the set does
- * not have. Harmless while every key in the set is attested by the superior, but a
+ * and §3.2: it MUST exactly match the `kid` of a key in the set that verifies it. Every
+ * trusted key used to be tried in turn, with no `kid` at all or with one naming a key the
+ * set does not have. Harmless while every key in the set is attested by the superior, but a
  * rollover or historical-keys mechanism indexed by `kid` would have inherited the
  * ambiguity; now the statement is verified with the one key its `kid` names.
  */
-internal fun keyNamedBy(
+private fun keyNamedBy(
     statement: EntityStatement,
     trustedKeys: List<JWK>,
 ): JWK {
@@ -226,10 +225,11 @@ private fun checkValidityWindow(
 }
 
 /**
- * IT-Wallet 1.4.6 §6.11.1 caps a subordinate statement's validity at 24 hours, and a cap
- * is what bounds revocation latency: a superior withdraws an entity by no longer serving
- * its statement, and a copy that stays valid for a year keeps the entity trusted for a
- * year wherever the copy is replayed. Subordinate statements only — an entity
+ * IT-Wallet 1.4.6 §6.11.1: a revocation must propagate within 24 hours, so a trust chain
+ * must not be valid for longer — and a chain is valid until its earliest statement
+ * expires. The cap is what bounds revocation latency: a superior withdraws an entity by no
+ * longer serving its statement, and a copy that stays valid for a year keeps the entity
+ * trusted for a year wherever the copy is replayed. Subordinate statements only — an entity
  * configuration is the entity's own and the production issuer's lives 365 days.
  */
 private fun checkLifetime(

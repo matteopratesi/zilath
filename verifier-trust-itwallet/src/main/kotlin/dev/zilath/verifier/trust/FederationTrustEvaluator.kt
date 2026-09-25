@@ -47,16 +47,21 @@ import java.time.Duration
  *    provided chain validated and used as it is — an expired one is then untrusted. Every
  *    answer that comes back is final, including "no such statement".
  *
- * Every subordinate statement must be valid for at most [maxStatementLifetime] (IT-Wallet
- * 1.4.6 §6.11.1: 24 hours), which bounds how long a withdrawn statement can be replayed.
- * Entity configurations are not capped: the production issuer's lives 365 days.
+ * Every subordinate statement must be valid for at most [maxStatementLifetime], 24 hours by
+ * default: IT-Wallet 1.4.6 §6.11.1 wants a revocation propagated within 24 hours, so a
+ * trust chain must not be valid for longer than that, and a chain expires with its
+ * earliest statement. Entity configurations are not capped: the production issuer's lives
+ * 365 days.
  *
  * On success the decision carries the keys the issuer signs credentials with: the `jwks`
  * of its `openid_credential_issuer` metadata AFTER applying the `metadata_policy` of the
  * superior statements (merged anchor-first, OID-FED §6.1). There is no fallback: a leaf
  * whose resolved `openid_credential_issuer` metadata advertises no `jwks` is untrusted;
  * federation keys only ever verify entity statements. A policy conflict or violation
- * fails the evaluation.
+ * fails the evaluation. The decision also names the credential types the issuer may
+ * issue ([TrustDecision.Trusted.credentialTypes]): the `vct` of every SD-JWT entry in the
+ * same resolved metadata's `credential_configurations_supported` — none, and so no type at
+ * all, when the section is absent. Trust marks are not checked.
  *
  * @param offlineFallback false (the default) for a relying party that is online — every
  *   decision reflects the federation as it is now. True for deployments that must keep

@@ -87,10 +87,6 @@ internal class EntityStatement(
             return jwksOf(container)
         }
 
-    /** The keys the entity signs credentials with (`metadata.openid_credential_issuer.jwks`). */
-    val credentialIssuerJwks: List<JWK>
-        get() = jwksOf(metadataSection("openid_credential_issuer")?.get("jwks") as? Map<*, *>)
-
     /** The full `metadata` claim, if any. Absent is fine; malformed fails the chain. */
     val metadata: Map<*, *>?
         get() = objectClaimOrFail("metadata")
@@ -180,7 +176,7 @@ internal fun jwksOf(container: Map<*, *>?): List<JWK> {
 
 internal const val DEFAULT_MAX_CHAIN_LENGTH = 4
 
-/** IT-Wallet 1.4.6 §6.11.1: a subordinate statement is valid for at most 24 hours. */
+/** IT-Wallet 1.4.6 §6.11.1: a trust chain, and so its subordinate statements, valid for at most 24 hours. */
 internal val DEFAULT_MAX_STATEMENT_LIFETIME: Duration = Duration.ofHours(MAX_STATEMENT_LIFETIME_HOURS)
 
 private const val MAX_STATEMENT_LIFETIME_HOURS = 24L
