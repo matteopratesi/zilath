@@ -79,8 +79,7 @@ class OpenId4VpVerificationFlow(
                 // OpenID4VP §8.2: an authorization ERROR response is acknowledged, always.
                 // It grants nothing, so its state does not matter — and `record` below
                 // refuses to clobber an outcome that was already reached.
-                walletError != null ->
-                    FlowOutcome.WalletErrorAcknowledged(walletError, body.parameters["error_description"])
+                walletError != null -> walletErrorOf(walletError, body.parameters["error_description"])
                 before.isExpired(clock.instant(), config.transactionTimeToLive) -> FlowOutcome.Expired
                 before.state != TransactionState.CREATED ->
                     FlowOutcome.Rejected(RejectionReason.REPLAY, "transaction nonce already consumed")

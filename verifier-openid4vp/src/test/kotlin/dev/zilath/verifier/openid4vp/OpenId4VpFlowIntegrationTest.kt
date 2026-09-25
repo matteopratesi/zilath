@@ -531,6 +531,51 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
+    fun `the wallet's error text is bounded before the transaction keeps it`() {
+        // Anyone holding a transaction id can post an error, and its text lives in the
+        // store for the whole time to live. It used to be kept verbatim at whatever size the
+        // container accepted: a million characters stayed a million characters.
+        val flood = startForPid()
+        val huge = "e".repeat(1_000_000)
+        val flooded =
+            flow.handleWalletResponse(flood.id, DirectPostBody(mapOf("error" to huge, "error_description" to huge)))
+        val kept = flow.awaitOutcome(flood.id) as FlowOutcome.WalletErrorAcknowledged
+        assertThat(kept).isEqualTo(flooded)
+        assertThat(kept.error).isEqualTo(FlowOutcome.WalletErrorAcknowledged.MALFORMED_ERROR)
+        assertThat(kept.description).hasSize(MAX_ERROR_DESCRIPTION_LENGTH)
+
+        // Outside the RFC 6749 character set: a code with a line break is no code, and a
+        // description keeps its length with the offending characters replaced.
+        val forged = startForPid()
+        val injected =
+            flow.handleWalletResponse(
+                forged.id,
+                DirectPostBody(
+                    mapOf(
+                        "error" to "access_denied\r\nX",
+                        "error_description" to "line\r\n2026-09-04 WARN forged \"quote\" \\ ok",
+                    ),
+                ),
+            ) as FlowOutcome.WalletErrorAcknowledged
+        assertThat(injected.error).isEqualTo(FlowOutcome.WalletErrorAcknowledged.MALFORMED_ERROR)
+        assertThat(injected.description).isEqualTo("line??2026-09-04 WARN forged ?quote? ? ok")
+
+        // A description with nothing printable left is no description.
+        val blank = startForPid()
+        val control =
+            flow.handleWalletResponse(
+                blank.id,
+                DirectPostBody(
+                    mapOf(
+                        "error" to "access_denied",
+                        "error_description" to " ",
+                    ),
+                ),
+            )
+        assertThat(control).isEqualTo(FlowOutcome.WalletErrorAcknowledged("access_denied", null))
+    }
+
+    @Test
     fun `an error post cannot collect the return ticket of a verification it did not make`() {
         // The attack this test exists for. A same-device verification completes: the
         // wallet has answered, the outcome is Verified, and the user's browser has not yet

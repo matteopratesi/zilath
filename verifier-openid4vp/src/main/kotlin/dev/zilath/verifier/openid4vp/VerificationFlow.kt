@@ -236,11 +236,21 @@ sealed interface FlowOutcome {
     /**
      * The wallet sent an authorization error response (e.g. `access_denied`): terminal,
      * and acknowledged with HTTP 200 as OpenID4VP requires for `direct_post`.
+     *
+     * Both values come from an unauthenticated request and are bounded before they are
+     * kept: [error] is the wallet's code when it is one (RFC 6749 §4.1.2.1 grammar, at most
+     * 64 characters) and [MALFORMED_ERROR] otherwise; [description] is at most 256
+     * characters of that grammar, anything else replaced by `?`.
      */
     data class WalletErrorAcknowledged(
         val error: String,
         val description: String? = null,
-    ) : FlowOutcome
+    ) : FlowOutcome {
+        companion object {
+            /** Stands in for an `error` parameter that is not an error code. */
+            const val MALFORMED_ERROR = "malformed_error"
+        }
+    }
 
     /**
      * The presentation was verified. [claims] holds what the wallet disclosed for this query
