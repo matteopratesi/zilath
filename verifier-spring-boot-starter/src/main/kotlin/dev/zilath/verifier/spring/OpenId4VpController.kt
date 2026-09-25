@@ -17,6 +17,7 @@
 package dev.zilath.verifier.spring
 
 import dev.zilath.verifier.core.InternalZilathApi
+import dev.zilath.verifier.core.RejectionReason
 import dev.zilath.verifier.core.boundedPrintable
 import dev.zilath.verifier.openid4vp.DirectPostBody
 import dev.zilath.verifier.openid4vp.FlowOutcome
@@ -59,16 +60,21 @@ class OpenId4VpController(
     }
 
     /**
-     * Receives the wallet's encrypted `direct_post.jwt` response.
+     * Receives the wallet's encrypted `direct_post.jwt` response, and answers as IT-Wallet
+     * 1.4.6 §12.2.1.6.1 tabulates:
+     * - 200 for a verified presentation and for an acknowledged wallet error (the ack
+     *   OpenID4VP requires, carrying the same-device `redirect_uri` when there is one);
+     * - 403 `invalid_request` for a presentation whose key binding, nonce, audience, issuer
+     *   signature or issuer trust failed;
+     * - 500 `server_error` when the verification pipeline itself failed;
+     * - 400 `invalid_request` for every other rejection and for an expired transaction;
+     * - 404, with the same JSON shape, for a transaction that does not exist.
      *
-     * HTTP 200 for a verified presentation and for an acknowledged wallet error (the ack
-     * OpenID4VP requires, carrying the same-device `redirect_uri` when there is one);
-     * HTTP 400 with the [dev.zilath.verifier.core.RejectionReason] name for a rejection,
-     * an expired transaction or an unprocessable one; HTTP 404 for an unknown transaction.
-     *
-     * What the wallet gets back is only ever the coarse reason code — `detail` stays
-     * server-side, in the log. The verdict the CHECKOUT acts on is not this status code:
-     * it comes from [VerificationFlow.awaitOutcome].
+     * The `error_description` is one fixed phrase per status: which check failed, and the
+     * rejection's `detail`, stay server-side, in the log. Before the fourth internal review
+     * every rejection was a 400 naming its [RejectionReason], an oracle telling a prober
+     * which check a crafted presentation failed. The verdict the CHECKOUT acts on is not
+     * this status code: it comes from [VerificationFlow.awaitOutcome].
      */
     @PostMapping("/openid4vp/response/{txId}", consumes = [MediaType.APPLICATION_FORM_URLENCODED_VALUE])
     fun walletResponse(
@@ -86,15 +92,22 @@ class OpenId4VpController(
                 json(HttpStatus.OK, ackBody(handled))
             }
             is FlowOutcome.Rejected -> {
-                // detail is a server-side diagnostic: only the reason code reaches the wallet.
+                // The reason and the detail are server-side diagnostics: the wallet gets the status.
                 logger.warn("wallet response rejected: {} ({})", outcome.reason, forLog(outcome.detail))
-                badRequest(outcome.reason.name)
+                rejection(outcome.reason)
             }
-            FlowOutcome.Expired -> badRequest("transaction expired")
-            FlowOutcome.Pending -> badRequest("response not processable")
-            FlowOutcome.Unknown -> uncached(HttpStatus.NOT_FOUND).build()
+            FlowOutcome.Expired, FlowOutcome.Pending -> errorAnswer(HttpStatus.BAD_REQUEST, INVALID_REQUEST, NOT_VALID)
+            FlowOutcome.Unknown -> errorAnswer(HttpStatus.NOT_FOUND, INVALID_REQUEST, UNKNOWN_TRANSACTION)
         }
     }
+
+    private fun rejection(reason: RejectionReason): ResponseEntity<Map<String, String>> =
+        when (reason) {
+            in FORBIDDEN_REASONS -> errorAnswer(HttpStatus.FORBIDDEN, INVALID_REQUEST, NOT_ACCEPTED)
+            RejectionReason.INTERNAL_ERROR -> errorAnswer(HttpStatus.INTERNAL_SERVER_ERROR, SERVER_ERROR, NOT_PROCESSED)
+            // An open enum: a reason added later is a 400 until it is placed.
+            else -> errorAnswer(HttpStatus.BAD_REQUEST, INVALID_REQUEST, NOT_VALID)
+        }
 
     /**
      * Same-device transactions are acknowledged with their redirect_uri (spec v1.4.6), which
@@ -116,8 +129,11 @@ class OpenId4VpController(
     @OptIn(InternalZilathApi::class)
     private fun forLog(value: String?): String = boundedPrintable(value.orEmpty())
 
-    private fun badRequest(description: String): ResponseEntity<Map<String, String>> =
-        json(HttpStatus.BAD_REQUEST, mapOf("error" to "invalid_request", "error_description" to description))
+    private fun errorAnswer(
+        status: HttpStatus,
+        code: String,
+        description: String,
+    ): ResponseEntity<Map<String, String>> = json(status, mapOf("error" to code, "error_description" to description))
 
     /**
      * JSON, whatever the wallet's `Accept` says: an acknowledgement it cannot negotiate away
@@ -146,6 +162,27 @@ class OpenId4VpController(
     companion object {
         const val REQUEST_OBJECT_MEDIA_TYPE = "application/oauth-authz-req+jwt"
         private val REQUEST_OBJECT_TYPE = MediaType.parseMediaType(REQUEST_OBJECT_MEDIA_TYPE)
+
+        /**
+         * The rejections IT-Wallet 1.4.6 §12.2.1.6.1 answers with 403: the key binding's
+         * signature, the nonce and the trust in the credential issuer, with the audience of
+         * the key binding and the issuer's signature beside them.
+         */
+        private val FORBIDDEN_REASONS: Set<RejectionReason> =
+            setOf(
+                RejectionReason.INVALID_KEY_BINDING,
+                RejectionReason.NONCE_MISMATCH,
+                RejectionReason.AUDIENCE_MISMATCH,
+                RejectionReason.UNTRUSTED_ISSUER,
+                RejectionReason.INVALID_ISSUER_SIGNATURE,
+            )
+
+        private const val INVALID_REQUEST = "invalid_request"
+        private const val SERVER_ERROR = "server_error"
+        private const val NOT_VALID = "the wallet response is not valid"
+        private const val NOT_ACCEPTED = "the presentation was not accepted"
+        private const val NOT_PROCESSED = "the wallet response could not be processed"
+        private const val UNKNOWN_TRANSACTION = "unknown transaction"
         private val logger = org.slf4j.LoggerFactory.getLogger(OpenId4VpController::class.java)
     }
 }

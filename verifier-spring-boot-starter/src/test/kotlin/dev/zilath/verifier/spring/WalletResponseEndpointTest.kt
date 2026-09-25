@@ -44,6 +44,9 @@ import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 /**
  * What the response endpoint answers the wallet and writes to the log, for each kind of
@@ -110,6 +113,65 @@ class WalletResponseEndpointTest {
         // The prefix, the reason, and at most 200 characters of the detail.
         assertThat(line.length).isLessThan(300)
     }
+
+    @Test
+    fun `a presentation failing its binding, nonce, audience, signature or issuer trust is 403`() {
+        // IT-Wallet 1.4.6 §12.2.1.6.1: 403 invalid_request, one phrase for all of them.
+        forbidden.forEach { reason ->
+            verifier.next = VerificationResult.Rejected(reason, "detail for the log")
+            postPresentation(start())
+                .andExpect(status().isForbidden)
+                .andExpectError("invalid_request", "the presentation was not accepted")
+        }
+    }
+
+    @Test
+    fun `a failure of the pipeline itself is 500 server_error`() {
+        verifier.next = VerificationResult.Rejected(RejectionReason.INTERNAL_ERROR, "detail for the log")
+        postPresentation(start())
+            .andExpect(status().isInternalServerError)
+            .andExpectError("server_error", "the wallet response could not be processed")
+    }
+
+    @Test
+    fun `every other rejection is 400 invalid_request, with the same phrase`() {
+        (RejectionReason.entries - forbidden - RejectionReason.INTERNAL_ERROR).forEach { reason ->
+            verifier.next = VerificationResult.Rejected(reason, "detail for the log")
+            postPresentation(start())
+                .andExpect(status().isBadRequest)
+                .andExpectError("invalid_request", "the wallet response is not valid")
+        }
+    }
+
+    @Test
+    fun `an unknown transaction is 404 with a JSON error`() {
+        mockMvc
+            .perform(
+                post("/openid4vp/response/{txId}", "ghost")
+                    .contentType("application/x-www-form-urlencoded")
+                    .param("response", "whatever"),
+            ).andExpect(status().isNotFound)
+            .andExpectError("invalid_request", "unknown transaction")
+    }
+
+    /** The two members, and nothing that names the check or repeats the detail. */
+    private fun ResultActions.andExpectError(
+        error: String,
+        description: String,
+    ): ResultActions =
+        andExpect(content().contentTypeCompatibleWith("application/json"))
+            .andExpect(jsonPath("$.error").value(error))
+            .andExpect(jsonPath("$.error_description").value(description))
+            .andExpect(jsonPath("$.length()").value(2))
+
+    private val forbidden =
+        setOf(
+            RejectionReason.INVALID_KEY_BINDING,
+            RejectionReason.NONCE_MISMATCH,
+            RejectionReason.AUDIENCE_MISMATCH,
+            RejectionReason.UNTRUSTED_ISSUER,
+            RejectionReason.INVALID_ISSUER_SIGNATURE,
+        )
 
     private fun start(mode: FlowMode = FlowMode.CROSS_DEVICE): StartedTransaction =
         flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), mode)
