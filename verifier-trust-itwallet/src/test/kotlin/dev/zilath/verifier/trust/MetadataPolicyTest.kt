@@ -357,6 +357,38 @@ class MetadataPolicyTest {
     }
 
     @Test
+    fun `scope is a space-separated list the array operators work on`() {
+        // OID-FED §6.1.3.1.8: the OAuth scope string is processed as a string array by the
+        // policy operators, and the result is a space-separated string again.
+        fun verifier(vararg parameters: Pair<String, Map<String, Any?>>) =
+            mapOf("openid_credential_verifier" to mapOf(*parameters))
+
+        fun scopeUnder(operators: Map<String, Any?>): Any? {
+            val leaf = mapOf("openid_credential_verifier" to mapOf("scope" to "openid profile"))
+            val resolved = MetadataPolicy.resolve(leaf, listOf(verifier("scope" to operators)))
+            return (resolved["openid_credential_verifier"] as Map<*, *>)["scope"]
+        }
+        assertThat(scopeUnder(mapOf("subset_of" to listOf("openid", "profile", "email")))).isEqualTo("openid profile")
+        assertThat(scopeUnder(mapOf("superset_of" to listOf("openid")))).isEqualTo("openid profile")
+        assertThat(scopeUnder(mapOf("subset_of" to listOf("openid")))).isEqualTo("openid")
+        assertThat(scopeUnder(mapOf("add" to listOf("email")))).isEqualTo("openid profile email")
+        // A forced value written as a string is a list of scope values too.
+        assertThat(scopeUnder(mapOf("value" to "openid email", "subset_of" to listOf("openid", "email", "phone"))))
+            .isEqualTo("openid email")
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy { scopeUnder(mapOf("superset_of" to listOf("email"))) }
+            .withMessageContaining("violates superset_of")
+        // Any other string parameter is still not an array.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    mapOf("openid_credential_verifier" to mapOf("response_mode" to "direct_post.jwt fragment")),
+                    listOf(verifier("response_mode" to mapOf("subset_of" to listOf("direct_post.jwt")))),
+                )
+            }.withMessageContaining("not an array")
+    }
+
+    @Test
     fun `add outside subset_of is a policy error, directly and after merging`() {
         assertThatExceptionOfType(TrustFailure::class.java)
             .isThrownBy {

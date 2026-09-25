@@ -93,8 +93,9 @@ moves with them. So far: `verifier-core` and the build, then `verifier-trust-itw
   withdrew it is unreachable. Subordinate statements valid for more than 24 hours are
   refused (`maxStatementLifetime`, IT-Wallet §6.11.1): that bounds how long a withdrawn
   statement can be replayed.
-- A `null` metadata parameter, an array operator on a parameter that is not an array, and an
-  `add` outside `subset_of` are policy errors, as the specification says.
+- A `null` metadata parameter, an array operator on a parameter that is not an array (`scope`,
+  a space-separated list, counts as one, §6.1.3.1.8), and an `add` outside `subset_of` are
+  policy errors, as the specification says.
 - Every `Untrusted.reason` is a fixed phrase: none repeats an identifier or a name read
   from a document or a credential before any signature was checked.
 
