@@ -266,6 +266,95 @@ class FederationTrustEvaluatorTest {
     }
 
     @Test
+    fun `an operator nobody declared critical does not deny the chain`() {
+        val chain =
+            listOf(
+                FederationFixtures.leafConfiguration(),
+                FederationFixtures.anchorStatementAboutLeaf {
+                    claim(
+                        "metadata_policy",
+                        mapOf(
+                            "openid_credential_issuer" to
+                                mapOf("credential_endpoint" to mapOf("regexp" to "^https://")),
+                            // The IT-Wallet 1.4.6 §6.9 example statement, for a type this leaf is not.
+                            "openid_credential_verifier" to
+                                mapOf(
+                                    "vp_formats" to
+                                        mapOf(
+                                            "dc+sd-jwt" to
+                                                mapOf(
+                                                    "sd-jwt_alg_values" to listOf("ES256"),
+                                                    "kb-jwt_alg_values" to listOf("ES256"),
+                                                ),
+                                        ),
+                                ),
+                        ),
+                    )
+                },
+            )
+        assertTrustedWithIssuerKey(
+            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain)),
+        )
+    }
+
+    @Test
+    fun `metadata_policy_crit naming an operator the library does not implement fails the chain`() {
+        for (crit in listOf(listOf("regexp"), emptyList<String>(), "regexp")) {
+            val chain =
+                listOf(
+                    FederationFixtures.leafConfiguration(),
+                    FederationFixtures.anchorStatementAboutLeaf {
+                        claim(
+                            "metadata_policy",
+                            mapOf(
+                                "openid_credential_issuer" to mapOf("credential_endpoint" to mapOf("regexp" to ".*")),
+                            ),
+                        )
+                        claim("metadata_policy_crit", crit)
+                    },
+                )
+            val decision = evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            assertThat(decision)
+                .describedAs("metadata_policy_crit %s", crit)
+                .isInstanceOf(TrustDecision.Untrusted::class.java)
+            assertThat((decision as TrustDecision.Untrusted).reason).contains("metadata_policy")
+        }
+    }
+
+    @Test
+    fun `a statement listing critical claims fails the chain, whoever issued it`() {
+        // OID-FED §3.2: each claim in crit MUST be understood, and this library
+        // understands no extension. A superior making one mandatory must not be ignored.
+        val criticalSubordinate =
+            listOf(
+                FederationFixtures.leafConfiguration(),
+                FederationFixtures.anchorStatementAboutLeaf {
+                    claim("crit", listOf("revocation_flag"))
+                    claim("revocation_flag", true)
+                },
+            )
+        val criticalLeaf =
+            listOf(
+                FederationFixtures.signedStatement(
+                    FederationFixtures.leafFederationKey,
+                    FederationFixtures.LEAF_ID,
+                    FederationFixtures.LEAF_ID,
+                ) {
+                    claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey))
+                    claim("metadata", mapOf("openid_credential_issuer" to FederationFixtures.credentialIssuerSection()))
+                    claim("crit", listOf("some_extension"))
+                    claim("some_extension", "x")
+                },
+                FederationFixtures.anchorStatementAboutLeaf(),
+            )
+        for (chain in listOf(criticalSubordinate, criticalLeaf)) {
+            val decision = evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+            assertThat((decision as TrustDecision.Untrusted).reason).contains("critical claims")
+        }
+    }
+
+    @Test
     fun `resolves and trusts a leaf directly under the anchor`() {
         val decision = evaluator(FederationFixtures.directFederation()).evaluate(inputFor())
         assertTrustedWithIssuerKey(decision)

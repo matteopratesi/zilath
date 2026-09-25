@@ -68,6 +68,21 @@ internal class EntityStatement(
     val metadataPolicy: Map<*, *>?
         get() = objectClaimOrFail("metadata_policy")
 
+    /**
+     * The operator names in `metadata_policy_crit` (OID-FED §3.1.3), empty when absent. When
+     * present it must be a non-empty array of strings: an empty or malformed list of what
+     * MUST be understood is not something to guess at.
+     */
+    val metadataPolicyCrit: Set<String>
+        get() {
+            if (!claims.claims.containsKey("metadata_policy_crit")) return emptySet()
+            val names = claims.claims["metadata_policy_crit"] as? List<*>
+            if (names.isNullOrEmpty() || names.any { it !is String }) {
+                trustFail("an entity statement carries a malformed metadata_policy_crit")
+            }
+            return names.filterIsInstance<String>().toSet()
+        }
+
     private fun objectClaimOrFail(name: String): Map<*, *>? {
         // Nimbus returns null both for an absent claim and for an explicit `null`:
         // membership must be checked on the claims map, and a PRESENT claim must be a
@@ -96,6 +111,14 @@ internal fun parseStatement(serialized: String): EntityStatement {
             .getOrElse { trustFail("entity statement does not parse as a JWT") }
     if (!typIsEntityStatement(jwt)) {
         trustFail("entity statement typ is not $ENTITY_STATEMENT_TYP")
+    }
+    // OID-FED §3.2: every claim listed in `crit` "MUST be understood and be able to be
+    // processed", and this library understands no extension claim — so a statement that
+    // lists any, well-formed or not, is one it must not act on. Nimbus enforces only the
+    // JOSE header's crit, never this payload claim, and it used to be ignored: a superior
+    // making an extension mandatory (a revocation flag, say) was silently overruled.
+    if (runCatching { jwt.jwtClaimsSet.claims.containsKey("crit") }.getOrDefault(false)) {
+        trustFail("an entity statement lists critical claims this library does not understand")
     }
     return EntityStatement(serialized, jwt)
 }
@@ -195,8 +218,10 @@ internal fun validateChain(
     // merged anchor-first, are applied. The credential keys come from the RESOLVED
     // metadata, so a superior can restrict or replace what the leaf advertises.
     val effectiveMetadata = MetadataPolicy.overlay(leaf.metadata, statements[1].metadata)
-    val policies = statements.drop(1).asReversed().mapNotNull { it.metadataPolicy }
-    val resolvedMetadata = MetadataPolicy.resolve(effectiveMetadata, policies)
+    val subordinates = statements.drop(1)
+    val policies = subordinates.asReversed().mapNotNull { it.metadataPolicy }
+    val criticalOperators = subordinates.flatMap { it.metadataPolicyCrit }.toSet()
+    val resolvedMetadata = MetadataPolicy.resolve(effectiveMetadata, policies, criticalOperators)
     val resolvedIssuer = resolvedMetadata["openid_credential_issuer"] as? Map<*, *>
     // No fallback. Credential-signing keys come from the RESOLVED metadata or from nowhere.
     //

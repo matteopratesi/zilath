@@ -35,11 +35,17 @@ internal object MetadataPolicy {
      * entity types with `wallet_provider.jwks` essential, reject its own disability card
      * issuer — which is not a wallet provider — and fabricated sections (via `default`,
      * `add`, `value`) that the leaf never published.
+     *
+     * [criticalOperators] is the union of the chain's `metadata_policy_crit`: operators the
+     * superiors declared must be understood. Any other operator this library does not know
+     * is ignored, as §6.1.3.2 requires.
      */
     fun resolve(
         metadata: Map<*, *>?,
         policies: List<Map<*, *>>,
+        criticalOperators: Set<String> = emptySet(),
     ): Map<String, Any?> {
+        requireCriticalOperatorsUnderstood(criticalOperators)
         val merged = policies.fold(emptyMap<String, Map<String, Map<String, Any?>>>(), ::mergePolicy)
         val resolved = metadata.orEmpty().entries.associate { (type, section) -> type.toString() to section }
         resolved.values.forEach(::requireWellFormedSection)
@@ -73,7 +79,7 @@ internal object MetadataPolicy {
             val typeResult = result[type.toString()].orEmpty().toMutableMap()
             for ((parameter, operators) in parameters) {
                 if (operators !is Map<*, *>) trustFail("metadata_policy operators for $parameter are not an object")
-                val cleaned = operators.entries.associate { (op, v) -> op.toString() to v }
+                val cleaned = understoodOperators(operators.entries.associate { (op, v) -> op.toString() to v })
                 validateOperators(parameter.toString(), cleaned)
                 val merged =
                     typeResult[parameter.toString()]?.let { mergeOperators(parameter.toString(), it, cleaned) }
@@ -113,7 +119,8 @@ internal object MetadataPolicy {
                             ?.let { asList(it).intersect(asList(value).toSet()).toList() }
                             ?: asList(value)
                     "essential" -> (merged[operator] == true) || (value == true)
-                    else -> trustFail("unsupported metadata_policy operator $operator on $parameter")
+                    // Unreachable: understoodOperators has dropped every other name.
+                    else -> trustFail("unsupported metadata_policy operator")
                 }
         }
         return merged

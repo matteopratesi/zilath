@@ -412,13 +412,72 @@ class MetadataPolicyTest {
     }
 
     @Test
-    fun `an unsupported operator fails closed`() {
+    fun `an operator this library does not understand is ignored unless it is critical`() {
+        // This test used to assert that an unknown operator fails the chain. OID-FED
+        // §6.1.3.2 says the opposite: "MUST ignore additional operators that are not
+        // understood", unless they are named in metadata_policy_crit.
+        val resolved =
+            MetadataPolicy.resolve(
+                metadata("a" to "x", "algs" to listOf("ES256", "RS256")),
+                listOf(
+                    policy(
+                        "a" to mapOf("regexp" to ".*"),
+                        // Known operators next to an unknown one still apply.
+                        "algs" to mapOf("subset_of" to listOf("ES256"), "regexp" to "^ES"),
+                    ),
+                ),
+            )
+        assertThat(issuerSection(resolved)["a"]).isEqualTo("x")
+        assertThat(issuerSection(resolved)["algs"]).isEqualTo(listOf("ES256"))
+    }
+
+    @Test
+    fun `the IT-Wallet example shape of vp_formats does not break resolution`() {
+        // IT-Wallet 1.4.6 §6.9: a nested {"dc+sd-jwt": {...}} where an operator would be.
+        val resolved =
+            MetadataPolicy.resolve(
+                mapOf(
+                    "openid_credential_verifier" to
+                        mapOf(
+                            "vp_formats" to mapOf("dc+sd-jwt" to emptyMap<String, Any>()),
+                        ),
+                ),
+                listOf(
+                    mapOf(
+                        "openid_credential_verifier" to
+                            mapOf(
+                                "vp_formats" to
+                                    mapOf("dc+sd-jwt" to mapOf("sd-jwt_alg_values" to listOf("ES256"))),
+                            ),
+                    ),
+                ),
+            )
+        assertThat(resolved.keys).containsExactly("openid_credential_verifier")
+    }
+
+    @Test
+    fun `an operator the chain declares critical must be understood`() {
         assertThatExceptionOfType(TrustFailure::class.java)
             .isThrownBy {
                 MetadataPolicy.resolve(
                     metadata("a" to "x"),
                     listOf(policy("a" to mapOf("regexp" to ".*"))),
+                    criticalOperators = setOf("regexp"),
                 )
-            }.withMessageContaining("unsupported")
+            }.withMessageContaining("critical")
+        // Declared critical is enough, used or not: the superior said a verifier that
+        // cannot apply it must not trust the chain.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(metadata("a" to "x"), emptyList(), criticalOperators = setOf("regexp"))
+            }.withMessageContaining("critical")
+        // A critical operator this library does implement is simply applied.
+        val resolved =
+            MetadataPolicy.resolve(
+                metadata("a" to "x"),
+                listOf(policy("a" to mapOf("value" to "forced"))),
+                criticalOperators = setOf("value"),
+            )
+        assertThat(issuerSection(resolved)["a"]).isEqualTo("forced")
     }
 }

@@ -22,8 +22,33 @@ package dev.zilath.verifier.trust
  * from the merge and the application so each file reads as one of the three steps.
  */
 
-internal val SUPPORTED_OPERATORS =
+private val SUPPORTED_OPERATORS =
     setOf("value", "add", "default", "one_of", "subset_of", "superset_of", "essential")
+
+/**
+ * The operators of one parameter's policy that this library applies: every other one is
+ * dropped. OID-FED §6.1.3.2 says implementations "MUST ignore additional operators that
+ * are not understood" unless they are critical, and [requireCriticalOperatorsUnderstood]
+ * has already refused the chain in that case. Failing on every unknown operator instead
+ * made one benign extension anywhere in a superior's policy — for any entity type, even
+ * one the leaf does not have — deny every credential under that superior. The IT-Wallet
+ * 1.4.6 §6.9 example statement has exactly that shape: `vp_formats` carries a nested
+ * `{"dc+sd-jwt": {...}}` where an operator would be.
+ */
+internal fun understoodOperators(operators: Map<String, Any?>): Map<String, Any?> =
+    operators.filterKeys { it in SUPPORTED_OPERATORS }
+
+/**
+ * OID-FED §6.1.3.2: an operator named in `metadata_policy_crit` MUST be understood and
+ * processed, and the chain is invalid when it is not. Checked on the names themselves,
+ * whether or not a policy in the chain uses them: a superior that declares an operator
+ * critical says that a verifier unable to apply it must not trust what it vouches for.
+ */
+internal fun requireCriticalOperatorsUnderstood(criticalOperators: Set<String>) {
+    if (criticalOperators.any { it !in SUPPORTED_OPERATORS }) {
+        trustFail("a critical metadata_policy operator is not supported")
+    }
+}
 
 /** Operators whose operand must be a JSON array. */
 private val ARRAY_OPERATORS = setOf("add", "one_of", "subset_of", "superset_of")
@@ -52,9 +77,6 @@ private fun validateOperands(
     parameter: String,
     operators: Map<String, Any?>,
 ) {
-    operators.keys
-        .firstOrNull { it !in SUPPORTED_OPERATORS }
-        ?.let { trustFail("unsupported metadata_policy operator $it on $parameter") }
     ARRAY_OPERATORS
         .firstOrNull { operators.containsKey(it) && operators[it] !is List<*> }
         ?.let { trustFail("metadata_policy $it for $parameter must be an array") }
