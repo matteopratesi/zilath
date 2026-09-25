@@ -26,8 +26,10 @@ import dev.zilath.verifier.core.TrustEvaluator
 import dev.zilath.verifier.core.VerificationResult
 import dev.zilath.verifier.openid4vp.DirectPostBody
 import dev.zilath.verifier.openid4vp.FlowOutcome
+import dev.zilath.verifier.openid4vp.InMemoryTransactionStore
 import dev.zilath.verifier.openid4vp.PresentationRequest
 import dev.zilath.verifier.openid4vp.StartedTransaction
+import dev.zilath.verifier.openid4vp.TransactionStore
 import dev.zilath.verifier.openid4vp.VerificationFlow
 import kotlinx.serialization.json.JsonObject
 import org.assertj.core.api.Assertions.assertThat
@@ -36,6 +38,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import java.time.Clock
 
 /** What the starter builds from `zilath.openid4vp.*`, and what it refuses to start with. */
 class StarterConfigurationTest {
@@ -112,6 +115,29 @@ class StarterConfigurationTest {
             val outcome = flow.handleWalletResponse(started.id, oversized).outcome as FlowOutcome.Rejected
             assertThat(outcome.detail).isEqualTo("wallet response is not a JWE")
         }
+    }
+
+    @Test
+    fun `a transaction store of the application's is the one the flow uses`() {
+        InMemoryTransactionStore(Clock.systemUTC()).use { applicationStore ->
+            runner.withBean(TransactionStore::class.java, { applicationStore }).run { context ->
+                val started = start(context.getBean(VerificationFlow::class.java))
+                assertThat(applicationStore.get(started.id)).isNotNull()
+            }
+        }
+    }
+
+    @Test
+    fun `the flow is closed with its context, and the store it created with it`() {
+        lateinit var flow: VerificationFlow
+        lateinit var started: StartedTransaction
+        runner.run { context ->
+            flow = context.getBean(VerificationFlow::class.java)
+            started = start(flow)
+            assertThat(flow.requestJwtFor(started.id)).isNotNull()
+        }
+        // The context is closed: the in-memory store the flow owned holds nothing any more.
+        assertThat(flow.requestJwtFor(started.id)).isNull()
     }
 
     private fun start(flow: VerificationFlow): StartedTransaction =
