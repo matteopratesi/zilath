@@ -18,6 +18,7 @@ package dev.zilath.verifier.trust
 
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
+import dev.zilath.verifier.core.TestVectors
 import dev.zilath.verifier.trust.FederationFixtures.ANCHOR_ID
 import dev.zilath.verifier.trust.FederationFixtures.LEAF_ID
 import dev.zilath.verifier.trust.FederationFixtures.anchorKey
@@ -37,6 +38,22 @@ import org.junit.jupiter.api.Test
 /** OID-FED 1.0 §4: which statements a trust chain is made of, and where each may sit. */
 class ChainShapeTest {
     private fun decide(chain: List<String>) = chainEvaluator().evaluate(inputFor(trustChain = chain))
+
+    /** Leaf -> [intermediates] intermediates -> anchor, as a `trust_chain` carries it. */
+    private fun chainThrough(intermediates: Int): List<String> {
+        val ids = List(intermediates) { "https://int${it + 1}.example" }
+        val keys = List(intermediates) { ECKeyGenerator(Curve.P_256).keyID("int${it + 1}-fed").generate() }
+        val issuers = ids + ANCHOR_ID
+        val signers = keys + anchorKey
+        val subjects = listOf(LEAF_ID) + ids
+        val subjectKeys = listOf(leafFederationKey) + keys
+        return listOf(leafConfiguration(authorityHint = issuers.first())) +
+            issuers.indices.map { level ->
+                signedStatement(signers[level], issuers[level], subjects[level]) {
+                    claim("jwks", jwksClaim(subjectKeys[level]))
+                }
+            }
+    }
 
     @Test
     fun `a trust_chain header does not excuse a credential without iss`() {
@@ -162,6 +179,24 @@ class ChainShapeTest {
         // chains that include it must not be denied.
         val chain = FederationFixtures.offlineChain() + FederationFixtures.anchorConfiguration()
         assertThat(trustedKeyIds(decide(chain))).containsExactly(dev.zilath.verifier.core.TestVectors.issuerEcKey.keyID)
+    }
+
+    @Test
+    fun `a chain as long as allowed may still close with the anchor's own configuration`() {
+        // Four statements by default, a leaf under two intermediates: the closing configuration
+        // is not one of them, as it is not online, where resolution never fetches it into the chain.
+        val longest = chainThrough(intermediates = 2)
+        assertThat(trustedKeyIds(decide(longest))).containsExactly(TestVectors.issuerEcKey.keyID)
+        assertThat(trustedKeyIds(decide(longest + FederationFixtures.anchorConfiguration())))
+            .containsExactly(TestVectors.issuerEcKey.keyID)
+    }
+
+    @Test
+    fun `the anchor's own configuration does not make room for one more statement`() {
+        val tooLong = chainThrough(intermediates = 3)
+        assertThat(untrustedReason(decide(tooLong))).contains("longer than 4 statements")
+        assertThat(untrustedReason(decide(tooLong + FederationFixtures.anchorConfiguration())))
+            .contains("longer than 4 statements")
     }
 
     @Test

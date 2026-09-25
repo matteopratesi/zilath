@@ -114,6 +114,9 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
 - An operator of `metadata_policy` the library does not implement is ignored unless it is
   critical (§6.1.3.2): the IT-Wallet 1.4.6 §6.9 example statement used to fail the chain.
 - An entity statement `typ` in the long form, `application/entity-statement+jwt`.
+- The anchor's own entity configuration closing a provided `trust_chain` (OID-FED §4) no
+  longer counts towards `maxChainLength`, as it does not online: a leaf under two
+  intermediates whose chain carried it was refused.
 
 ### Security — the flow and the starter (`verifier-openid4vp`, `verifier-spring-boot-starter`)
 

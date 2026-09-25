@@ -37,9 +37,21 @@ internal fun parseChain(
 ): List<EntityStatement> {
     if (chain.size < 2) trustFail("a trust chain needs at least the leaf and an anchor statement")
     // The offline chain comes from an attacker-controlled header: bound it before any parsing.
-    if (chain.size > rules.maxChainLength) trustFail("trust chain longer than ${rules.maxChainLength} statements")
-    return chain.map(::parseStatement)
+    // The anchor's own configuration may close it (OID-FED §4) and does not count towards the
+    // length, as online resolution never fetches it into the chain: the bound leaves room for
+    // it, the check after parsing counts without it.
+    if (chain.size - 1 > rules.maxChainLength) trustFail(chainTooLong(rules))
+    val statements = chain.map(::parseStatement)
+    val length = if (endsWithOwnConfiguration(statements)) statements.size - 1 else statements.size
+    if (length > rules.maxChainLength) trustFail(chainTooLong(rules))
+    return statements
 }
+
+private fun chainTooLong(rules: ChainRules) = "trust chain longer than ${rules.maxChainLength} statements"
+
+/** A chain whose last element is an entity configuration: the anchor's own, OID-FED §4 allows. */
+private fun endsWithOwnConfiguration(statements: List<EntityStatement>): Boolean =
+    statements.size > 2 && statements.last().let { it.issuer == it.subject }
 
 /**
  * The shape OID-FED 1.0 §4 gives a trust chain, and the chain's subordinate statements,
@@ -62,7 +74,7 @@ internal fun subordinateStatementsOf(
     val leaf = statements.first()
     checkEndsAndLinks(statements, expectedIssuer, anchor)
     val last = statements.last()
-    val endsWithAnchorConfiguration = statements.size > 2 && last.issuer == last.subject
+    val endsWithAnchorConfiguration = endsWithOwnConfiguration(statements)
     val subordinates = statements.subList(1, if (endsWithAnchorConfiguration) statements.size - 1 else statements.size)
     if (subordinates.any { it.issuer == it.subject }) {
         trustFail("a statement after the leaf is not a subordinate statement")
