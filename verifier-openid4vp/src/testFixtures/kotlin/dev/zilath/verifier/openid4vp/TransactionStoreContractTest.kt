@@ -34,8 +34,14 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * The conformance kit for a [TransactionStore]: the properties the flow relies on, as the
- * KDoc of [TransactionStore] numbers them, each checked against YOUR implementation.
+ * The conformance kit for a [TransactionStore]: properties 1 to 5 the flow relies on, as the
+ * KDoc of [TransactionStore] numbers them, each checked against YOUR implementation. Not the
+ * sixth, retention: whether a store keeps an entry until its expiry and removes it after is
+ * observable only on the store's own clock, and is left to the store's own tests.
+ *
+ * It lives in the Zilath repository, in the test fixtures of `verifier-openid4vp`, and is not
+ * published to Maven Central (test fixtures never are): copy this file into your tests — it
+ * needs only JUnit 5 and AssertJ besides the library — or build Zilath from source.
  *
  * ```kotlin
  * class RedisTransactionStoreTest : TransactionStoreContractTest() {

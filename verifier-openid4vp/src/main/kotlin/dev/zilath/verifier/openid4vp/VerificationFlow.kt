@@ -81,8 +81,14 @@ interface VerificationFlow {
      * Handles the wallet's `direct_post` submission for [txId] and records the outcome.
      *
      * Terminal and single-use: the transaction's nonce is consumed here, so a replayed body
-     * yields [RejectionReason.REPLAY] rather than a second success. The returned outcome is
-     * also what [awaitOutcome] will report from now on.
+     * yields [RejectionReason.REPLAY] rather than a second success.
+     *
+     * The returned outcome is what THIS response met, addressed to the wallet. It is what
+     * [awaitOutcome] then reports only for the first response to an open transaction, and
+     * only cross-device or after the same-device return: a replay or a later error is
+     * answered for itself while the checkout keeps reading the first outcome; an error
+     * posted after expiry is acknowledged while the checkout reads [FlowOutcome.Expired];
+     * and a same-device outcome reads [FlowOutcome.Pending] until the user-agent returns.
      *
      * The result also carries what the acknowledgement to the wallet needs: for a
      * same-device transaction, the `redirect_uri` with its single-use `response_code` —
@@ -114,7 +120,10 @@ interface VerificationFlow {
      * the user-agent that came back with the response code: the start token then reads
      * [FlowOutcome.Pending] until the return, and nothing afterwards, so a transaction
      * started by one party and completed by another person's wallet (session fixation,
-     * §14.2) never shows that person's claims to the party who started it. A token that does
+     * §14.2) never shows that person's claims to the party who started it. A same-device
+     * presentation that was REJECTED gets no response code, so there is no return: the start
+     * token reads [FlowOutcome.Pending] until the time to live, and [FlowOutcome.Expired]
+     * after it; the holder is told by the wallet, which received the error. A token that does
      * not match answers [FlowOutcome.Unknown], exactly as an id that does not exist.
      */
     fun awaitOutcome(
@@ -158,10 +167,21 @@ data class HandledResponse(
      * ticket of the user-agent that completed the presentation.
      *
      * Present only for the call whose response RECORDED the transaction's outcome, which
-     * is exactly one call per transaction: the code is minted in the same atomic update that
-     * records the outcome. Null for cross-device transactions, for a replay, for an error
-     * posted after the outcome was reached or after expiry. Anyone knowing the transaction
-     * id may post an `error`; that request is owed an acknowledgement, never a return ticket.
+     * is exactly one call per transaction, and only when that outcome is
+     * [FlowOutcome.Verified] or [FlowOutcome.WalletErrorAcknowledged]: the code is minted in
+     * the same atomic update that records the outcome. Null for cross-device transactions,
+     * for a replay, for an error posted after the outcome was reached or after expiry, and
+     * for a [FlowOutcome.Rejected] presentation — which the endpoint answers with an error,
+     * a response that carries no redirect, so the user-agent does not come back through the
+     * callback and the start token reads [FlowOutcome.Pending] and then
+     * [FlowOutcome.Expired] (see [VerificationFlow.awaitOutcome]).
+     *
+     * The FIRST response to an open transaction records its outcome, whoever posts it: the
+     * transaction id authorises posting, and an `error` from someone who knows only the id,
+     * posted before the wallet answers, records a [FlowOutcome.WalletErrorAcknowledged] and
+     * is handed its ticket — the wallet's own response then meets a replay, the terminal
+     * denial the unauthenticated endpoint allows by design. Every response after the first
+     * is owed an acknowledgement, never a return ticket.
      * The fourth internal review found the ticket handed to whichever later caller presented
      * an outcome EQUAL to the recorded one — `access_denied`, the only error a cancelling
      * wallet sends, is easy to guess — and lost for the legitimate user whenever a store did
@@ -210,11 +230,14 @@ data class PollToken(
  *
  * The query is read when the request is constructed, and a query this library cannot
  * evaluate is refused there with [IllegalArgumentException]: no `credentials` array, not
- * exactly one credential query, one not named [credentialQueryId], `credential_sets`,
- * `multiple: true`, or `claims`/`claim_sets`/`vct_values` that do not follow OpenID4VP 1.0
- * §6 and §7. Before the fourth internal review such a query passed [VerificationFlow.start],
- * reached the wallet inside the signed request, and then failed every response as an
- * internal error; a query asking for two credentials verified one and ignored the other.
+ * exactly one credential query, one not named [credentialQueryId], a `format` other than
+ * `dc+sd-jwt` (or the pre-1.0 `vc+sd-jwt`), no `meta` object with a non-empty `vct_values`,
+ * `credential_sets`, `multiple: true`, `trusted_authorities`,
+ * `require_cryptographic_holder_binding: false`, or `claims`/`claim_sets` that do not follow
+ * OpenID4VP 1.0 §6 and §7. Before the fourth internal review such a query passed
+ * [VerificationFlow.start], reached the wallet inside the signed request, and then failed
+ * every response as an internal error; a query asking for two credentials verified one and
+ * ignored the other; and one without `vct_values` switched the credential type check off.
  */
 data class PresentationRequest(
     /** A DCQL query as required by IT-Wallet v1.4.x (`dcql_query` claim). */
@@ -230,11 +253,11 @@ data class PresentationRequest(
 
     /**
      * The credential types this request will accept, read back out of the DCQL query's
-     * `meta.vct_values` for the credential query this request names.
+     * `meta.vct_values` for the credential query this request names: never empty, since a
+     * query without them is refused.
      *
      * The query is the statement of what was asked for; deriving the check from it means
-     * the two cannot drift apart. An empty result — a caller-built query that does not
-     * constrain the type — leaves the verifier unconstrained too, rather than rejecting.
+     * the two cannot drift apart.
      */
     fun expectedVcts(): Set<String> = vctValues
 
@@ -309,6 +332,13 @@ data class DirectPostBody(
 ) {
     /** The encrypted response JWE (`direct_post.jwt` mode, mandatory in IT-Wallet). */
     val response: String? get() = parameters["response"]
+
+    /**
+     * The parameter NAMES, never their values. Under [ArfBaselineProfile] the `vp_token` is
+     * posted in plaintext, with every disclosure the holder made, and a data class prints
+     * all of it; the values are unauthenticated input besides, of any size.
+     */
+    override fun toString(): String = "DirectPostBody(parameters=${parameters.keys})"
 }
 
 /**

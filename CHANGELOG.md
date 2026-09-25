@@ -128,40 +128,49 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
 - **Each response is encrypted to a key of its own transaction.** One long-lived key served
   every request object, so a response captured past a TLS terminator became readable the day
   that key leaked. Each transaction now publishes a P-256 key of its own, whose private half
-  leaves the store with the response or at expiry; a JWE `kid` must name it. A static key
+  leaves the store with the response or when the transaction expires; a JWE `kid` must name
+  it. A static key
   is only a fallback, and only when configured.
 - **The same-device return ticket goes only to the call that recorded the outcome.** A second
   post of the same `access_denied` a cancelling wallet sends used to receive the same
   `response_code`, and anyone holding the id could burn it before the user's browser came
   back. It no longer depends on the store keeping the outcome bit for bit, nor on reading
-  back through a replica.
-- **Expiry is the flow's.** A transaction carries one `expiresAt`; every read path checks it
-  first and redacts an expired entry in place, so no outcome with claims is read past the
-  time to live, whatever the store keeps. The in-memory store sweeps itself in the
-  background, by due time, holds at most 10,000 transactions (`TooManyTransactionsException`
-  beyond) and is closed with the flow.
+  back through a replica. A rejected presentation gets no ticket: the page that started it
+  reads pending, then expired.
+- **Expiry is the flow's.** A transaction carries one `expiresAt`; every call checks it
+  first and redacts an expired entry in place, and a verification that finishes after it is
+  not recorded, so no outcome with claims is read past the time to live, whatever the store
+  keeps. The in-memory store redacts an entry at its expiry and removes it a minute later,
+  sweeping itself in the background by due time; it holds at most 10,000 transactions
+  (`TooManyTransactionsException` beyond) and is closed with the flow.
 - **A `vp_token` carries exactly one presentation**, as a JSON string; the bare string of
   pre-1.0 wallets only under `ArfBaselineProfile`. A request is read at construction: a DCQL
-  query the library cannot evaluate, or one asking for more than one credential, is refused
-  when the request is built instead of failing every response. Its `claims` reach the
-  verifier as `requestedClaims`.
+  query the library cannot evaluate is refused when the request is built instead of failing
+  every response — one asking for more than one credential, one without `meta.vct_values`
+  (which used to switch the credential type check off), a format other than `dc+sd-jwt` or the
+  pre-1.0 `vc+sd-jwt`, `trusted_authorities`, or `require_cryptographic_holder_binding:
+  false`. Its `claims` reach the verifier as `requestedClaims`.
 - **What a wallet sends is bounded before it is kept or decoded**: the response (1 MiB,
   `maxWalletResponseLength`), its `error` (a token of 64 characters at most) and
-  `error_description` (256 characters, printable ASCII). A `Transaction` prints neither its
-  secrets nor the claims. A rejection's detail reaches the starter's log bounded, on one
+  `error_description` (256 characters, printable ASCII). A `Transaction`, and a
+  `DirectPostBody` (the wallet's POST), print neither secrets nor claims. A rejection's detail reaches the starter's log bounded, on one
   line. The time to live is capped at one hour.
 - **The relying party's keys serve one purpose each**, under a `kid` of their own.
 - **The entity configuration meets the production anchor's policy for verifiers**: it
-  publishes `redirect_uris`, `vp_formats` and `authorization_encrypted_response_enc`
+  publishes `redirect_uris` (the same-device callback, when there is one), `vp_formats` and
+  `authorization_encrypted_response_enc`
   alongside their current names, and `contacts`, now required. One parameter the policy marks
   essential, `authorization_signed_response_alg`, is left out on purpose: it would ask
-  wallets to sign the response inside the JWE, a form the flow does not read. The
+  wallets to sign the response inside the JWE, a form the flow does not read. A
+  cross-device-only relying party, which has no redirect, leaves out `redirect_uris` too, so
+  it cannot satisfy that policy. The
   `trust_chain` of a request object is never sent expired, and can come from a
   `TrustChainSource`.
 - **The starter** answers the wallet with the statuses IT-Wallet 1.4.6 §12.2.1.6.1
   tabulates, 403, 400 or 500, with a fixed description instead of the rejection reason; serves
   both endpoints with `Cache-Control: no-store` and whatever the wallet puts in `Accept`;
-  serves the request object by POST too, with the wallet's `wallet_nonce` in it; configures an
+  serves the request object by POST too, with the wallet's `wallet_nonce` in it, and answers
+  400 JSON for one that is not available, instead of a bare 404; configures an
   `openid_federation:` relying party (`zilath.openid4vp.federation.*`, and the entity
   configuration at `/.well-known/openid-federation`) and checks an `x509_hash:` client id
   against its certificate at startup; and uses the application's `TransactionStore`,
@@ -178,12 +187,14 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
   `isExpired(now, ttl)` is `isExpired(now)`. `InMemoryTransactionStore(clock, ttl)` is
   `InMemoryTransactionStore(clock, maxTransactions)`; the store and the flow are
   `AutoCloseable`. Custom stores: the six properties the flow relies on are in the
-  `TransactionStore` KDoc, and `TransactionStoreContractTest` (test fixtures of
-  `verifier-openid4vp`) checks them.
+  `TransactionStore` KDoc; `TransactionStoreContractTest` checks the first five (not
+  retention). It is in the repository's test fixtures of `verifier-openid4vp`, not published
+  to Maven Central.
 - `RpKeys.responseEncryptionKey` is optional; `RpFederationConfig.contacts` is required;
   `WalletProfile`'s methods take the transaction's key. An `x509_hash:` client id without a
   matching `x5c` fails at construction.
-- `PresentationRequest` throws for a DCQL query it cannot evaluate.
+- `PresentationRequest` throws for a DCQL query it cannot evaluate, including one without
+  `meta.vct_values`, which 0.3.0 accepted and verified with no type check.
 - The starter's HTTP answers change as described above, and its
   `response-encryption-key-jwk` property is optional (best left empty).
 

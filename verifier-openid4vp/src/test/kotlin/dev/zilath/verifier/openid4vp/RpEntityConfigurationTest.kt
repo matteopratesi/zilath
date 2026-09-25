@@ -137,24 +137,44 @@ class RpEntityConfigurationTest {
     }
 
     @Test
-    fun `the entity configuration satisfies the production trust anchor's policy for verifiers`() {
+    fun `against the production trust anchor's policy, each RP leaves out exactly what it must`() {
         // The statement the real IT-Wallet anchor issued on 2026-09-24 carries its common
         // metadata_policy: its openid_credential_verifier and federation_entity sections are
         // what a wallet applies to an RP registered under it, and a parameter marked
         // essential but absent makes the RP's metadata broken (OpenID Federation §6.1.4.2).
+        // Two parameters are left out on purpose (see RpEntityConfiguration.metadata): they
+        // are recorded divergences, and these lines are where they would show if that changed.
+        val base = config("openid_federation:https://rp.example")
+        val sameDevice = base.copy(endpoints = base.endpoints.copy(sameDeviceCallbackBase = "https://rp.example/cb"))
+        // authorization_signed_response_alg would make wallets nest a signed response the
+        // flow does not read.
+        assertThat(policyGapsOf(sameDevice).missing)
+            .containsExactly("openid_credential_verifier.authorization_signed_response_alg")
+        // A cross-device-only RP has no redirect: none is invented for it.
+        assertThat(policyGapsOf(base).missing).containsExactlyInAnyOrder(
+            "openid_credential_verifier.authorization_signed_response_alg",
+            "openid_credential_verifier.redirect_uris",
+        )
+        assertThat(policyGapsOf(sameDevice).outOfRange).isEmpty()
+        assertThat(policyGapsOf(base).outOfRange).isEmpty()
+    }
+
+    private class PolicyGaps(
+        val missing: List<String>,
+        val outOfRange: List<String>,
+    )
+
+    /** The essential parameters [rp]'s entity configuration omits, and the `one_of` it breaks. */
+    private fun policyGapsOf(rp: RelyingPartyConfiguration): PolicyGaps {
         val policy =
             SignedJWT
-                .parse(
-                    IpzsFederationSnapshot.statementAboutCedIssuer,
-                ).jwtClaimsSet
+                .parse(IpzsFederationSnapshot.statementAboutCedIssuer)
+                .jwtClaimsSet
                 .getJSONObjectClaim("metadata_policy")
-        val base = config("openid_federation:https://rp.example")
-        val rp = base.copy(endpoints = base.endpoints.copy(sameDeviceCallbackBase = "https://rp.example/cb"))
         val metadata =
             SignedJWT
-                .parse(
-                    RpEntityConfiguration.build(rp, rp.federation!!, clock),
-                ).jwtClaimsSet
+                .parse(RpEntityConfiguration.build(rp, rp.federation!!, clock))
+                .jwtClaimsSet
                 .getJSONObjectClaim("metadata")
         val missing = mutableListOf<String>()
         val outOfRange = mutableListOf<String>()
@@ -173,10 +193,7 @@ class RpEntityConfigurationTest {
                 if (allowed != null && value != null && value !in allowed) outOfRange += "$type.$parameter"
             }
         }
-        // One essential parameter is left out on purpose: see RpEntityConfiguration.metadata.
-        // It is a recorded divergence, and this line is where it would show if it changed.
-        assertThat(missing).containsExactly("openid_credential_verifier.authorization_signed_response_alg")
-        assertThat(outOfRange).isEmpty()
+        return PolicyGaps(missing, outOfRange)
     }
 
     @Test

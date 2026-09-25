@@ -2,7 +2,9 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.ktlint)
     alias(libs.plugins.detekt)
-    // The TransactionStore conformance kit: integrators extend it to check their own store.
+    // The TransactionStore conformance kit, checking properties 1 to 5 of the store contract.
+    // Test fixtures are not published (gradle/publishing.gradle.kts): the kit is in this
+    // repository, for integrators to copy into their tests or build from source.
     `java-test-fixtures`
 }
 

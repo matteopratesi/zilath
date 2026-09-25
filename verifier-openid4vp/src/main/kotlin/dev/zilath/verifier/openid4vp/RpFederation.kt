@@ -120,8 +120,10 @@ data class RpFederationConfig(
 /**
  * Builds the RP's signed Entity Configuration (IT-Wallet v1.4.6 §10.3.4): the JWS served
  * at `/.well-known/openid-federation`. Carries the `federation_entity` and
- * `openid_credential_verifier` metadata types; the protocol `jwks` publishes ONLY the
- * public halves of the request-signing and response-encryption keys.
+ * `openid_credential_verifier` metadata types; the protocol `jwks` publishes public halves
+ * only: the request-signing key's, and the static response-encryption key's when one is
+ * configured ([RpKeys.responseEncryptionKey]) — each transaction's own key travels in its
+ * request object instead.
  */
 object RpEntityConfiguration {
     /**
@@ -207,7 +209,9 @@ object RpEntityConfiguration {
                     // it essential: under JARM it asks the wallet to SIGN the response and
                     // nest the JWS in the JWE, a form this flow does not read (it takes the
                     // JWE payload as the response object) — publishing it would turn every
-                    // wallet that honours it into a denied holder. A recorded divergence.
+                    // wallet that honours it into a denied holder. A recorded divergence, the
+                    // one essential parameter a same-device RP leaves out; a cross-device-only
+                    // RP leaves out `redirect_uris` too (see redirectUrisOf).
                     //
                     // The static encryption key only when the RP accepts it: publishing a key the
                     // response endpoint then refuses would deny every wallet that used it. The
@@ -235,6 +239,11 @@ object RpEntityConfiguration {
      * attests, and the chain's `openid_credential_verifier` metadata is where a wallet looks.
      * Before the fourth internal review it was never published, so a wallet applying the rule
      * refused to send the holder back.
+     *
+     * Only the same-device callback base is published: a cross-device-only RP has no redirect,
+     * and publishes none. The production anchor's policy marks `redirect_uris` essential, so
+     * such an RP cannot satisfy it; a URI nobody serves would satisfy the letter of the policy
+     * and attest a redirect that does not exist, so none is invented.
      */
     private fun redirectUrisOf(config: RelyingPartyConfiguration): Map<String, Any> =
         config.endpoints.sameDeviceCallbackBase?.let { mapOf("redirect_uris" to listOf(it)) } ?: emptyMap()

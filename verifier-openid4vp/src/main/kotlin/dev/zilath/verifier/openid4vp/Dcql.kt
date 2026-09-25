@@ -63,25 +63,55 @@ internal fun credentialQueryOf(
         "dcql_query has no credential with id $credentialQueryId"
     }
     val multiple = query["multiple"]
-    require(multiple == null || (multiple is JsonPrimitive && !multiple.isString && multiple.booleanOrNull == false)) {
+    require(multiple == null || multiple.isJsonBoolean(false)) {
         "dcql_query multiple presentations are not supported: only one presentation is verified"
+    }
+    require((query["format"] as? JsonPrimitive)?.takeIf { it.isString }?.content in SD_JWT_VC_FORMATS) {
+        "dcql_query format must be dc+sd-jwt (or the pre-1.0 vc+sd-jwt): only SD-JWT VC presentations are verified"
+    }
+    // Members that ask the wallet for something the response side would then not check. The
+    // wallet would choose, or leave unbound, on the strength of a condition nobody verifies.
+    require("trusted_authorities" !in query) {
+        "dcql_query trusted_authorities is not supported: the issuer is judged by the TrustEvaluator"
+    }
+    val holderBinding = query["require_cryptographic_holder_binding"]
+    require(holderBinding == null || holderBinding.isJsonBoolean(true)) {
+        "dcql_query require_cryptographic_holder_binding must be true: every presentation needs its key binding"
     }
     return query
 }
 
+/** A JSON boolean of [value]: not the string "true", not a number. */
+private fun JsonElement.isJsonBoolean(value: Boolean): Boolean =
+    this is JsonPrimitive && !isString && booleanOrNull == value
+
 /**
- * The credential types [credentialQuery] accepts, from `meta.vct_values`. Absent means no
- * constraint, by design: a caller-built query that does not constrain the type leaves the
- * verifier unconstrained too. Present, it must be a non-empty array of strings — a value
- * this function would have to skip is exactly how a type check silently switches off.
+ * The credential formats a request may name. `dc+sd-jwt` is OpenID4VP 1.0's (Appendix
+ * B.3.1). `vc+sd-jwt` is the identifier of the drafts before it, which wallets of those
+ * drafts ask with: kept because what comes back is the same SD-JWT VC, verified the same
+ * way, and the verifier accepts the `vc+sd-jwt` typ those credentials carry. Every other
+ * format — mdoc, JWT or JSON-LD credentials — is one the verifier cannot read.
+ */
+private val SD_JWT_VC_FORMATS = setOf("dc+sd-jwt", "vc+sd-jwt")
+
+/**
+ * The credential types [credentialQuery] accepts, from `meta.vct_values`: never empty.
+ *
+ * OpenID4VP 1.0 makes `meta` REQUIRED in a Credential Query (§6.1) and `vct_values` REQUIRED
+ * in it for SD-JWT VC (Appendix B.3.5), and the IT-Wallet conformance tool checks the RP
+ * sends them (RPR-80). Here they are also what the credential type check reads: an empty
+ * set switches it off. It used to be what a query without `meta`, with a `meta` that is not
+ * an object, or with a misspelled `vct_value` produced — so any credential a trusted issuer
+ * signed, of any type, answered the request. So each of those is refused, as is a blank type.
  */
 internal fun vctValuesOf(credentialQuery: JsonObject): Set<String> {
-    val values = (credentialQuery["meta"] as? JsonObject)?.get("vct_values") ?: return emptySet()
-    require(values is JsonArray && values.isNotEmpty()) { "dcql_query vct_values must be a non-empty array" }
+    val meta = requireNotNull(credentialQuery["meta"] as? JsonObject) { "dcql_query meta must be an object" }
+    val values = meta["vct_values"]
+    require(values is JsonArray && values.isNotEmpty()) { "dcql_query meta.vct_values must be a non-empty array" }
     return values
         .map { value ->
-            requireNotNull((value as? JsonPrimitive)?.takeIf { it.isString }?.content) {
-                "dcql_query vct_values must hold strings"
+            requireNotNull((value as? JsonPrimitive)?.takeIf { it.isString && it.content.isNotBlank() }?.content) {
+                "dcql_query vct_values must hold non-blank strings"
             }
         }.toSet()
 }
