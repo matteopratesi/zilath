@@ -17,9 +17,13 @@
 package dev.zilath.verifier.openid4vp
 
 import com.nimbusds.jwt.SignedJWT
+import dev.zilath.verifier.core.CredentialVerifier
+import dev.zilath.verifier.core.RawPresentation
 import dev.zilath.verifier.core.RejectionReason
 import dev.zilath.verifier.core.SdJwtVcCredentialVerifier
 import dev.zilath.verifier.core.TestVectors
+import dev.zilath.verifier.core.VerificationContext
+import dev.zilath.verifier.core.VerificationResult
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -196,5 +200,68 @@ class FlowExpiryTest : FlowTestSupport() {
         // The retained entry is findable, but the stale code must not complete the flow.
         assertThat(retainingFlow.consumeResponseCode(started.id, code)).isNull()
         assertThat(retainingFlow.awaitOutcome(started.id, started.pollToken)).isEqualTo(FlowOutcome.Expired)
+    }
+
+    @Test
+    fun `a verification that ends after the time to live leaves nothing behind`() {
+        // The outcome of a verification finishing past expiresAt — a slow status list, a slow
+        // trust evaluator — used to be written, claims and all, into the expired entry, to
+        // stay there until something next read the transaction.
+        val retaining = RetainingTransactionStore()
+        val slow =
+            object : CredentialVerifier {
+                private val real = SdJwtVcCredentialVerifier()
+
+                override fun verify(
+                    presentation: RawPresentation,
+                    ctx: VerificationContext,
+                ): VerificationResult =
+                    real.verify(presentation, ctx).also { clock.advance(config.transactionTimeToLive.plusSeconds(1)) }
+            }
+        val slowFlow = OpenId4VpVerificationFlow(config, slow, retaining, clock)
+        for (mode in FlowMode.entries) {
+            val started = slowFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), mode)
+            val handled = slowFlow.handleWalletResponse(started.id, walletBody(started, source = slowFlow))
+            // The wallet is told the transaction expired, and gets no return ticket.
+            assertThat(handled.outcome).isEqualTo(FlowOutcome.Expired)
+            assertThat(handled.redirectUri).isNull()
+            val stored = checkNotNull(retaining.get(started.id))
+            assertThat(stored.outcome).isNull()
+            assertThat(stored.responseCode).isNull()
+            assertThat(stored.responseEncryptionKey).isNull()
+            assertThat(slowFlow.awaitOutcome(started.id, started.pollToken)).isEqualTo(FlowOutcome.Expired)
+        }
+    }
+
+    @Test
+    fun `every call that finds a transaction expired redacts it`() {
+        // Not only the poll that owns it: a request object fetch, a response code, a poll
+        // with a wrong token — whatever touches an expired transaction takes the claims and
+        // the key out of the store, and answers nothing more than before.
+        val retaining = RetainingTransactionStore()
+        val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
+
+        fun verifiedAndExpired(): StartedTransaction {
+            val started = retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
+            retainingFlow.handleWalletResponse(started.id, walletBody(started, source = retainingFlow))
+            assertThat(retaining.get(started.id)?.outcome).isInstanceOf(FlowOutcome.Verified::class.java)
+            return started
+        }
+        val fetched = verifiedAndExpired()
+        val coded = verifiedAndExpired()
+        val guessed = verifiedAndExpired()
+        val unanswered = retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
+        clock.advance(config.transactionTimeToLive.plusSeconds(1))
+
+        assertThat(retainingFlow.requestJwtFor(fetched.id)).isNull()
+        assertThat(retainingFlow.consumeResponseCode(coded.id, "any-code")).isNull()
+        assertThat(retainingFlow.awaitOutcome(guessed.id, PollToken("wrong"))).isEqualTo(FlowOutcome.Unknown)
+        assertThat(retainingFlow.requestJwtFor(unanswered.id)).isNull()
+        for (id in listOf(fetched.id, coded.id, guessed.id)) {
+            assertThat(
+                retaining.get(id)?.outcome,
+            ).describedAs(id.value).isEqualTo(FlowOutcome.Rejected(RejectionReason.EXPIRED))
+        }
+        assertThat(retaining.get(unanswered.id)?.responseEncryptionKey).isNull()
     }
 }

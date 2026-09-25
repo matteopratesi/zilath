@@ -60,8 +60,9 @@ data class RpKeys(
      * Every transaction gets an encryption key of its own, and the request object publishes
      * only that one (IT-Wallet 1.4.6 WP_092 recommends ephemeral keys; under the
      * `openid_federation` prefix `client_metadata.jwks` is exactly the place for keys
-     * specific to one request). Its private half lives with the transaction and is dropped
-     * when the response arrives or the transaction expires, so a response captured today
+     * specific to one request). Its private half lives with the transaction and leaves the
+     * store when the first response arrives or, for a transaction nobody answers, after its
+     * expiry as [Transaction.responseEncryptionKey] describes, so a response captured today
      * cannot be decrypted with a key stolen tomorrow. Before the fourth internal review this
      * one key encrypted every response of the RP's life.
      *
@@ -135,6 +136,13 @@ data class RelyingPartyConfiguration(
     val statusChecker: StatusChecker,
     /** URI scheme of the QR payload; IT-Wallet accepts `openid4vp://` and `haip-vp://`. */
     val walletAuthorizationScheme: String = DEFAULT_SCHEME,
+    /**
+     * How long a transaction lives: the request object's `exp`, the window in which its id
+     * accepts a response, and the bound on the disclosed claims and the private encryption
+     * key. From it on no read returns them; they leave the store at the flow's next call on
+     * the transaction or the store's own redaction, within 30 seconds with the in-memory
+     * store (see [Transaction] for the whole rule). At most [MAX_TIME_TO_LIVE].
+     */
     val transactionTimeToLive: Duration = DEFAULT_TIME_TO_LIVE,
     /** The wallet profile in force; the Italian IT-Wallet profile is the default. */
     val profile: WalletProfile = ItWalletProfile,

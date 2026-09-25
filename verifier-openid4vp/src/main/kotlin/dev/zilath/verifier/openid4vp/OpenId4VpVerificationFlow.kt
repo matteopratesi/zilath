@@ -86,12 +86,14 @@ class OpenId4VpVerificationFlow(
         require(walletNonce == null || walletNonce.length <= VerificationFlow.MAX_WALLET_NONCE_LENGTH) {
             "wallet_nonce exceeds ${VerificationFlow.MAX_WALLET_NONCE_LENGTH} characters"
         }
+        val now = clock.instant()
         val transaction = store.get(txId)
         return when {
             transaction == null -> null
+            // Every call that finds the transaction expired redacts it: see Transaction.
+            transaction.isExpired(now) -> null.also { store.redactIfExpired(txId, now) }
             transaction.state != TransactionState.CREATED -> null
-            transaction.isExpired(clock.instant()) -> null
-            else -> buildRequestJwt(config, transaction, clock.instant(), walletNonce)
+            else -> buildRequestJwt(config, transaction, now, walletNonce)
         }
     }
 
@@ -125,10 +127,10 @@ class OpenId4VpVerificationFlow(
             // OpenID4VP §8.2: an authorization ERROR response is acknowledged, always. It
             // grants nothing, so its state does not matter — and `record` refuses to clobber
             // an outcome that was already reached.
-            walletError != null -> HandledResponse(walletError, record(txId, before, walletError))
+            walletError != null -> record(txId, before, walletError)
             before.state != TransactionState.CREATED ->
                 HandledResponse(FlowOutcome.Rejected(RejectionReason.REPLAY, "transaction nonce already consumed"))
-            else -> verifyResponse(before, body).let { HandledResponse(it, record(txId, before, it)) }
+            else -> record(txId, before, verifyResponse(before, body))
         }
     }
 
@@ -137,17 +139,19 @@ class OpenId4VpVerificationFlow(
         pollToken: PollToken,
     ): FlowOutcome {
         val now = clock.instant()
+        val found = store.get(txId) ?: return FlowOutcome.Unknown
+        // Expiry is checked FIRST, here as on every other path, and redacts the entry
+        // whoever asks. It used to come after the recorded outcome, which was returned as it
+        // stood: the redaction was left to the store, so a store keeping entries past the
+        // flow's time to live — a longer TTL of its own, a periodic cleanup — kept the claims
+        // readable as long as it kept them.
+        val expired = found.isExpired(now)
+        val transaction = if (expired) store.redactIfExpired(txId, now) ?: found.redactedForExpiry() else found
         // A wrong token and an unknown id answer alike: the read is no oracle for which ids
         // exist, and the id alone — public, in the QR — reads nothing.
-        val transaction =
-            store.get(txId)?.takeIf { secretsEqual(it.pollTokenHash, pollTokenHashOf(pollToken.value)) }
-                ?: return FlowOutcome.Unknown
         return when {
-            // Expiry is checked FIRST, here as on every other path. It used to come after the
-            // recorded outcome, which was returned as it stood: the redaction was left to the
-            // store, so a store keeping entries past the flow's time to live — a longer TTL of
-            // its own, a periodic cleanup — kept the claims readable as long as it kept them.
-            transaction.isExpired(now) -> expiredAnswerFor(store.redactIfExpired(txId, now) ?: transaction)
+            !secretsEqual(transaction.pollTokenHash, pollTokenHashOf(pollToken.value)) -> FlowOutcome.Unknown
+            expired -> expiredAnswerFor(transaction)
             // Same-device: the transaction is complete only when the user-agent has come
             // back through the response-code exchange (WP_094) — pending until then.
             transaction.mode == FlowMode.SAME_DEVICE && transaction.outcome != null && !transaction.returned ->
@@ -179,10 +183,16 @@ class OpenId4VpVerificationFlow(
         val reader = PollToken(randomToken(POLL_TOKEN_BYTES))
         val previous =
             store.compareAndUpdate(txId) { current ->
-                if (redeemable(current)) {
-                    current.copy(responseCode = null, returned = true, pollTokenHash = pollTokenHashOf(reader.value))
-                } else {
-                    current
+                when {
+                    redeemable(current) ->
+                        current.copy(
+                            responseCode = null,
+                            returned = true,
+                            pollTokenHash = pollTokenHashOf(reader.value),
+                        )
+                    // Every call that finds the transaction expired redacts it: see Transaction.
+                    current.isExpired(now) -> current.redactedForExpiry()
+                    else -> current
                 }
             }
         return reader.takeIf { previous != null && redeemable(previous) }
@@ -238,53 +248,51 @@ class OpenId4VpVerificationFlow(
         }
 
     /**
-     * Records [outcome] as the transaction's and returns its same-device redirect, if any.
+     * Records [outcome] as the transaction's and returns what the wallet is answered: the
+     * outcome, and its same-device redirect, if any.
      *
-     * Only the call that consumed the nonce ([before] was CREATED) records, once; a replay
-     * or a later error returns null without touching anything. The response code is minted
-     * HERE, in the same atomic update that records the outcome, and handed back from this
-     * call's own values: nothing is read back through [TransactionStore.get], which on a
-     * store reading from a replica need not see the update yet, and nothing depends on the
-     * stored outcome being equal to this one.
+     * Only the call that consumed the nonce ([before] was CREATED) records, once; a later
+     * error is acknowledged without touching anything. The response code is minted HERE, in
+     * the same atomic update that records the outcome, and handed back from this call's own
+     * values: nothing is read back through [TransactionStore.get], which on a store reading
+     * from a replica need not see the update yet, and nothing depends on the stored outcome
+     * being equal to this one.
+     *
+     * A transaction that expired while its response was being verified — a slow status list,
+     * a slow trust evaluator — is not recorded: its redaction is stored instead, and the
+     * answer is Expired (an error is still acknowledged). The fourth internal review's
+     * follow-up found the outcome, claims and all, written into the expired entry, to stay
+     * there until something next read it.
      */
     private fun record(
         txId: TransactionId,
         before: Transaction,
         outcome: FlowOutcome,
-    ): String? {
+    ): HandledResponse {
         // A replayed response must not clobber the first, recorded outcome.
-        if (before.state != TransactionState.CREATED) return null
+        if (before.state != TransactionState.CREATED) return HandledResponse(outcome)
         val now = clock.instant()
         val callbackBase = config.endpoints.sameDeviceCallbackBase?.takeIf { before.mode == FlowMode.SAME_DEVICE }
-        // A code only where the acknowledgement delivers it: a verification, and a wallet
-        // error (the user who cancelled in the wallet is still sent back, RPR-59). A rejected
-        // presentation is answered with an error, which carries no redirect; a code minted for
-        // it would be a live bearer secret nobody can use.
-        val code =
-            callbackBase
-                ?.takeIf { outcome is FlowOutcome.Verified || outcome is FlowOutcome.WalletErrorAcknowledged }
-                ?.let { randomToken(RESPONSE_CODE_BYTES) }
+        val code = callbackBase?.takeIf { earnsReturnTicket(outcome) }?.let { randomToken(RESPONSE_CODE_BYTES) }
         val state = if (outcome is FlowOutcome.Verified) TransactionState.VERIFIED else TransactionState.REJECTED
 
         fun recordable(transaction: Transaction) =
             transaction.state == TransactionState.PRESENTED && transaction.outcome == null
         val previous =
             store.compareAndUpdate(txId) { current ->
-                if (recordable(current)) {
-                    // An expired transaction gets no code: its callback could never complete the flow.
-                    current.copy(
-                        state = state,
-                        outcome = outcome,
-                        responseCode = code.takeUnless { current.isExpired(now) },
-                    )
-                } else {
-                    current
+                when {
+                    !recordable(current) -> current
+                    current.isExpired(now) -> current.redactedForExpiry()
+                    else -> current.copy(state = state, outcome = outcome, responseCode = code)
                 }
             }
-        val deliverable = previous != null && recordable(previous) && !previous.isExpired(now)
-        // The session id travels as the last path segment, the code as the query: the
-        // callback can then reject an unknown session apart from an invalid code.
-        return code?.takeIf { deliverable }?.let { "$callbackBase/${txId.value}?response_code=$it" }
+        return when {
+            previous == null || !recordable(previous) -> HandledResponse(outcome)
+            previous.isExpired(now) -> HandledResponse(answerAfterExpiry(outcome))
+            // The session id travels as the last path segment, the code as the query: the
+            // callback can then reject an unknown session apart from an invalid code.
+            else -> HandledResponse(outcome, code?.let { "$callbackBase/${txId.value}?response_code=$it" })
+        }
     }
 
     companion object {

@@ -85,6 +85,16 @@ internal fun extractPresentation(
 private fun JsonPrimitive.stringOrNull(): String? = content.takeIf { isString }
 
 /**
+ * Whether recording [outcome] mints a same-device response code: only where the
+ * acknowledgement delivers it — a verification, and a wallet error (the user who cancelled in
+ * the wallet is still sent back, RPR-59). A rejected presentation is answered with an error,
+ * which carries no redirect; a code minted for it would be a live bearer secret nobody can
+ * use.
+ */
+internal fun earnsReturnTicket(outcome: FlowOutcome): Boolean =
+    outcome is FlowOutcome.Verified || outcome is FlowOutcome.WalletErrorAcknowledged
+
+/**
  * The wallet's authorization error, in the form it may be kept and handed on.
  *
  * Both strings come from an unauthenticated POST and live in the transaction for its whole

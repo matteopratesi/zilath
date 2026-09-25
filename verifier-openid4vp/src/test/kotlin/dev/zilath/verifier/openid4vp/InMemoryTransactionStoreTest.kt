@@ -16,7 +16,11 @@
  */
 package dev.zilath.verifier.openid4vp
 
+import dev.zilath.verifier.core.DisclosedClaims
+import dev.zilath.verifier.core.RejectionReason
 import dev.zilath.verifier.core.TestVectors
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -55,6 +59,36 @@ class InMemoryTransactionStoreTest {
         request = PresentationRequest.forTestPid("urn:zilath:test:entitlement"),
         pollTokenHash = "hash-$id",
     )
+
+    @Test
+    fun `an expired entry is redacted at its expiry, before it is removed`() {
+        // The sweep used to only remove, a minute after expiry: an entry nobody read kept its
+        // claims and its private key for that minute, and in an idle process until the next
+        // background sweep after it.
+        val scheduler = ManualScheduler()
+        val idle = InMemoryTransactionStore(clock, 10, scheduler)
+        val verified =
+            transaction("done").copy(
+                state = TransactionState.VERIFIED,
+                outcome = FlowOutcome.Verified(DisclosedClaims(buildJsonObject { put("given_name", "Ada") })),
+                mode = FlowMode.SAME_DEVICE,
+                responseCode = "code",
+            )
+        val unanswered = transaction("abandoned").copy(responseEncryptionKey = newTransactionEncryptionKey())
+        idle.put(verified)
+        idle.put(unanswered)
+        clock.advance(Duration.ofMinutes(5))
+        scheduler.runAll()
+        // At the boundary instant it is still valid, and untouched.
+        assertThat(idle.get(verified.id)).isEqualTo(verified)
+        clock.advance(Duration.ofSeconds(1))
+        scheduler.runAll()
+        assertThat(idle.size).isEqualTo(2)
+        val redacted = checkNotNull(idle.get(verified.id))
+        assertThat(redacted.outcome).isEqualTo(FlowOutcome.Rejected(RejectionReason.EXPIRED))
+        assertThat(redacted.responseCode).isNull()
+        assertThat(checkNotNull(idle.get(unanswered.id)).responseEncryptionKey).isNull()
+    }
 
     @Test
     fun `an expired entry is kept a minute longer, then swept`() {

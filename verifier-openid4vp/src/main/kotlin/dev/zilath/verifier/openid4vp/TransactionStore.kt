@@ -47,7 +47,10 @@ import java.time.Instant
  *    bounded time after. Keeping it a little longer lets the flow answer Expired rather
  *    than Unknown; [InMemoryTransactionStore] keeps it one more minute. Expiry itself is
  *    not the store's to decide: the flow checks [Transaction.expiresAt] on every read and
- *    never returns claims past it, whatever the store hands back.
+ *    never returns claims past it, whatever the store hands back. What an expired entry
+ *    still HOLDS is the store's, though: the flow redacts it only when it next touches the
+ *    transaction (see [Transaction]), so a store that keeps expired entries should redact
+ *    them at [Transaction.expiresAt], as the in-memory one does, or remove them then.
  *
  * `TransactionStoreContractTest`, in this module's test fixtures, checks the first five:
  * extend it with a factory for your store and run it. The fourth internal review found the
@@ -103,12 +106,20 @@ enum class TransactionState { CREATED, PRESENTED, VERIFIED, REJECTED }
  * they have to survive somewhere between the wallet's POST and the checkout's poll of
  * [VerificationFlow.awaitOutcome].
  *
- * So this is short-lived, but it is not empty. The flow stops answering with the claims at
- * [expiresAt] and redacts them in place when it sees the expiry; the store removes the entry
- * after that ([InMemoryTransactionStore]: within a minute and a half, even in an idle
- * process). Anyone plugging in a SHARED store (Redis and the like) is putting those claims on
- * that infrastructure, and must treat it accordingly — encryption at rest, no persistence to
- * disk, no backups.
+ * So this is short-lived, but it is not empty. When the claims leave:
+ * - they are never written if the verification finishes after [expiresAt] — the flow then
+ *   stores the redaction instead;
+ * - no read returns them after [expiresAt], on any store;
+ * - they leave the store at the first of: the flow's next call on this transaction after
+ *   [expiresAt] (any of them — a poll, with any token; a wallet POST; a request object
+ *   fetch; a response code — redacts the entry in place); the store's own redaction or
+ *   removal. [InMemoryTransactionStore]
+ *   redacts within 30 seconds of [expiresAt] even in an idle process, and removes the entry
+ *   a minute later.
+ *
+ * Anyone plugging in a SHARED store (Redis and the like) is putting those claims on that
+ * infrastructure, and must treat it accordingly — encryption at rest, no persistence to disk,
+ * no backups.
  */
 data class Transaction(
     val id: TransactionId,
@@ -140,10 +151,13 @@ data class Transaction(
     val returned: Boolean = false,
     /**
      * This transaction's own response encryption key, PRIVATE half included: the request
-     * object publishes its public half, and the wallet's response is decrypted with it. The
-     * flow drops it from the store as soon as a response arrives and when the transaction
-     * expires. A store that persists transactions persists this key with them, for that
-     * time: another reason not to write them to disk or backups.
+     * object publishes its public half, and the wallet's response is decrypted with it. It
+     * leaves the store in the same atomic update that consumes the nonce, when the first
+     * wallet response arrives; for a transaction nobody answers, when the claims would (see
+     * above): at the flow's next call after [expiresAt], or the store's own redaction or
+     * removal — within 30 seconds of [expiresAt] in [InMemoryTransactionStore]. A store that
+     * persists transactions persists this key with them, for that time: another reason not
+     * to write them to disk or backups.
      */
     val responseEncryptionKey: ECKey? = null,
 ) {

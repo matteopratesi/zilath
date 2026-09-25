@@ -57,6 +57,13 @@ internal fun TransactionStore.redactIfExpired(
     compareAndUpdate(txId) { current -> if (current.isExpired(now)) current.redactedForExpiry() else current }
         ?.let { previous -> if (previous.isExpired(now)) previous.redactedForExpiry() else previous }
 
+/**
+ * What the wallet is answered for a response that met an expired transaction: Expired, but
+ * a wallet error is still acknowledged as itself, as OpenID4VP §8.2 owes it.
+ */
+internal fun answerAfterExpiry(outcome: FlowOutcome): FlowOutcome =
+    if (outcome is FlowOutcome.WalletErrorAcknowledged) outcome else FlowOutcome.Expired
+
 /** What the checkout is told about an expired transaction: never a claim, never the wallet's text. */
 internal fun expiredAnswerFor(transaction: Transaction): FlowOutcome =
     when {
