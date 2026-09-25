@@ -226,11 +226,10 @@ class CedSimFlowTest {
     }
 
     @Test
-    fun `a same-device conformance run is read through its return`() {
+    fun `a same-device conformance run comes back through the demo callback`() {
         // The conformance endpoints started a transaction the demo's callback did not know,
-        // so the user-agent coming back with the response code was turned away, and the
-        // harness, holding the start token the flow stops honouring at the return, never read
-        // the outcome. A cancellation is enough to show it: it earns the return ticket too.
+        // so the user-agent coming back with the response code was turned away. A
+        // cancellation is enough to show it: it earns the return ticket too.
         val conformance = ConformanceController(flow, config, clock, registry, CedSim.VCT)
         val demo =
             DemoCheckoutController(flow, VerificationReceipts(config, clock), clock, registry, CedSim.VCT, "ced-sim")
@@ -244,9 +243,8 @@ class CedSimFlowTest {
 
         val returned = demo.sameDeviceCallback(txId, code, null)
         assertThat(returned.statusCode.value()).isEqualTo(302)
-        assertThat(conformance.outcome(txId, startToken)).containsEntry("outcome", "wallet_error")
-        // Only the start token reads it.
-        assertThat(conformance.outcome(txId, "not-the-start-token")).containsEntry("outcome", "unknown")
+        // The read right went with the user-agent that returned: the start token reads nothing.
+        assertThat(conformance.outcome(txId, startToken)).containsEntry("outcome", "unknown")
     }
 
     @Test

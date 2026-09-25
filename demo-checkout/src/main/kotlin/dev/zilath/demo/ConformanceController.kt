@@ -35,7 +35,6 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
-import java.security.MessageDigest
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.time.Clock
@@ -89,13 +88,18 @@ class ConformanceController(
      * carries the disclosed claims — so an unauthenticated GET with a transaction id
      * returned somebody's name and entitlement. The harness never needed them, and neither
      * does anything else: an outcome is a yes or a no.
+     *
+     * Same-device, the start token reads pending until the user-agent comes back through
+     * /demo/cb, and nothing afterwards: the flow hands the read right to the user-agent that
+     * returned (OpenID4VP 1.0 §14.2). Even the category says something about the person
+     * whose wallet answered, so it is not read back through the start token either.
      */
     @GetMapping("/conformance/outcome/{txId}")
     fun outcome(
         @PathVariable txId: String,
         @org.springframework.web.bind.annotation.RequestParam pollToken: String,
     ): Map<String, String> =
-        when (val outcome = outcomeFor(txId, pollToken)) {
+        when (val outcome = flow.awaitOutcome(TransactionId(txId), PollToken(pollToken))) {
             is FlowOutcome.Verified -> mapOf("outcome" to "verified")
             is FlowOutcome.Rejected -> mapOf("outcome" to "rejected", "reason" to outcome.reason.name)
             is FlowOutcome.WalletErrorAcknowledged -> mapOf("outcome" to "wallet_error")
@@ -103,29 +107,6 @@ class ConformanceController(
             FlowOutcome.Expired -> mapOf("outcome" to "expired")
             FlowOutcome.Unknown -> mapOf("outcome" to "unknown")
         }
-
-    /**
-     * Read with the start token until the user-agent comes back through /demo/cb, and with
-     * the token that return was handed afterwards: the flow stops reading with the start
-     * token at the return, and the registry keeps the new one. Only the start token opens
-     * either, since the harness that started the run is the one reading — and what it reads
-     * is the category, never a claim.
-     */
-    private fun outcomeFor(
-        txId: String,
-        pollToken: String,
-    ): FlowOutcome {
-        val entry = registry.get(txId)
-        val startedHere =
-            entry != null &&
-                MessageDigest.isEqual(
-                    entry.transaction.pollToken.value
-                        .toByteArray(),
-                    pollToken.toByteArray(),
-                )
-        val token = if (startedHere) entry.readToken.get() else PollToken(pollToken)
-        return flow.awaitOutcome(TransactionId(txId), token)
-    }
 }
 
 /**
