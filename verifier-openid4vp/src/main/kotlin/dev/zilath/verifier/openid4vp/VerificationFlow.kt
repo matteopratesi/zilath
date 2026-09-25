@@ -62,6 +62,22 @@ interface VerificationFlow {
     fun requestJwtFor(txId: TransactionId): String?
 
     /**
+     * The request object for a wallet that asked for it with POST (OpenID4VP 1.0 §5.10),
+     * carrying [walletNonce], when the wallet sent one, as its `wallet_nonce` claim — the
+     * Verifier "MUST use it" there, so that the wallet can tell this object from a replayed
+     * one. Null as for [requestJwtFor]. The nonce is used for this one object and kept
+     * nowhere; at most [MAX_WALLET_NONCE_LENGTH] characters, and a longer one is refused with
+     * [IllegalArgumentException].
+     *
+     * The default answers a wallet nonce with null: an implementation that cannot put it in
+     * the object must not serve one without it.
+     */
+    fun requestJwtFor(
+        txId: TransactionId,
+        walletNonce: String?,
+    ): String? = if (walletNonce == null) requestJwtFor(txId) else null
+
+    /**
      * Handles the wallet's `direct_post` submission for [txId] and records the outcome.
      *
      * Terminal and single-use: the transaction's nonce is consumed here, so a replayed body
@@ -119,6 +135,15 @@ interface VerificationFlow {
         txId: TransactionId,
         code: String,
     ): PollToken?
+
+    companion object {
+        /**
+         * The longest `wallet_nonce` a request object repeats. OpenID4VP sets no length; a
+         * nonce is some tens of characters, and the limit keeps what an unauthenticated
+         * caller can have the relying party sign small.
+         */
+        const val MAX_WALLET_NONCE_LENGTH: Int = 256
+    }
 }
 
 /**

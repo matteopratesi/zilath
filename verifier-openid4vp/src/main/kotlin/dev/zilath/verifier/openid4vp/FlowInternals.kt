@@ -117,14 +117,21 @@ internal fun qrPayloadOf(
 ): String {
     val clientId = URLEncoder.encode(config.clientId, StandardCharsets.UTF_8)
     val encodedRequestUri = URLEncoder.encode(requestUri, StandardCharsets.UTF_8)
-    return "${config.walletAuthorizationScheme}authorize?client_id=$clientId&request_uri=$encodedRequestUri"
+    // OpenID4VP 1.0 §5.1: announced only where the request endpoint answers POST. A wallet
+    // that does not support it still sends the GET, which is always served.
+    val method = if (config.endpoints.requestUriMethodPost) "&request_uri_method=post" else ""
+    return "${config.walletAuthorizationScheme}authorize?client_id=$clientId&request_uri=$encodedRequestUri$method"
 }
 
-/** Builds and signs the request object (JAR) for one transaction. */
+/**
+ * Builds and signs the request object (JAR) for one transaction, with [walletNonce] as its
+ * `wallet_nonce` claim when a wallet asked for the object with one (OpenID4VP 1.0 §5.10).
+ */
 internal fun buildRequestJwt(
     config: RelyingPartyConfiguration,
     transaction: Transaction,
     now: Instant,
+    walletNonce: String? = null,
 ): String {
     val claims =
         JWTClaimsSet
@@ -145,6 +152,7 @@ internal fun buildRequestJwt(
             ).issueTime(Date.from(now))
             // The JAR must not advertise a validity window outliving the transaction itself.
             .expirationTime(Date.from(transaction.expiresAt))
+            .apply { walletNonce?.let { claim("wallet_nonce", it) } }
             .build()
     val headerBuilder =
         JWSHeader

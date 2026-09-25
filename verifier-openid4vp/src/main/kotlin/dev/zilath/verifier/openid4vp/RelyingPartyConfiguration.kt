@@ -36,6 +36,14 @@ data class RpEndpoints(
      * appended). Null when the RP offers the cross-device flow only.
      */
     val sameDeviceCallbackBase: String? = null,
+    /**
+     * Whether the request endpoint also answers POST, with the wallet's `wallet_metadata`
+     * and `wallet_nonce` (OpenID4VP 1.0 §5.10, which IT-Wallet 1.4.6 recommends): the QR
+     * payload and the same-device link then say `request_uri_method=post`. Set it only when
+     * the endpoint serves [VerificationFlow.requestJwtFor] with the wallet nonce on POST, as
+     * the Spring starter's does; GET is always served.
+     */
+    val requestUriMethodPost: Boolean = false,
 )
 
 /**

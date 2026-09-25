@@ -16,9 +16,6 @@
  */
 package dev.zilath.verifier.spring
 
-import ch.qos.logback.classic.Logger
-import ch.qos.logback.classic.spi.ILoggingEvent
-import ch.qos.logback.core.read.ListAppender
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import dev.zilath.verifier.core.CredentialStatus
@@ -34,7 +31,6 @@ import dev.zilath.verifier.openid4vp.VerificationFlow
 import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.startsWith
 import org.junit.jupiter.api.Test
-import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration
 import org.springframework.boot.test.context.SpringBootTest
@@ -222,16 +218,4 @@ class WalletResponseEndpointTest {
                 .contentType("application/x-www-form-urlencoded")
                 .param("error", error),
         )
-
-    private fun capturingControllerLog(action: () -> Unit): List<ILoggingEvent> {
-        val logger = LoggerFactory.getLogger(OpenId4VpController::class.java) as Logger
-        val appender = ListAppender<ILoggingEvent>().apply { start() }
-        logger.addAppender(appender)
-        try {
-            action()
-        } finally {
-            logger.detachAppender(appender)
-        }
-        return appender.list
-    }
 }

@@ -42,6 +42,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 @SpringBootTest(classes = [StarterSmokeTest.TestApp::class])
@@ -101,11 +102,19 @@ class StarterSmokeTest {
     }
 
     @Test
-    fun `request endpoint returns 404 for unknown transactions`() {
+    fun `request endpoint answers 400 invalid_request for unknown transactions`() {
+        // IT-Wallet 1.4.6 §12.2.1.3.1, for GET and POST alike; it used to be a bare 404.
         mockMvc
             .perform(get("/openid4vp/request/{txId}", "ghost"))
-            .andExpect(status().isNotFound)
+            .andExpect(status().isBadRequest)
+            .andExpect(content().contentTypeCompatibleWith("application/json"))
+            .andExpect(jsonPath("$.error").value("invalid_request"))
+            .andExpect(jsonPath("$.error_description").value("request object not available"))
             .andExpectUncached()
+        mockMvc
+            .perform(post("/openid4vp/request/{txId}", "ghost").contentType("application/x-www-form-urlencoded"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error_description").value("request object not available"))
     }
 
     @Test
@@ -157,7 +166,8 @@ class StarterSmokeTest {
         // Consumed: the request object is gone and a retry is a replay, still 400.
         mockMvc
             .perform(get("/openid4vp/request/{txId}", started.id.value))
-            .andExpect(status().isNotFound)
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error_description").value("request object not available"))
         mockMvc
             .perform(
                 post("/openid4vp/response/{txId}", started.id.value)

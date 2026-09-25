@@ -36,7 +36,10 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
-/** The two wallet-facing endpoints of the IT-Wallet cross-device flow. */
+/**
+ * The wallet-facing endpoints of the IT-Wallet flow: the request object, by GET or by POST,
+ * and the wallet's response.
+ */
 @RestController
 class OpenId4VpController(
     private val flow: VerificationFlow,
@@ -54,10 +57,41 @@ class OpenId4VpController(
     @GetMapping("/openid4vp/request/{txId}")
     fun requestObject(
         @PathVariable txId: String,
-    ): ResponseEntity<String> {
-        val requestObject = flow.requestJwtFor(TransactionId(txId)) ?: return uncached(HttpStatus.NOT_FOUND).build()
-        return uncached(HttpStatus.OK).contentType(REQUEST_OBJECT_TYPE).body(requestObject)
-    }
+    ): ResponseEntity<*> = requestObjectAnswer(flow.requestJwtFor(TransactionId(txId)))
+
+    /**
+     * The request object for a wallet that asks for it with POST (OpenID4VP 1.0 §5.10), as
+     * the QR payload announces with `request_uri_method=post`: the object the GET serves,
+     * with the wallet's `wallet_nonce`, when it sends one, as its `wallet_nonce` claim.
+     *
+     * `wallet_metadata` describes the holder's wallet, and nothing in it changes what this
+     * relying party asks for or accepts: it has one set of algorithms and formats, which
+     * every request object publishes. So it is bounded, and never parsed, logged or kept.
+     * Before the fourth internal review POST was not served at all: conformant, since a
+     * wallet falls back to GET, but a wallet could not have its own nonce in the object.
+     */
+    @PostMapping("/openid4vp/request/{txId}", consumes = [MediaType.APPLICATION_FORM_URLENCODED_VALUE])
+    fun requestObjectByPost(
+        @PathVariable txId: String,
+        @RequestParam(name = "wallet_metadata", required = false) walletMetadata: String?,
+        @RequestParam(name = "wallet_nonce", required = false) walletNonce: String?,
+    ): ResponseEntity<*> =
+        when {
+            (walletMetadata?.length ?: 0) > MAX_WALLET_METADATA_LENGTH ->
+                errorAnswer(HttpStatus.BAD_REQUEST, INVALID_REQUEST, "wallet_metadata is too large")
+            (walletNonce?.length ?: 0) > VerificationFlow.MAX_WALLET_NONCE_LENGTH ->
+                errorAnswer(HttpStatus.BAD_REQUEST, INVALID_REQUEST, "wallet_nonce is too long")
+            else -> requestObjectAnswer(flow.requestJwtFor(TransactionId(txId), walletNonce))
+        }
+
+    /**
+     * The request object, or the answer IT-Wallet 1.4.6 §12.2.1.3.1 gives when there is none
+     * to serve — unknown, consumed or expired alike: 400 `invalid_request` with a JSON body,
+     * where a bare 404 used to be.
+     */
+    private fun requestObjectAnswer(requestObject: String?): ResponseEntity<*> =
+        requestObject?.let { uncached(HttpStatus.OK).contentType(REQUEST_OBJECT_TYPE).body(it) }
+            ?: errorAnswer(HttpStatus.BAD_REQUEST, INVALID_REQUEST, NOT_AVAILABLE)
 
     /**
      * Receives the wallet's encrypted `direct_post.jwt` response, and answers as IT-Wallet
@@ -183,6 +217,13 @@ class OpenId4VpController(
         private const val NOT_ACCEPTED = "the presentation was not accepted"
         private const val NOT_PROCESSED = "the wallet response could not be processed"
         private const val UNKNOWN_TRANSACTION = "unknown transaction"
+        private const val NOT_AVAILABLE = "request object not available"
+
+        /**
+         * Room for any wallet's metadata (OpenID4VP 1.0 §10: formats, algorithms, a key set)
+         * many times over: its length is all that is read of it.
+         */
+        private const val MAX_WALLET_METADATA_LENGTH = 64 * 1024
         private val logger = org.slf4j.LoggerFactory.getLogger(OpenId4VpController::class.java)
     }
 }

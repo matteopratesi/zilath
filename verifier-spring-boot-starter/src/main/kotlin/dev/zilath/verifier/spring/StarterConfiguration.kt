@@ -59,6 +59,8 @@ internal fun relyingPartyConfigurationOf(
                 properties.requestUriBase,
                 properties.responseUriBase,
                 properties.sameDeviceCallbackBase.ifBlank { null },
+                // The starter's controller serves the request object by POST as well.
+                requestUriMethodPost = true,
             ),
         keys =
             RpKeys(

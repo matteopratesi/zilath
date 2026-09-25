@@ -77,13 +77,21 @@ class OpenId4VpVerificationFlow(
         return StartedTransaction(id, requestUri, qrPayloadOf(config, requestUri), pollToken)
     }
 
-    override fun requestJwtFor(txId: TransactionId): String? {
+    override fun requestJwtFor(txId: TransactionId): String? = requestJwtFor(txId, null)
+
+    override fun requestJwtFor(
+        txId: TransactionId,
+        walletNonce: String?,
+    ): String? {
+        require(walletNonce == null || walletNonce.length <= VerificationFlow.MAX_WALLET_NONCE_LENGTH) {
+            "wallet_nonce exceeds ${VerificationFlow.MAX_WALLET_NONCE_LENGTH} characters"
+        }
         val transaction = store.get(txId)
         return when {
             transaction == null -> null
             transaction.state != TransactionState.CREATED -> null
             transaction.isExpired(clock.instant()) -> null
-            else -> buildRequestJwt(config, transaction, clock.instant())
+            else -> buildRequestJwt(config, transaction, clock.instant(), walletNonce)
         }
     }
 
