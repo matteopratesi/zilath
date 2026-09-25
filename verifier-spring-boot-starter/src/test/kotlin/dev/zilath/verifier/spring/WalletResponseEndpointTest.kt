@@ -32,6 +32,7 @@ import dev.zilath.verifier.openid4vp.PresentationRequest
 import dev.zilath.verifier.openid4vp.StartedTransaction
 import dev.zilath.verifier.openid4vp.VerificationFlow
 import org.assertj.core.api.Assertions.assertThat
+import org.hamcrest.Matchers.startsWith
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
@@ -39,12 +40,15 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Bean
+import org.springframework.http.HttpHeaders
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
+import org.springframework.test.json.JsonCompareMode
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
@@ -154,6 +158,30 @@ class WalletResponseEndpointTest {
             .andExpectError("invalid_request", "unknown transaction")
     }
 
+    @Test
+    fun `only the first of two identical wallet errors is handed the return ticket`() {
+        // access_denied is what every cancelling wallet sends: anyone who knows the
+        // transaction id can post it too, after the wallet did, and must get an
+        // acknowledgement and nothing else.
+        val started = start(FlowMode.SAME_DEVICE)
+        val first = postError(started, "access_denied")
+        first
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath(
+                    "$.redirect_uri",
+                ).value(startsWith("https://rp.example/cb/${started.id.value}?response_code=")),
+            ).andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+        postError(
+            started,
+            "access_denied",
+        ).andExpect(status().isOk).andExpect(content().json("{}", JsonCompareMode.STRICT))
+        postError(
+            started,
+            "server_error",
+        ).andExpect(status().isOk).andExpect(content().json("{}", JsonCompareMode.STRICT))
+    }
+
     /** The two members, and nothing that names the check or repeats the detail. */
     private fun ResultActions.andExpectError(
         error: String,
@@ -181,6 +209,16 @@ class WalletResponseEndpointTest {
             post("/openid4vp/response/{txId}", started.id.value)
                 .contentType("application/x-www-form-urlencoded")
                 .param("response", encryptedResponseFor(checkNotNull(flow.requestJwtFor(started.id)))),
+        )
+
+    private fun postError(
+        started: StartedTransaction,
+        error: String,
+    ): ResultActions =
+        mockMvc.perform(
+            post("/openid4vp/response/{txId}", started.id.value)
+                .contentType("application/x-www-form-urlencoded")
+                .param("error", error),
         )
 
     private fun capturingControllerLog(action: () -> Unit): List<ILoggingEvent> {
