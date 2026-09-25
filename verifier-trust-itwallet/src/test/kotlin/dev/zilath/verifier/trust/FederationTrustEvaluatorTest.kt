@@ -77,7 +77,7 @@ class FederationTrustEvaluatorTest {
                 },
             )
         val decision =
-            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Trusted::class.java)
         assertThat((decision as TrustDecision.Trusted).issuerKeys.map { it.keyID })
             .containsExactly("policy-forced")
@@ -104,7 +104,7 @@ class FederationTrustEvaluatorTest {
                 },
             )
         val decision =
-            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
         assertThat((decision as TrustDecision.Untrusted).reason).contains("no credential signing keys")
     }
@@ -135,7 +135,7 @@ class FederationTrustEvaluatorTest {
                 },
             )
         val decision =
-            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Trusted::class.java)
         assertThat((decision as TrustDecision.Trusted).issuerKeys.map { it.keyID })
             .containsExactly("superior-imposed")
@@ -156,7 +156,7 @@ class FederationTrustEvaluatorTest {
                 FederationFixtures.signedRawStatement(FederationFixtures.anchorKey, payload),
             )
         val decision =
-            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
         assertThat((decision as TrustDecision.Untrusted).reason).contains("malformed")
     }
@@ -179,7 +179,7 @@ class FederationTrustEvaluatorTest {
                 },
             )
         val decision =
-            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
         assertThat((decision as TrustDecision.Untrusted).reason).contains("essential")
     }
@@ -202,7 +202,7 @@ class FederationTrustEvaluatorTest {
                 },
             )
         val decision =
-            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertTrustedWithIssuerKey(decision)
     }
 
@@ -222,7 +222,7 @@ class FederationTrustEvaluatorTest {
                 },
             )
         val decision =
-            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
         assertThat((decision as TrustDecision.Untrusted).reason).contains("no credential signing keys")
     }
@@ -260,7 +260,7 @@ class FederationTrustEvaluatorTest {
                     )
                 },
             )
-        val decision = evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
         assertThat((decision as TrustDecision.Untrusted).reason).contains("is null")
     }
@@ -293,7 +293,7 @@ class FederationTrustEvaluatorTest {
                 },
             )
         assertTrustedWithIssuerKey(
-            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain)),
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain)),
         )
     }
 
@@ -313,7 +313,7 @@ class FederationTrustEvaluatorTest {
                         claim("metadata_policy_crit", crit)
                     },
                 )
-            val decision = evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
             assertThat(decision)
                 .describedAs("metadata_policy_crit %s", crit)
                 .isInstanceOf(TrustDecision.Untrusted::class.java)
@@ -348,7 +348,7 @@ class FederationTrustEvaluatorTest {
                 FederationFixtures.anchorStatementAboutLeaf(),
             )
         for (chain in listOf(criticalSubordinate, criticalLeaf)) {
-            val decision = evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
             assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
             assertThat((decision as TrustDecision.Untrusted).reason).contains("critical claims")
         }
@@ -363,13 +363,6 @@ class FederationTrustEvaluatorTest {
     @Test
     fun `resolves and trusts a leaf through an intermediate`() {
         val decision = evaluator(FederationFixtures.intermediatedFederation()).evaluate(inputFor())
-        assertTrustedWithIssuerKey(decision)
-    }
-
-    @Test
-    fun `a provided trust_chain is validated without any network access`() {
-        val offlineEvaluator = evaluator(FederationFetcher { error("network must not be used") })
-        val decision = offlineEvaluator.evaluate(inputFor(trustChain = FederationFixtures.offlineChain()))
         assertTrustedWithIssuerKey(decision)
     }
 
@@ -393,7 +386,7 @@ class FederationTrustEvaluatorTest {
                     expiresInSeconds = -60,
                 ) { claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey)) },
             )
-        val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = chain))
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
     }
 
@@ -408,7 +401,7 @@ class FederationTrustEvaluatorTest {
                     "https://someone-else.example",
                 ) { claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey)) },
             )
-        val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = chain))
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
     }
 
@@ -425,14 +418,15 @@ class FederationTrustEvaluatorTest {
                     // The anchor vouches for the honest federation key, not the rogue one.
                 ) { claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey)) },
             )
-        val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = chain))
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
     }
 
     @Test
     fun `a chain whose leaf does not match the credential issuer is untrusted`() {
         val decision =
-            evaluator(FederationFetcher { error("offline") })
+            FederationFixtures
+                .chainEvaluator()
                 .evaluate(inputFor(issuer = "https://impostor.example", trustChain = FederationFixtures.offlineChain()))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
     }
@@ -440,7 +434,7 @@ class FederationTrustEvaluatorTest {
     @Test
     fun `an oversized provided chain is rejected before any signature work`() {
         val padded = List(10) { FederationFixtures.leafConfiguration() } + FederationFixtures.offlineChain()
-        val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = padded))
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = padded))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
         assertThat((decision as TrustDecision.Untrusted).reason).contains("longer than")
     }
@@ -463,7 +457,7 @@ class FederationTrustEvaluatorTest {
                 ) { claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey)) },
                 FederationFixtures.offlineChain()[1],
             )
-        val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = chain))
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
     }
 
@@ -479,7 +473,7 @@ class FederationTrustEvaluatorTest {
                 FederationFixtures.leafConfiguration(includeCredentialKeys = false),
                 FederationFixtures.offlineChain()[1],
             )
-        val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = chain))
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
     }
 

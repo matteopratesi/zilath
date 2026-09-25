@@ -21,19 +21,35 @@ import dev.zilath.verifier.core.IssuerTrustInput
 import dev.zilath.verifier.core.TrustDecision
 import dev.zilath.verifier.core.TrustEvaluator
 import java.time.Clock
+import java.time.Duration
 
 /**
  * [TrustEvaluator] for the IT-Wallet OpenID Federation profile (spec v1.4.x §6).
  *
  * Trust is anchored to [TrustAnchorConfig]: the anchor entity id and its federation
- * keys, obtained out-of-band (for the PoC: the conformance tool's local anchor).
+ * keys, obtained out-of-band.
  *
  * Evaluation order:
- * 1. If the credential carried a `trust_chain` JWS header (offline scenario), that
- *    chain is validated as provided.
- * 2. Otherwise the chain is resolved online: the leaf entity configuration from
- *    `{iss}/.well-known/openid-federation`, then subordinate statements walking
- *    `authority_hints` up to the configured anchor, via the injectable [FederationFetcher].
+ * 1. Without a `trust_chain` JWS header the chain is resolved online: the leaf entity
+ *    configuration from `{iss}/.well-known/openid-federation`, then subordinate statements
+ *    walking `authority_hints` up to the configured anchor, via the injectable
+ *    [FederationFetcher]. The anchor's own configuration is verified with the configured
+ *    keys before its fetch endpoint is used.
+ * 2. With a `trust_chain` header, the provided chain's shape and anchor are checked first —
+ *    a malformed one is refused without any fetch — and then it is REFRESHED: resolved
+ *    online as in 1, following the superiors it names. The header is signed by the issuer at
+ *    issuance and never changes, so taking it as it is kept an issuer trusted until its
+ *    statements expired, however long ago its superior withdrew it; IT-Wallet 1.4.6 §6.9 and
+ *    §6.12.1 require the chain to be verifiable online and refreshed when a connection is
+ *    available. A statement the superior no longer serves is a revocation.
+ * 3. Only with [offlineFallback], and only when the federation cannot be reached at all
+ *    (the fetcher throws anything but [FederationDocumentNotFoundException]), is the
+ *    provided chain validated and used as it is — an expired one is then untrusted. Every
+ *    answer that comes back is final, including "no such statement".
+ *
+ * Every subordinate statement must be valid for at most [maxStatementLifetime] (IT-Wallet
+ * 1.4.6 §6.11.1: 24 hours), which bounds how long a withdrawn statement can be replayed.
+ * Entity configurations are not capped: the production issuer's lives 365 days.
  *
  * On success the decision carries the keys the issuer signs credentials with: the `jwks`
  * of its `openid_credential_issuer` metadata AFTER applying the `metadata_policy` of the
@@ -41,13 +57,28 @@ import java.time.Clock
  * whose resolved `openid_credential_issuer` metadata advertises no `jwks` is untrusted;
  * federation keys only ever verify entity statements. A policy conflict or violation
  * fails the evaluation.
+ *
+ * @param offlineFallback false (the default) for a relying party that is online — every
+ *   decision reflects the federation as it is now. True for deployments that must keep
+ *   working through an outage: an unreachable federation then falls back to the chain the
+ *   credential carries, at the cost of not seeing a revocation until it is reachable again.
  */
 class FederationTrustEvaluator(
-    private val anchor: TrustAnchorConfig,
+    anchor: TrustAnchorConfig,
     private val fetcher: FederationFetcher,
-    private val clock: Clock,
-    private val maxChainLength: Int = DEFAULT_MAX_CHAIN_LENGTH,
+    clock: Clock,
+    maxChainLength: Int = DEFAULT_MAX_CHAIN_LENGTH,
+    private val offlineFallback: Boolean = false,
+    maxStatementLifetime: Duration = DEFAULT_MAX_STATEMENT_LIFETIME,
 ) : TrustEvaluator {
+    init {
+        require(!maxStatementLifetime.isNegative && !maxStatementLifetime.isZero) {
+            "the maximum statement lifetime must be positive"
+        }
+    }
+
+    private val rules = ChainRules(anchor, clock, maxChainLength, maxStatementLifetime)
+
     override fun evaluate(issuerChain: IssuerTrustInput): TrustDecision =
         runCatching {
             // Before choosing a path: a credential without iss used to be refused online and
@@ -55,8 +86,12 @@ class FederationTrustEvaluator(
             // issuer only when there was one. IT-Wallet 1.4.6 makes iss REQUIRED in the
             // credential, and the leaf must be the entity that issued it.
             val issuer = issuerChain.issuer ?: trustFail("credential has no iss claim")
-            val chain = issuerChain.trustChain.ifEmpty { resolveChain(issuer) }
-            TrustDecision.Trusted(validateChain(chain, issuer, anchor, clock, maxChainLength))
+            val provided = issuerChain.trustChain
+            if (provided.isEmpty()) {
+                validateChain(resolveChain(fetcher, issuer, rules), issuer, rules)
+            } else {
+                refreshedOrProvided(provided, issuer)
+            }
         }.getOrElse { failure ->
             when (failure) {
                 is TrustFailure -> TrustDecision.Untrusted(failure.message)
@@ -66,22 +101,17 @@ class FederationTrustEvaluator(
             }
         }
 
-    private fun resolveChain(issuer: String): List<String> {
-        val statements = mutableListOf(fetchEntityConfiguration(fetcher, issuer))
-        var current = statements.first()
-        while (current.issuer != anchor.entityId) {
-            if (statements.size >= maxChainLength) {
-                trustFail("trust chain longer than $maxChainLength before reaching the anchor")
-            }
-            val superior =
-                current.authorityHints.firstOrNull()
-                    ?: trustFail("no authority_hints leading to the trust anchor ${anchor.entityId}")
-            val superiorConfiguration = fetchEntityConfiguration(fetcher, superior)
-            if (superior == anchor.entityId) requireGenuineAnchorConfiguration(superiorConfiguration, anchor, clock)
-            statements += fetchSubordinateStatement(fetcher, superiorConfiguration, current.subject)
-            current = superiorConfiguration
+    private fun refreshedOrProvided(
+        provided: List<String>,
+        issuer: String,
+    ): TrustDecision.Trusted {
+        val superiors = superiorsNamedBy(provided, issuer, rules)
+        val refreshed = runCatching { validateChain(resolveChain(fetcher, issuer, rules, superiors), issuer, rules) }
+        return if (offlineFallback && refreshed.exceptionOrNull() is FederationUnreachable) {
+            validateChain(provided, issuer, rules)
+        } else {
+            refreshed.getOrThrow()
         }
-        return statements.map { it.serialized }
     }
 }
 
@@ -107,6 +137,18 @@ data class TrustAnchorConfig(
 }
 
 /**
+ * Thrown by a [FederationFetcher] when the server ANSWERS that the document does not exist
+ * — HTTP 404 or 410 from a well-known URL or a fetch endpoint. That is how a superior
+ * withdraws an entity: it stops serving the statement about it. The evaluator takes it as
+ * the federation's answer and fails the chain, even with an offline fallback, which covers
+ * only a federation that cannot be reached. Any other exception from the fetcher counts as
+ * not reached.
+ */
+class FederationDocumentNotFoundException(
+    message: String? = null,
+) : RuntimeException(message)
+
+/**
  * Retrieves federation documents over HTTP; injectable so tests stay offline.
  *
  * SECURITY: every [url] derives from content an attacker may influence — the `iss` of a
@@ -121,6 +163,10 @@ data class TrustAnchorConfig(
  * refuse destinations that resolve into it.
  */
 fun interface FederationFetcher {
-    /** Returns the response body for [url], or throws on any transport error. */
+    /**
+     * Returns the response body for [url]. Throws [FederationDocumentNotFoundException] when
+     * the server says there is no such document, and any other exception on a transport
+     * error.
+     */
     fun fetch(url: String): String
 }

@@ -17,6 +17,7 @@
 package dev.zilath.verifier.trust
 
 import com.nimbusds.jose.jwk.Curve
+import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import dev.zilath.verifier.core.TrustDecision
 import dev.zilath.verifier.trust.FederationFixtures.ANCHOR_ID
@@ -63,31 +64,48 @@ class TrustReasonTest {
 
     @Test
     fun `identifiers read from unverified statements are not echoed`() {
+        // The leaf is genuine, so the online refresh is attempted and finds the federation
+        // unreachable; the chain it carries then decides, and names a hostile intermediate.
         val stranger = ECKeyGenerator(Curve.P_256).keyID("stranger").generate()
-        val hostileLeaf =
-            signedStatement(stranger, hostile, hostile) {
-                claim("jwks", jwksClaim(stranger))
-                claim("metadata", mapOf("openid_credential_issuer" to credentialIssuerSection()))
-            }
+        val intermediateStatement =
+            signedStatement(stranger, hostile, LEAF_ID) { claim("jwks", jwksClaim(leafFederationKey)) }
+        val relabelledAnchor = ECKey.Builder(anchorKey).keyID("not-the-anchor-kid").build()
+        val impostorWithAnchorKid = ECKeyGenerator(Curve.P_256).keyID(anchorKey.keyID).generate()
         val chains =
             listOf(
                 // Ends somewhere else: the last issuer used to be quoted.
-                listOf(hostileLeaf, signedStatement(stranger, hostile, hostile + "B")),
-                // Expired, before any signature is checked: its subject used to be quoted.
+                listOf(leafConfiguration(), signedStatement(stranger, hostile, LEAF_ID)),
+                // The anchor's statement about the intermediate has expired: its subject used
+                // to be quoted.
                 listOf(
-                    signedStatement(stranger, hostile, hostile, expiresInSeconds = -3600) {
+                    leafConfiguration(),
+                    intermediateStatement,
+                    signedStatement(
+                        anchorKey,
+                        ANCHOR_ID,
+                        hostile,
+                        expiresInSeconds = -3600,
+                        issuedAtOffsetSeconds = -7200,
+                    ) {
                         claim("jwks", jwksClaim(stranger))
                     },
-                    signedStatement(anchorKey, ANCHOR_ID, hostile) { claim("jwks", jwksClaim(stranger)) },
                 ),
-                // Signed by a key nobody attested.
+                // Signed under a kid the anchor does not have.
                 listOf(
-                    hostileLeaf,
-                    signedStatement(anchorKey, ANCHOR_ID, hostile) { claim("jwks", jwksClaim(leafFederationKey)) },
+                    leafConfiguration(),
+                    intermediateStatement,
+                    signedStatement(relabelledAnchor, ANCHOR_ID, hostile) { claim("jwks", jwksClaim(stranger)) },
+                ),
+                // Signed by another key under the anchor's kid: "the signature of the
+                // statement about <subject> does not verify", it used to say.
+                listOf(
+                    leafConfiguration(),
+                    intermediateStatement,
+                    signedStatement(impostorWithAnchorKid, ANCHOR_ID, hostile) { claim("jwks", jwksClaim(stranger)) },
                 ),
             )
         for (chain in chains) {
-            assertFixedPhrase(chainEvaluator().evaluate(inputFor(issuer = hostile, trustChain = chain)))
+            assertFixedPhrase(chainEvaluator().evaluate(inputFor(trustChain = chain)))
         }
     }
 

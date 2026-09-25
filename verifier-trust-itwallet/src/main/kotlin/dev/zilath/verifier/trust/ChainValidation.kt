@@ -19,8 +19,9 @@ package dev.zilath.verifier.trust
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.InternalZilathApi
+import dev.zilath.verifier.core.TrustDecision
 import dev.zilath.verifier.core.verifiesWithAnyAcceptableKey
-import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 
 /**
@@ -32,17 +33,12 @@ import java.time.Instant
 internal fun validateChain(
     chain: List<String>,
     expectedIssuer: String,
-    anchor: TrustAnchorConfig,
-    clock: Clock,
-    maxChainLength: Int = DEFAULT_MAX_CHAIN_LENGTH,
-): List<JWK> {
-    if (chain.size < 2) trustFail("a trust chain needs at least the leaf and an anchor statement")
-    // The offline chain comes from an attacker-controlled header: bound it before any parsing.
-    if (chain.size > maxChainLength) trustFail("trust chain longer than $maxChainLength statements")
-    val statements = chain.map(::parseStatement)
+    rules: ChainRules,
+): TrustDecision.Trusted {
+    val statements = parseChain(chain, rules)
     val leaf = statements.first()
-    val subordinates = subordinateStatementsOf(statements, expectedIssuer, anchor)
-    verifyTopDown(statements, anchor, clock.instant())
+    val subordinates = subordinateStatementsOf(statements, expectedIssuer, rules.anchor)
+    verifyTopDown(statements, rules)
     checkPathAndNamingConstraints(subordinates)
     // metadata_policy: superiors constrain the leaf metadata. The immediate
     // superior's statement metadata overrides the leaf's first, the entity types the
@@ -66,7 +62,28 @@ internal fun validateChain(
     if (credentialKeys.isEmpty()) {
         trustFail("the resolved metadata advertises no credential signing keys")
     }
-    return credentialKeys
+    return TrustDecision.Trusted(credentialKeys)
+}
+
+/**
+ * The superiors a provided chain names, the leaf's first, after checking its shape and
+ * that it ends at the configured anchor — no signature, no fetch. A chain that fails here
+ * is refused before it can send the evaluator anywhere.
+ */
+internal fun superiorsNamedBy(
+    chain: List<String>,
+    expectedIssuer: String,
+    rules: ChainRules,
+): List<String> = subordinateStatementsOf(parseChain(chain, rules), expectedIssuer, rules.anchor).map { it.issuer }
+
+private fun parseChain(
+    chain: List<String>,
+    rules: ChainRules,
+): List<EntityStatement> {
+    if (chain.size < 2) trustFail("a trust chain needs at least the leaf and an anchor statement")
+    // The offline chain comes from an attacker-controlled header: bound it before any parsing.
+    if (chain.size > rules.maxChainLength) trustFail("trust chain longer than ${rules.maxChainLength} statements")
+    return chain.map(::parseStatement)
 }
 
 /**
@@ -130,13 +147,14 @@ private val SUPERIOR_DIRECTIVES = listOf("metadata_policy", "metadata_policy_cri
  */
 private fun verifyTopDown(
     statements: List<EntityStatement>,
-    anchor: TrustAnchorConfig,
-    now: Instant,
+    rules: ChainRules,
 ) {
-    var trustedKeys = anchor.federationKeys
+    val now = rules.clock.instant()
+    var trustedKeys = rules.anchor.federationKeys
     for (index in statements.indices.reversed()) {
         val statement = statements[index]
         checkValidityWindow(statement, now)
+        if (index > 0 && statement.issuer != statement.subject) checkLifetime(statement, rules.maxStatementLifetime)
         if (!verifiesWithAny(statement.jwt, listOf(keyNamedBy(statement, trustedKeys)))) {
             trustFail("the signature of the statement at chain position $index does not verify")
         }
@@ -164,11 +182,10 @@ private fun verifyTopDown(
  */
 internal fun requireGenuineAnchorConfiguration(
     configuration: EntityStatement,
-    anchor: TrustAnchorConfig,
-    clock: Clock,
+    rules: ChainRules,
 ) {
-    checkValidityWindow(configuration, clock.instant())
-    val key = anchor.federationKeys.singleOrNull { it.keyID == configuration.jwt.header.keyID }
+    checkValidityWindow(configuration, rules.clock.instant())
+    val key = rules.anchor.federationKeys.singleOrNull { it.keyID == configuration.jwt.header.keyID }
     if (key == null || !verifiesWithAny(configuration.jwt, listOf(key))) {
         trustFail("the trust anchor's entity configuration does not verify with the configured keys")
     }
@@ -207,6 +224,22 @@ private fun checkValidityWindow(
     }
     if (!now.minus(CLOCK_SKEW).isBefore(statement.expiresAt)) {
         trustFail("an entity statement is expired")
+    }
+}
+
+/**
+ * IT-Wallet 1.4.6 §6.11.1 caps a subordinate statement's validity at 24 hours, and a cap
+ * is what bounds revocation latency: a superior withdraws an entity by no longer serving
+ * its statement, and a copy that stays valid for a year keeps the entity trusted for a
+ * year wherever the copy is replayed. Subordinate statements only — an entity
+ * configuration is the entity's own and the production issuer's lives 365 days.
+ */
+private fun checkLifetime(
+    statement: EntityStatement,
+    maxLifetime: Duration,
+) {
+    if (Duration.between(statement.issuedAt, statement.expiresAt) > maxLifetime) {
+        trustFail("a subordinate statement is valid for longer than the configured maximum")
     }
 }
 

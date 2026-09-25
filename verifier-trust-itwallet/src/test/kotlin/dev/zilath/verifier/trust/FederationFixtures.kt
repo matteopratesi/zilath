@@ -261,12 +261,16 @@ object FederationFixtures {
 
     val clock: Clock = Clock.fixed(TestVectors.NOW, ZoneOffset.UTC)
 
+    /** A fetcher for a federation that cannot be reached: every request is a transport error. */
+    val unreachable = FederationFetcher { throw java.io.IOException("unreachable") }
+
     /**
-     * An evaluator for tests about how a PROVIDED chain is validated: nothing it needs is
-     * served, so everything it decides comes from the chain it is given.
+     * An evaluator for tests about how a PROVIDED chain is validated: in offline-fallback
+     * mode and with the federation unreachable, so everything it decides comes from the
+     * chain it is given.
      */
     fun chainEvaluator(anchor: TrustAnchorConfig = anchorConfig()): FederationTrustEvaluator =
-        FederationTrustEvaluator(anchor, fetcherOf(emptyMap()), clock)
+        FederationTrustEvaluator(anchor, unreachable, clock, offlineFallback = true)
 
     fun inputFor(
         issuer: String? = LEAF_ID,

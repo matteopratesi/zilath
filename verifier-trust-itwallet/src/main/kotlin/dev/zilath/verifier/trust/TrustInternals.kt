@@ -21,8 +21,8 @@ import com.nimbusds.jose.util.JSONObjectUtils
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.InternalZilathApi
 import dev.zilath.verifier.core.mediaTypeMatches
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
+import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 
 internal const val ENTITY_STATEMENT_TYP = "entity-statement+jwt"
@@ -38,9 +38,19 @@ internal const val WELL_KNOWN_FEDERATION = "/.well-known/openid-federation"
  * echoed there before any signature check, unbounded and with CR/LF — forged log lines and
  * hundreds of kilobytes per request from anyone holding a transaction id.
  */
-internal class TrustFailure(
+internal open class TrustFailure(
     message: String,
 ) : RuntimeException(message)
+
+/**
+ * The federation could not be asked: the [FederationFetcher] failed to bring back an
+ * answer. Distinct from every other failure because it is the only one an evaluator in
+ * offline-fallback mode may answer with the chain the credential carried — an answer
+ * that says no, including "no such statement", is never papered over.
+ */
+internal class FederationUnreachable(
+    message: String,
+) : TrustFailure(message)
 
 internal fun trustFail(message: String): Nothing = throw TrustFailure(message)
 
@@ -168,39 +178,20 @@ internal fun jwksOf(container: Map<*, *>?): List<JWK> {
     }
 }
 
-internal fun fetchEntityConfiguration(
-    fetcher: FederationFetcher,
-    entityId: String,
-): EntityStatement {
-    requireUsableEntityId(entityId)
-    val body =
-        runCatching { fetcher.fetch(entityId.trimEnd('/') + WELL_KNOWN_FEDERATION) }
-            .getOrElse { trustFail("cannot fetch an entity configuration") }
-    val statement = parseStatement(body)
-    if (statement.issuer != entityId || statement.subject != entityId) {
-        trustFail("a fetched entity configuration has mismatched iss/sub")
-    }
-    return statement
-}
-
-internal fun fetchSubordinateStatement(
-    fetcher: FederationFetcher,
-    superiorConfiguration: EntityStatement,
-    subject: String,
-): EntityStatement {
-    val endpoint =
-        superiorConfiguration.federationFetchEndpoint
-            ?: trustFail("a superior exposes no federation_fetch_endpoint")
-    requireUsableFetchEndpoint(endpoint)
-    val separator = if ('?' in endpoint) '&' else '?'
-    val url = "$endpoint${separator}sub=${URLEncoder.encode(subject, StandardCharsets.UTF_8)}"
-    val body =
-        runCatching { fetcher.fetch(url) }
-            .getOrElse { trustFail("cannot fetch a subordinate statement") }
-    return parseStatement(body)
-}
-
 internal const val DEFAULT_MAX_CHAIN_LENGTH = 4
 
+/** IT-Wallet 1.4.6 §6.11.1: a subordinate statement is valid for at most 24 hours. */
+internal val DEFAULT_MAX_STATEMENT_LIFETIME: Duration = Duration.ofHours(MAX_STATEMENT_LIFETIME_HOURS)
+
+private const val MAX_STATEMENT_LIFETIME_HOURS = 24L
+
+/** What a chain is validated against: the evaluator's configuration, in one place. */
+internal class ChainRules(
+    val anchor: TrustAnchorConfig,
+    val clock: Clock,
+    val maxChainLength: Int = DEFAULT_MAX_CHAIN_LENGTH,
+    val maxStatementLifetime: Duration = DEFAULT_MAX_STATEMENT_LIFETIME,
+)
+
 /** Tolerance for a federation peer's clock differing from ours. */
-internal val CLOCK_SKEW: java.time.Duration = java.time.Duration.ofMinutes(1)
+internal val CLOCK_SKEW: Duration = Duration.ofMinutes(1)

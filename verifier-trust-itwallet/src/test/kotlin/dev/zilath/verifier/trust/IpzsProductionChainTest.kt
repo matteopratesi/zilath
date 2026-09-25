@@ -67,12 +67,31 @@ class IpzsProductionChainTest {
     }
 
     @Test
-    fun `the production chain carried as a trust_chain header is trusted for the same key`() {
+    fun `the production chain carried as a trust_chain header is refreshed online and trusted`() {
         val decision =
             FederationTrustEvaluator(anchor, recordingFetcher, IpzsFederationSnapshot.clock)
                 .evaluate(input(trustChain = IpzsFederationSnapshot.cedIssuerChain))
 
         assertTrustedForTheRealIssuerKey(decision)
-        assertThat(fetched).allMatch { it in IpzsFederationSnapshot.servedDocuments }
+        // The refresh reads the same three documents the online resolution does.
+        assertThat(fetched).containsExactlyInAnyOrderElementsOf(IpzsFederationSnapshot.servedDocuments.keys)
+    }
+
+    @Test
+    fun `with offline fallback the production chain alone is trusted while the federation is unreachable`() {
+        val unreachable =
+            FederationFetcher { url ->
+                fetched += url
+                throw java.io.IOException("unreachable")
+            }
+        val offline =
+            FederationTrustEvaluator(anchor, unreachable, IpzsFederationSnapshot.clock, offlineFallback = true)
+
+        assertTrustedForTheRealIssuerKey(offline.evaluate(input(trustChain = IpzsFederationSnapshot.cedIssuerChain)))
+        assertThat(fetched).containsExactly("${IpzsFederationSnapshot.CED_ISSUER}/.well-known/openid-federation")
+        // Without the fallback, the same outage is an untrusted issuer, not a stale answer.
+        val online = FederationTrustEvaluator(anchor, unreachable, IpzsFederationSnapshot.clock)
+        assertThat(online.evaluate(input(trustChain = IpzsFederationSnapshot.cedIssuerChain)))
+            .isInstanceOf(TrustDecision.Untrusted::class.java)
     }
 }
