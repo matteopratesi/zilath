@@ -51,7 +51,7 @@ internal object MetadataPolicy {
         resolved.values.forEach(::requireWellFormedSection)
         return merged.entries.fold(resolved) { current, (type, typePolicy) ->
             val section = current[type] as? Map<*, *> ?: return@fold current
-            current + (type to applyTypePolicy(type, section, typePolicy))
+            current + (type to applyTypePolicy(section, typePolicy))
         }
     }
 
@@ -75,17 +75,15 @@ internal object MetadataPolicy {
     ): Map<String, Map<String, Map<String, Any?>>> {
         val result = accumulated.toMutableMap()
         for ((type, parameters) in policy) {
-            if (parameters !is Map<*, *>) trustFail("metadata_policy for $type is not an object")
+            if (parameters !is Map<*, *>) trustFail("a metadata_policy entry is not a JSON object")
             val typeResult = result[type.toString()].orEmpty().toMutableMap()
             for ((parameter, operators) in parameters) {
-                if (operators !is Map<*, *>) trustFail("metadata_policy operators for $parameter are not an object")
+                if (operators !is Map<*, *>) trustFail("a metadata_policy parameter's operators are not a JSON object")
                 val cleaned = understoodOperators(operators.entries.associate { (op, v) -> op.toString() to v })
-                validateOperators(parameter.toString(), cleaned)
-                val merged =
-                    typeResult[parameter.toString()]?.let { mergeOperators(parameter.toString(), it, cleaned) }
-                        ?: cleaned
+                validateOperators(cleaned)
+                val merged = typeResult[parameter.toString()]?.let { mergeOperators(it, cleaned) } ?: cleaned
                 // Cross-operator restrictions must hold for the COMBINED policy too.
-                validateOperators(parameter.toString(), merged)
+                validateOperators(merged)
                 typeResult[parameter.toString()] = merged
             }
             result[type.toString()] = typeResult
@@ -94,7 +92,6 @@ internal object MetadataPolicy {
     }
 
     private fun mergeOperators(
-        parameter: String,
         superior: Map<String, Any?>,
         subordinate: Map<String, Any?>,
     ): Map<String, Any?> {
@@ -106,14 +103,14 @@ internal object MetadataPolicy {
                     // presence is checked with containsKey, never by comparing to null.
                     "value", "default" -> {
                         if (merged.containsKey(operator) && merged[operator] != value) {
-                            trustFail("conflicting metadata_policy $operator for $parameter")
+                            trustFail("conflicting metadata_policy value or default from two superiors")
                         }
                         value
                     }
                     "add", "superset_of" -> unionOf(merged[operator], value)
                     // one_of merges to the intersection and an empty result is a policy
                     // error; subset_of also merges to the intersection but [] is legal.
-                    "one_of" -> intersectionOrFail(parameter, operator, merged[operator], value)
+                    "one_of" -> oneOfIntersection(merged[operator], value)
                     "subset_of" ->
                         merged[operator]
                             ?.let { asList(it).intersect(asList(value).toSet()).toList() }
@@ -126,33 +123,29 @@ internal object MetadataPolicy {
         return merged
     }
 
-    private fun intersectionOrFail(
-        parameter: String,
-        operator: String,
+    private fun oneOfIntersection(
         superior: Any?,
         subordinate: Any?,
     ): List<Any?> {
         if (superior == null) return asList(subordinate)
         val intersection = asList(superior).intersect(asList(subordinate).toSet()).toList()
-        if (intersection.isEmpty()) trustFail("empty metadata_policy $operator intersection for $parameter")
+        if (intersection.isEmpty()) trustFail("empty metadata_policy one_of intersection")
         return intersection
     }
 
     /** Applies the merged policy of one metadata type to its section (OID-FED §6.1.5). */
     private fun applyTypePolicy(
-        type: String,
         section: Map<*, *>?,
         typePolicy: Map<String, Map<String, Any?>>,
     ): Map<String, Any?> {
         var result: Map<String, Any?> = section.orEmpty().entries.associate { (k, v) -> k.toString() to v }
         for ((parameter, operators) in typePolicy) {
-            result = applyParameterPolicy("$type.$parameter", parameter, operators, result)
+            result = applyParameterPolicy(parameter, operators, result)
         }
         return result
     }
 
     private fun applyParameterPolicy(
-        qualified: String,
         parameter: String,
         operators: Map<String, Any?>,
         section: Map<String, Any?>,
@@ -172,7 +165,7 @@ internal object MetadataPolicy {
         // filter, then the superset_of check runs on the FILTERED value.
         operators["one_of"]?.let { allowed ->
             result[parameter]?.let { current ->
-                if (current !in asList(allowed)) trustFail("metadata parameter $qualified violates one_of")
+                if (current !in asList(allowed)) trustFail("a metadata parameter violates one_of")
             }
         }
         operators["subset_of"]?.let { allowed ->
@@ -183,12 +176,11 @@ internal object MetadataPolicy {
                 result[parameter] = asList(result[parameter]).intersect(asList(allowed).toSet()).toList()
             }
         }
-        checkAfterShaping(qualified, parameter, operators, result)
+        checkAfterShaping(parameter, operators, result)
         return result
     }
 
     private fun checkAfterShaping(
-        qualified: String,
         parameter: String,
         operators: Map<String, Any?>,
         result: Map<String, Any?>,
@@ -197,12 +189,12 @@ internal object MetadataPolicy {
             requireArrayIfPresent(result, parameter)
             result[parameter]?.let { current ->
                 if (!asList(current).containsAll(asList(required))) {
-                    trustFail("metadata parameter $qualified violates superset_of")
+                    trustFail("a metadata parameter violates superset_of")
                 }
             }
         }
         if (operators["essential"] == true && !result.containsKey(parameter)) {
-            trustFail("metadata parameter $qualified is essential but absent")
+            trustFail("a metadata parameter the policy makes essential is absent")
         }
     }
 
@@ -228,7 +220,7 @@ internal object MetadataPolicy {
                 .associate { (k, v) -> k.toString() to v }
                 .toMutableMap()
         for ((type, section) in superior.orEmpty()) {
-            if (section !is Map<*, *>) trustFail("subordinate statement metadata for $type is not an object")
+            if (section !is Map<*, *>) trustFail("a subordinate statement's metadata section is not a JSON object")
             val base = result[type.toString()] as? Map<*, *> ?: continue
             result[type.toString()] =
                 base.entries.associate { (k, v) -> k.toString() to v } +

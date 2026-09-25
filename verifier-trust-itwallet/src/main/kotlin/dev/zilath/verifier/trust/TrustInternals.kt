@@ -28,6 +28,16 @@ import java.time.Instant
 internal const val ENTITY_STATEMENT_TYP = "entity-statement+jwt"
 internal const val WELL_KNOWN_FEDERATION = "/.well-known/openid-federation"
 
+/**
+ * Why a chain is not trusted. Its message becomes [dev.zilath.verifier.core.TrustDecision.Untrusted.reason]
+ * and, through the verifier, the `detail` of a rejection — which travels with the result
+ * and ends up in logs. So it is a fixed phrase, interpolating at most a value of this
+ * library or of the integrator's configuration (a chain position, a configured limit, the
+ * configured anchor): never an identifier, claim or name read from a credential or a
+ * federation document. The fourth internal review found `iss`, `sub` and policy names
+ * echoed there before any signature check, unbounded and with CR/LF — forged log lines and
+ * hundreds of kilobytes per request from anyone holding a transaction id.
+ */
 internal class TrustFailure(
     message: String,
 ) : RuntimeException(message)
@@ -105,7 +115,7 @@ internal class EntityStatement(
         // non-null JSON object — anything else fails the chain.
         if (!claims.claims.containsKey(name)) return null
         return runCatching { claims.getJSONObjectClaim(name) }.getOrNull()
-            ?: trustFail("entity statement claim $name of $subject is malformed")
+            ?: trustFail("entity statement claim $name is malformed")
     }
 
     /** Whether the payload names [claim] at all, whatever its value. */
@@ -131,12 +141,18 @@ internal fun parseStatement(serialized: String): EntityStatement {
     if (!typIsEntityStatement(jwt)) {
         trustFail("entity statement typ is not $ENTITY_STATEMENT_TYP")
     }
+    val claims =
+        runCatching { jwt.jwtClaimsSet }.getOrElse {
+            trustFail(
+                "entity statement payload is not a JSON object",
+            )
+        }
     // OID-FED §3.2: every claim listed in `crit` "MUST be understood and be able to be
     // processed", and this library understands no extension claim — so a statement that
     // lists any, well-formed or not, is one it must not act on. Nimbus enforces only the
     // JOSE header's crit, never this payload claim, and it used to be ignored: a superior
     // making an extension mandatory (a revocation flag, say) was silently overruled.
-    if (runCatching { jwt.jwtClaimsSet.claims.containsKey("crit") }.getOrDefault(false)) {
+    if (claims.claims.containsKey("crit")) {
         trustFail("an entity statement lists critical claims this library does not understand")
     }
     return EntityStatement(serialized, jwt)
@@ -159,10 +175,10 @@ internal fun fetchEntityConfiguration(
     requireUsableEntityId(entityId)
     val body =
         runCatching { fetcher.fetch(entityId.trimEnd('/') + WELL_KNOWN_FEDERATION) }
-            .getOrElse { trustFail("cannot fetch the entity configuration of $entityId") }
+            .getOrElse { trustFail("cannot fetch an entity configuration") }
     val statement = parseStatement(body)
     if (statement.issuer != entityId || statement.subject != entityId) {
-        trustFail("entity configuration of $entityId has mismatched iss/sub")
+        trustFail("a fetched entity configuration has mismatched iss/sub")
     }
     return statement
 }
@@ -174,13 +190,13 @@ internal fun fetchSubordinateStatement(
 ): EntityStatement {
     val endpoint =
         superiorConfiguration.federationFetchEndpoint
-            ?: trustFail("${superiorConfiguration.subject} exposes no federation_fetch_endpoint")
-    requireUsableFetchEndpoint(endpoint, superiorConfiguration.subject)
+            ?: trustFail("a superior exposes no federation_fetch_endpoint")
+    requireUsableFetchEndpoint(endpoint)
     val separator = if ('?' in endpoint) '&' else '?'
     val url = "$endpoint${separator}sub=${URLEncoder.encode(subject, StandardCharsets.UTF_8)}"
     val body =
         runCatching { fetcher.fetch(url) }
-            .getOrElse { trustFail("cannot fetch the subordinate statement of $subject") }
+            .getOrElse { trustFail("cannot fetch a subordinate statement") }
     return parseStatement(body)
 }
 

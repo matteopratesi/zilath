@@ -138,7 +138,7 @@ private fun verifyTopDown(
         val statement = statements[index]
         checkValidityWindow(statement, now)
         if (!verifiesWithAny(statement.jwt, listOf(keyNamedBy(statement, trustedKeys)))) {
-            trustFail("signature of the statement about ${statement.subject} does not verify")
+            trustFail("the signature of the statement at chain position $index does not verify")
         }
         if (index > 0 && statement.issuer == statement.subject) continue
         // Each statement attests the keys of the entity below it. One that carries none
@@ -146,7 +146,7 @@ private fun verifyTopDown(
         // or malformed jwks silently kept the chain going under keys it never held.
         trustedKeys =
             statement.federationJwks.ifEmpty {
-                trustFail("the statement about ${statement.subject} carries no federation keys")
+                trustFail("the statement at chain position $index carries no federation keys")
             }
     }
 }
@@ -203,10 +203,10 @@ private fun checkValidityWindow(
     now: Instant,
 ) {
     if (now.plus(CLOCK_SKEW).isBefore(statement.issuedAt)) {
-        trustFail("statement of ${statement.subject} not yet valid")
+        trustFail("an entity statement is not yet valid")
     }
     if (!now.minus(CLOCK_SKEW).isBefore(statement.expiresAt)) {
-        trustFail("statement of ${statement.subject} is expired")
+        trustFail("an entity statement is expired")
     }
 }
 

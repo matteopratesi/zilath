@@ -59,7 +59,9 @@ class FederationTrustEvaluator(
         }.getOrElse { failure ->
             when (failure) {
                 is TrustFailure -> TrustDecision.Untrusted(failure.message)
-                else -> TrustDecision.Untrusted("trust evaluation failed: ${failure.message}")
+                // Never the exception's own message: a parser's may quote the input it choked
+                // on, and the input here is a credential header or a federation document.
+                else -> TrustDecision.Untrusted("trust evaluation failed")
             }
         }
 

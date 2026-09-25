@@ -61,47 +61,38 @@ private val ARRAY_PARAMETER_OPERATORS = setOf("add", "subset_of", "superset_of")
  * on each superior's policy AND on the merged one: a combination that no single superior
  * wrote can still arise from two of them, and it must fail the same way (§6.1.4.1).
  */
-internal fun validateOperators(
-    parameter: String,
-    operators: Map<String, Any?>,
-) {
-    validateOperands(parameter, operators)
-    validateCombinations(parameter, operators)
+internal fun validateOperators(operators: Map<String, Any?>) {
+    validateOperands(operators)
+    validateCombinations(operators)
     if (operators.containsKey("value")) {
-        validateValueShape(parameter, operators)
-        validateValueRelationships(parameter, operators)
+        validateValueShape(operators)
+        validateValueRelationships(operators)
     }
 }
 
-private fun validateOperands(
-    parameter: String,
-    operators: Map<String, Any?>,
-) {
+private fun validateOperands(operators: Map<String, Any?>) {
     ARRAY_OPERATORS
         .firstOrNull { operators.containsKey(it) && operators[it] !is List<*> }
-        ?.let { trustFail("metadata_policy $it for $parameter must be an array") }
+        ?.let { trustFail("metadata_policy $it must be an array") }
     if (operators.containsKey("essential") && operators["essential"] !is Boolean) {
-        trustFail("metadata_policy essential for $parameter must be a boolean")
+        trustFail("metadata_policy essential must be a boolean")
     }
     if (operators.containsKey("default") && operators["default"] == null) {
-        trustFail("metadata_policy default for $parameter must not be null")
+        trustFail("metadata_policy default must not be null")
     }
 }
 
-private fun validateCombinations(
-    parameter: String,
-    operators: Map<String, Any?>,
-) {
+private fun validateCombinations(operators: Map<String, Any?>) {
     // OID-FED §6.1.3.1: one_of combines only with value, default and essential.
     if (operators.containsKey("one_of") && operators.keys.any { it in ARRAY_PARAMETER_OPERATORS }) {
-        trustFail("metadata_policy one_of for $parameter cannot combine with array operators")
+        trustFail("metadata_policy one_of cannot combine with array operators")
     }
     // subset_of MAY combine with superset_of only when subset_of ⊇ superset_of.
     if (operators.containsKey("subset_of") &&
         operators.containsKey("superset_of") &&
         !asList(operators["subset_of"]).containsAll(asList(operators["superset_of"]))
     ) {
-        trustFail("metadata_policy subset_of for $parameter must be a superset of superset_of")
+        trustFail("metadata_policy subset_of must be a superset of superset_of")
     }
     // §6.1.3.1.2: add MAY combine with subset_of only when add ⊆ subset_of. Because this
     // runs on the MERGED operators too, an anchor's subset_of [ES256] followed by an
@@ -116,10 +107,7 @@ private fun validateCombinations(
 }
 
 /** OID-FED §6.1.3.1.1: what a forced `value` may look like next to the other operators. */
-private fun validateValueShape(
-    parameter: String,
-    operators: Map<String, Any?>,
-) {
+private fun validateValueShape(operators: Map<String, Any?>) {
     val value = operators["value"]
     // add, subset_of and superset_of are array operators (§6.1.3.1.2/.5/.6): a value
     // they combine with must be an array too, or removal (null).
@@ -127,35 +115,32 @@ private fun validateValueShape(
         trustFail("metadata_policy value combined with an array operator must be an array")
     }
     if (value == null && operators["essential"] == true) {
-        trustFail("metadata_policy value null for $parameter cannot be essential")
+        trustFail("metadata_policy value null cannot be essential")
     }
     if (value == null && operators.containsKey("default")) {
-        trustFail("metadata_policy value null for $parameter cannot combine with default")
+        trustFail("metadata_policy value null cannot combine with default")
     }
 }
 
 /** OID-FED §6.1.3.1.1: a forced `value` must satisfy every operator it is combined with. */
-private fun validateValueRelationships(
-    parameter: String,
-    operators: Map<String, Any?>,
-) {
+private fun validateValueRelationships(operators: Map<String, Any?>) {
     val value = operators["value"]
     operators["one_of"]?.let {
-        if (value !in asList(it)) trustFail("metadata_policy value for $parameter is not among one_of")
+        if (value !in asList(it)) trustFail("metadata_policy value is not among one_of")
     }
     operators["subset_of"]?.let {
         if (!asList(it).containsAll(asList(value))) {
-            trustFail("metadata_policy value for $parameter must be a subset of subset_of")
+            trustFail("metadata_policy value must be a subset of subset_of")
         }
     }
     operators["superset_of"]?.let {
         if (!asList(value).containsAll(asList(it))) {
-            trustFail("metadata_policy value for $parameter must be a superset of superset_of")
+            trustFail("metadata_policy value must be a superset of superset_of")
         }
     }
     operators["add"]?.let {
         if (!asList(value).containsAll(asList(it))) {
-            trustFail("metadata_policy add for $parameter must be a subset of value")
+            trustFail("metadata_policy add must be a subset of value")
         }
     }
 }
