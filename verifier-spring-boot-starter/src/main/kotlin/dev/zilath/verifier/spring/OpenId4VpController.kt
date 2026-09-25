@@ -23,6 +23,9 @@ import dev.zilath.verifier.openid4vp.FlowOutcome
 import dev.zilath.verifier.openid4vp.HandledResponse
 import dev.zilath.verifier.openid4vp.TransactionId
 import dev.zilath.verifier.openid4vp.VerificationFlow
+import org.springframework.http.CacheControl
+import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.util.MultiValueMap
@@ -37,13 +40,23 @@ import org.springframework.web.bind.annotation.RestController
 class OpenId4VpController(
     private val flow: VerificationFlow,
 ) {
-    /** Serves the signed request object (JAR by reference). */
-    @GetMapping("/openid4vp/request/{txId}", produces = [REQUEST_OBJECT_MEDIA_TYPE])
+    /**
+     * Serves the signed request object (JAR by reference), as
+     * `application/oauth-authz-req+jwt` whatever the wallet's `Accept` says.
+     *
+     * No `produces`: the specifications fix the type of the response (OpenID4VP 1.0
+     * §5.10.1, RFC 9101 §5.2), not what the wallet must accept, and IT-Wallet's GET carries
+     * no requirement on `Accept`. The fourth internal review found Spring's negotiation
+     * answering a wallet that sent `Accept: application/jwt` with 406 and an empty body: a
+     * holder that could never present.
+     */
+    @GetMapping("/openid4vp/request/{txId}")
     fun requestObject(
         @PathVariable txId: String,
-    ): ResponseEntity<String> =
-        flow.requestJwtFor(TransactionId(txId))?.let { ResponseEntity.ok(it) }
-            ?: ResponseEntity.notFound().build()
+    ): ResponseEntity<String> {
+        val requestObject = flow.requestJwtFor(TransactionId(txId)) ?: return uncached(HttpStatus.NOT_FOUND).build()
+        return uncached(HttpStatus.OK).contentType(REQUEST_OBJECT_TYPE).body(requestObject)
+    }
 
     /**
      * Receives the wallet's encrypted `direct_post.jwt` response.
@@ -57,24 +70,20 @@ class OpenId4VpController(
      * server-side, in the log. The verdict the CHECKOUT acts on is not this status code:
      * it comes from [VerificationFlow.awaitOutcome].
      */
-    @PostMapping(
-        "/openid4vp/response/{txId}",
-        consumes = [MediaType.APPLICATION_FORM_URLENCODED_VALUE],
-        produces = [MediaType.APPLICATION_JSON_VALUE],
-    )
+    @PostMapping("/openid4vp/response/{txId}", consumes = [MediaType.APPLICATION_FORM_URLENCODED_VALUE])
     fun walletResponse(
         @PathVariable txId: String,
         @RequestParam parameters: MultiValueMap<String, String>,
     ): ResponseEntity<Map<String, String>> {
         val handled = flow.handleWalletResponse(TransactionId(txId), DirectPostBody(parameters.toSingleValueMap()))
         return when (val outcome = handled.outcome) {
-            is FlowOutcome.Verified -> ResponseEntity.ok(ackBody(handled))
+            is FlowOutcome.Verified -> json(HttpStatus.OK, ackBody(handled))
             is FlowOutcome.WalletErrorAcknowledged -> {
                 // OpenID4VP direct_post: wallet error responses are acknowledged with 200.
                 // In the same-device flow the ack still carries the redirect_uri, so the
                 // user lands back on the RP even after cancelling in the wallet (RPR-59).
                 logger.info("wallet error response acknowledged: {}", forLog(outcome.error))
-                ResponseEntity.ok(ackBody(handled))
+                json(HttpStatus.OK, ackBody(handled))
             }
             is FlowOutcome.Rejected -> {
                 // detail is a server-side diagnostic: only the reason code reaches the wallet.
@@ -83,7 +92,7 @@ class OpenId4VpController(
             }
             FlowOutcome.Expired -> badRequest("transaction expired")
             FlowOutcome.Pending -> badRequest("response not processable")
-            FlowOutcome.Unknown -> ResponseEntity.notFound().build()
+            FlowOutcome.Unknown -> uncached(HttpStatus.NOT_FOUND).build()
         }
     }
 
@@ -108,12 +117,35 @@ class OpenId4VpController(
     private fun forLog(value: String?): String = boundedPrintable(value.orEmpty())
 
     private fun badRequest(description: String): ResponseEntity<Map<String, String>> =
+        json(HttpStatus.BAD_REQUEST, mapOf("error" to "invalid_request", "error_description" to description))
+
+    /**
+     * JSON, whatever the wallet's `Accept` says: an acknowledgement it cannot negotiate away
+     * is one fewer way for a holder to be refused.
+     */
+    private fun json(
+        status: HttpStatus,
+        body: Map<String, String>,
+    ): ResponseEntity<Map<String, String>> = uncached(status).contentType(MediaType.APPLICATION_JSON).body(body)
+
+    /**
+     * Every answer of both endpoints is meant for one wallet, once, and two of them carry
+     * secrets: the request object its nonce and `state`, the same-device acknowledgement the
+     * single-use response code. `no-store` keeps them out of any cache between the wallet and
+     * the relying party (RFC 9111 §5.2.2.5) — a cache with no rule for these paths would
+     * otherwise keep serving a request object after its transaction was consumed — and
+     * `Pragma` does the same for HTTP/1.0 caches (§5.4). The fourth internal review found no
+     * cache directive at all; the error answers carry them too, for uniformity.
+     */
+    private fun uncached(status: HttpStatus): ResponseEntity.BodyBuilder =
         ResponseEntity
-            .badRequest()
-            .body(mapOf("error" to "invalid_request", "error_description" to description))
+            .status(status)
+            .cacheControl(CacheControl.noStore())
+            .header(HttpHeaders.PRAGMA, "no-cache")
 
     companion object {
         const val REQUEST_OBJECT_MEDIA_TYPE = "application/oauth-authz-req+jwt"
+        private val REQUEST_OBJECT_TYPE = MediaType.parseMediaType(REQUEST_OBJECT_MEDIA_TYPE)
         private val logger = org.slf4j.LoggerFactory.getLogger(OpenId4VpController::class.java)
     }
 }

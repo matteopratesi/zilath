@@ -32,12 +32,15 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Bean
+import org.springframework.http.HttpHeaders
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 @SpringBootTest(classes = [StarterSmokeTest.TestApp::class])
@@ -82,6 +85,17 @@ class StarterSmokeTest {
             .perform(get("/openid4vp/request/{txId}", started.id.value))
             .andExpect(status().isOk)
             .andExpect(content().contentTypeCompatibleWith("application/oauth-authz-req+jwt"))
+            .andExpectUncached()
+    }
+
+    @Test
+    fun `a wallet accepting only application jwt still gets the request object`() {
+        // The response's type is fixed by the specifications; what a wallet accepts is not.
+        val started = start()
+        mockMvc
+            .perform(get("/openid4vp/request/{txId}", started.id.value).accept("application/jwt"))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith("application/oauth-authz-req+jwt"))
     }
 
     @Test
@@ -89,6 +103,7 @@ class StarterSmokeTest {
         mockMvc
             .perform(get("/openid4vp/request/{txId}", "ghost"))
             .andExpect(status().isNotFound)
+            .andExpectUncached()
     }
 
     @Test
@@ -99,6 +114,7 @@ class StarterSmokeTest {
                     .contentType("application/x-www-form-urlencoded")
                     .param("response", "whatever"),
             ).andExpect(status().isNotFound)
+            .andExpectUncached()
     }
 
     @Test
@@ -110,6 +126,20 @@ class StarterSmokeTest {
                     .contentType("application/x-www-form-urlencoded")
                     .param("error", "access_denied"),
             ).andExpect(status().isOk)
+            .andExpectUncached()
+    }
+
+    @Test
+    fun `an acknowledgement is JSON whatever the wallet accepts`() {
+        val started = start()
+        mockMvc
+            .perform(
+                post("/openid4vp/response/{txId}", started.id.value)
+                    .contentType("application/x-www-form-urlencoded")
+                    .accept("application/jwt")
+                    .param("error", "access_denied"),
+            ).andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith("application/json"))
     }
 
     @Test
@@ -121,6 +151,7 @@ class StarterSmokeTest {
                     .contentType("application/x-www-form-urlencoded")
                     .param("response", "not-a-jwe"),
             ).andExpect(status().isBadRequest)
+            .andExpectUncached()
         // Consumed: the request object is gone and a retry is a replay, still 400.
         mockMvc
             .perform(get("/openid4vp/request/{txId}", started.id.value))
@@ -133,4 +164,12 @@ class StarterSmokeTest {
             ).andExpect(status().isBadRequest)
         assertThat(flow.awaitOutcome(started.id, started.pollToken)).isInstanceOf(FlowOutcome.Rejected::class.java)
     }
+
+    /**
+     * Neither the request object (nonce, state) nor an acknowledgement (the same-device
+     * response code) may be kept by a cache on the way, and the error answers follow suit.
+     */
+    private fun ResultActions.andExpectUncached(): ResultActions =
+        andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+            .andExpect(header().string(HttpHeaders.PRAGMA, "no-cache"))
 }
