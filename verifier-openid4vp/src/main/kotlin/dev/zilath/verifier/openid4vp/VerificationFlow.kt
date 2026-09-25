@@ -210,11 +210,14 @@ data class PollToken(
  *
  * The query is read when the request is constructed, and a query this library cannot
  * evaluate is refused there with [IllegalArgumentException]: no `credentials` array, not
- * exactly one credential query, one not named [credentialQueryId], `credential_sets`,
- * `multiple: true`, or `claims`/`claim_sets`/`vct_values` that do not follow OpenID4VP 1.0
- * §6 and §7. Before the fourth internal review such a query passed [VerificationFlow.start],
- * reached the wallet inside the signed request, and then failed every response as an
- * internal error; a query asking for two credentials verified one and ignored the other.
+ * exactly one credential query, one not named [credentialQueryId], a `format` other than
+ * `dc+sd-jwt` (or the pre-1.0 `vc+sd-jwt`), no `meta` object with a non-empty `vct_values`,
+ * `credential_sets`, `multiple: true`, `trusted_authorities`,
+ * `require_cryptographic_holder_binding: false`, or `claims`/`claim_sets` that do not follow
+ * OpenID4VP 1.0 §6 and §7. Before the fourth internal review such a query passed
+ * [VerificationFlow.start], reached the wallet inside the signed request, and then failed
+ * every response as an internal error; a query asking for two credentials verified one and
+ * ignored the other; and one without `vct_values` switched the credential type check off.
  */
 data class PresentationRequest(
     /** A DCQL query as required by IT-Wallet v1.4.x (`dcql_query` claim). */
@@ -230,11 +233,11 @@ data class PresentationRequest(
 
     /**
      * The credential types this request will accept, read back out of the DCQL query's
-     * `meta.vct_values` for the credential query this request names.
+     * `meta.vct_values` for the credential query this request names: never empty, since a
+     * query without them is refused.
      *
      * The query is the statement of what was asked for; deriving the check from it means
-     * the two cannot drift apart. An empty result — a caller-built query that does not
-     * constrain the type — leaves the verifier unconstrained too, rather than rejecting.
+     * the two cannot drift apart.
      */
     fun expectedVcts(): Set<String> = vctValues
 

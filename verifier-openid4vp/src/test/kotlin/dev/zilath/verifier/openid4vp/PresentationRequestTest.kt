@@ -113,16 +113,74 @@ class PresentationRequestTest {
     }
 
     @Test
-    fun `a query without vct_values still builds and constrains no type`() {
-        // An empty set means "no type check", by design: kept so that a caller-built query
-        // that names no type is not refused.
-        val request =
-            PresentationRequest(
-                query("""{"credentials": [{"id": "ced", "format": "dc+sd-jwt", "claims": [{"path": ["x"]}]}]}"""),
-                "ced",
+    fun `a query that names no credential type is refused, as the type check would be off`() {
+        // expectedVcts() empty means the verifier checks no type: any credential a trusted
+        // issuer signed would answer. That is what these queries used to produce.
+        val untyped =
+            listOf(
+                // no meta at all
+                """{"id": "ced", "format": "dc+sd-jwt", "claims": [{"path": ["x"]}]}""",
+                // meta not an object
+                """{"id": "ced", "format": "dc+sd-jwt", "meta": ["urn:ced"]}""",
+                """{"id": "ced", "format": "dc+sd-jwt", "meta": "urn:ced"}""",
+                // meta without vct_values, or with the member misspelled
+                """{"id": "ced", "format": "dc+sd-jwt", "meta": {}}""",
+                """{"id": "ced", "format": "dc+sd-jwt", "meta": {"vct_value": ["urn:ced"]}}""",
+                // vct_values empty, not an array, or holding a blank or non-string type
+                """{"id": "ced", "format": "dc+sd-jwt", "meta": {"vct_values": []}}""",
+                """{"id": "ced", "format": "dc+sd-jwt", "meta": {"vct_values": "urn:ced"}}""",
+                """{"id": "ced", "format": "dc+sd-jwt", "meta": {"vct_values": [" "]}}""",
+                """{"id": "ced", "format": "dc+sd-jwt", "meta": {"vct_values": [1]}}""",
             )
-        assertThat(request.expectedVcts()).isEmpty()
-        assertThat(ced().let { PresentationRequest(it, "ced") }.expectedVcts()).containsExactly("urn:ced")
+        untyped.forEach { credential ->
+            assertThatIllegalArgumentException()
+                .describedAs(credential)
+                .isThrownBy { PresentationRequest(query("""{"credentials": [$credential]}"""), "ced") }
+        }
+        assertThat(PresentationRequest(ced(), "ced").expectedVcts()).containsExactly("urn:ced")
+    }
+
+    @Test
+    fun `only SD-JWT VC formats are requested`() {
+        // What comes back is verified as an SD-JWT VC: a query for anything else would be
+        // answered with a credential the verifier cannot read.
+        val format = { value: String ->
+            query("""{"credentials": [{"id": "ced", $value "meta": {"vct_values": ["urn:ced"]}}]}""")
+        }
+        listOf("", """"format": "mso_mdoc",""", """"format": "jwt_vc_json",""", """"format": 1,""").forEach {
+            assertThatIllegalArgumentException().describedAs(it).isThrownBy { PresentationRequest(format(it), "ced") }
+        }
+        // The pre-1.0 identifier names the same credentials, which the verifier accepts.
+        assertThat(PresentationRequest(format(""""format": "vc+sd-jwt","""), "ced").expectedVcts())
+            .containsExactly("urn:ced")
+        assertThat(PresentationRequest(format(""""format": "dc+sd-jwt","""), "ced").expectedVcts())
+            .containsExactly("urn:ced")
+    }
+
+    @Test
+    fun `members the response side does not evaluate are refused`() {
+        // trusted_authorities would let the wallet choose by issuer on a rule nobody checks;
+        // a presentation without key binding is always rejected, so asking for one is a
+        // request no holder can satisfy.
+        assertThatIllegalArgumentException().isThrownBy {
+            PresentationRequest(ced(""""trusted_authorities": [{"type": "aki", "values": ["s9tIpP"]}]"""), "ced")
+        }
+        listOf("false", "\"true\"", "1").forEach { value ->
+            assertThatIllegalArgumentException().describedAs(value).isThrownBy {
+                PresentationRequest(ced(""""require_cryptographic_holder_binding": $value"""), "ced")
+            }
+        }
+        assertThat(
+            PresentationRequest(ced(""""require_cryptographic_holder_binding": true"""), "ced").credentialQueryId,
+        ).isEqualTo("ced")
+    }
+
+    @Test
+    fun `the helper queries are ones the library evaluates`() {
+        val ced = PresentationRequest.forVct("urn:ced", listOf("constant_attendance_allowance"), "ced")
+        assertThat(ced.expectedVcts()).containsExactly("urn:ced")
+        assertThat(PresentationRequest.forTestPid("urn:pid").expectedVcts()).containsExactly("urn:pid")
+        assertThatIllegalArgumentException().isThrownBy { PresentationRequest.forVct(" ", emptyList(), "ced") }
     }
 
     @Test
