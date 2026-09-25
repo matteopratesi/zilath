@@ -22,6 +22,8 @@ import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import com.nimbusds.jose.util.JSONObjectUtils
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.demo.ConformanceController
+import dev.zilath.demo.DemoCheckoutController
+import dev.zilath.demo.DemoTransactionRegistry
 import dev.zilath.verifier.core.CredentialStatus
 import dev.zilath.verifier.core.RejectionReason
 import dev.zilath.verifier.core.SdJwtVcCredentialVerifier
@@ -34,6 +36,8 @@ import dev.zilath.verifier.openid4vp.PresentationRequest
 import dev.zilath.verifier.openid4vp.RelyingPartyConfiguration
 import dev.zilath.verifier.openid4vp.RpEndpoints
 import dev.zilath.verifier.openid4vp.RpKeys
+import dev.zilath.verifier.openid4vp.TransactionId
+import dev.zilath.verifier.openid4vp.VerificationReceipts
 import dev.zilath.verifier.trust.FederationFetcher
 import dev.zilath.verifier.trust.FederationTrustEvaluator
 import dev.zilath.verifier.trust.TrustAnchorConfig
@@ -74,6 +78,7 @@ class CedSimFlowTest {
             statusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
         )
     private val flow = OpenId4VpVerificationFlow.withInMemoryStore(config, SdJwtVcCredentialVerifier(), clock)
+    private val registry = DemoTransactionRegistry(clock, DemoTransactionRegistry.DEFAULT_TIME_TO_LIVE)
     private var lastStartedId: dev.zilath.verifier.openid4vp.TransactionId? = null
     private var lastPollToken: dev.zilath.verifier.openid4vp.PollToken? = null
     private var lastHandled: dev.zilath.verifier.openid4vp.HandledResponse? = null
@@ -210,7 +215,7 @@ class CedSimFlowTest {
         val outcome = presentSimulatedCed(keys)
         assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
         val body =
-            ConformanceController(flow, config, clock, CedSim.VCT)
+            ConformanceController(flow, config, clock, registry, CedSim.VCT)
                 .outcome(lastTransactionId().value, checkNotNull(lastPollToken).value)
         assertThat(body).containsEntry("outcome", "verified")
         // Nothing from inside the credential, not the claim names and not their values.
@@ -218,6 +223,30 @@ class CedSimFlowTest {
             .doesNotContain("constant_attendance_allowance")
             .doesNotContain("expiry_date")
             .doesNotContain("true")
+    }
+
+    @Test
+    fun `a same-device conformance run is read through its return`() {
+        // The conformance endpoints started a transaction the demo's callback did not know,
+        // so the user-agent coming back with the response code was turned away, and the
+        // harness, holding the start token the flow stops honouring at the return, never read
+        // the outcome. A cancellation is enough to show it: it earns the return ticket too.
+        val conformance = ConformanceController(flow, config, clock, registry, CedSim.VCT)
+        val demo =
+            DemoCheckoutController(flow, VerificationReceipts(config, clock), clock, registry, CedSim.VCT, "ced-sim")
+        val started = conformance.start()
+        val txId = started.getValue("transactionId")
+        val startToken = started.getValue("pollToken")
+        val handled =
+            flow.handleWalletResponse(TransactionId(txId), DirectPostBody(mapOf("error" to "access_denied")))
+        val code = checkNotNull(handled.redirectUri).substringAfter("response_code=")
+        assertThat(conformance.outcome(txId, startToken)).containsEntry("outcome", "pending")
+
+        val returned = demo.sameDeviceCallback(txId, code, null)
+        assertThat(returned.statusCode.value()).isEqualTo(302)
+        assertThat(conformance.outcome(txId, startToken)).containsEntry("outcome", "wallet_error")
+        // Only the start token reads it.
+        assertThat(conformance.outcome(txId, "not-the-start-token")).containsEntry("outcome", "unknown")
     }
 
     @Test

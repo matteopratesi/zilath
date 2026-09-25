@@ -45,12 +45,10 @@ class DemoCheckoutController(
     private val flow: VerificationFlow,
     private val receipts: VerificationReceipts,
     private val clock: java.time.Clock,
+    private val registry: DemoTransactionRegistry,
     @Value("\${zilath.demo.pid-vct:urn:eu.europa.ec.eudi:pid:1}") private val pidVct: String,
     @Value("\${zilath.demo.credential-mode:pid}") private val credentialMode: String,
 ) {
-    /** Started transactions, kept a bit longer than the flow TTL so receipts stay downloadable. */
-    private val registry = DemoTransactionRegistry(clock, REGISTRY_TIME_TO_LIVE)
-
     @GetMapping("/demo", produces = [MediaType.TEXT_HTML_VALUE])
     fun eventPage(): String = eventPageHtml()
 
@@ -202,7 +200,6 @@ class DemoCheckoutController(
     }
 
     companion object {
-        private val REGISTRY_TIME_TO_LIVE: java.time.Duration = java.time.Duration.ofMinutes(15)
         private const val CED_SIM_MODE = "ced-sim"
         private const val SAME_DEVICE_PARAM = "same-device"
     }

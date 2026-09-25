@@ -35,6 +35,7 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.time.Clock
@@ -47,6 +48,7 @@ class ConformanceController(
     private val flow: VerificationFlow,
     private val config: RelyingPartyConfiguration,
     private val clock: Clock,
+    private val registry: DemoTransactionRegistry,
     @Value("\${zilath.demo.pid-vct:urn:eu.europa.ec.eudi:pid:1}") private val pidVct: String,
 ) {
     /** The RP entity configuration: how a federation discovers and onboards us. */
@@ -65,8 +67,11 @@ class ConformanceController(
     fun start(): Map<String, String> {
         // The conformance wallet POSTs the response and then expects to be handed a
         // redirect back: that IS the same-device flow, whatever the QR suggests.
-        val started =
-            flow.start(PresentationRequest.forTestPid(pidVct), dev.zilath.verifier.openid4vp.FlowMode.SAME_DEVICE)
+        val request = PresentationRequest.forTestPid(pidVct)
+        val started = flow.start(request, dev.zilath.verifier.openid4vp.FlowMode.SAME_DEVICE)
+        // Registered as the demo pages register theirs: the wallet's redirect brings the
+        // user-agent back through /demo/cb, which completes only a transaction it knows.
+        registry.register(started, request)
         return mapOf(
             "transactionId" to started.id.value,
             "authorizeUrl" to started.qrPayload,
@@ -90,7 +95,7 @@ class ConformanceController(
         @PathVariable txId: String,
         @org.springframework.web.bind.annotation.RequestParam pollToken: String,
     ): Map<String, String> =
-        when (val outcome = flow.awaitOutcome(TransactionId(txId), PollToken(pollToken))) {
+        when (val outcome = outcomeFor(txId, pollToken)) {
             is FlowOutcome.Verified -> mapOf("outcome" to "verified")
             is FlowOutcome.Rejected -> mapOf("outcome" to "rejected", "reason" to outcome.reason.name)
             is FlowOutcome.WalletErrorAcknowledged -> mapOf("outcome" to "wallet_error")
@@ -98,6 +103,29 @@ class ConformanceController(
             FlowOutcome.Expired -> mapOf("outcome" to "expired")
             FlowOutcome.Unknown -> mapOf("outcome" to "unknown")
         }
+
+    /**
+     * Read with the start token until the user-agent comes back through /demo/cb, and with
+     * the token that return was handed afterwards: the flow stops reading with the start
+     * token at the return, and the registry keeps the new one. Only the start token opens
+     * either, since the harness that started the run is the one reading — and what it reads
+     * is the category, never a claim.
+     */
+    private fun outcomeFor(
+        txId: String,
+        pollToken: String,
+    ): FlowOutcome {
+        val entry = registry.get(txId)
+        val startedHere =
+            entry != null &&
+                MessageDigest.isEqual(
+                    entry.transaction.pollToken.value
+                        .toByteArray(),
+                    pollToken.toByteArray(),
+                )
+        val token = if (startedHere) entry.readToken.get() else PollToken(pollToken)
+        return flow.awaitOutcome(TransactionId(txId), token)
+    }
 }
 
 /**

@@ -99,6 +99,7 @@ class SameDeviceCallbackTest {
                 flow = flow,
                 receipts = VerificationReceipts(config, Clock.systemUTC()),
                 clock = Clock.systemUTC(),
+                registry = DemoTransactionRegistry(Clock.systemUTC(), DemoTransactionRegistry.DEFAULT_TIME_TO_LIVE),
                 pidVct = "urn:eudi:pid:it:1",
                 credentialMode = "pid",
             )
