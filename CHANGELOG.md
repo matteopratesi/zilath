@@ -78,7 +78,14 @@ moves with them. So far: `verifier-core` and the build, then `verifier-trust-itw
 - **A trust chain has the shape §4 gives it.** Every statement after the leaf is a
   subordinate statement, the leaf's superior is one of its `authority_hints`, and
   `metadata_policy`, `metadata_policy_crit` or `constraints` in an entity configuration make
-  the chain malformed. `[leaf, leaf, statement]` used to make the leaf its own superior.
+  the chain malformed. `[leaf, leaf, statement]` used to make the leaf its own superior. No
+  entity appears twice in a chain (§17.1), and the online walk skips an authority hint it
+  has already visited: a leaf that vouched for an entity of its own making, which vouched
+  back, dropped the metadata the anchor's statement imposes. The leaf's configuration must
+  verify with a key of its own `jwks` as well as with the one its superior attests, and the
+  claims reserved to one kind of statement (`authority_hints`, `trust_marks` and the like
+  for entity configurations, `source_endpoint` for subordinate statements) make the other
+  kind malformed.
 - **Each statement is verified only with the key its `kid` names**, and every attested key
   needs a unique `kid`.
 - **`crit` fails the chain**, the library understanding no extension, and an operator named
