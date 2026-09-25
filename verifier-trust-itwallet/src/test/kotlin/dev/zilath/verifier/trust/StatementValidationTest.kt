@@ -89,6 +89,140 @@ class StatementValidationTest {
     }
 
     @Test
+    fun `a statement that attests no federation keys stops the chain instead of passing its own down`() {
+        // A subordinate statement with an absent, empty or malformed jwks used to inherit
+        // its superior's keys. The reason is asserted, not just the verdict: in a two-level
+        // chain an inheriting verifier still fails later, for another reason.
+        val noKeys = "carries no federation keys"
+        val jwksVariants = listOf<Any?>(null, mapOf("keys" to emptyList<Any>()), "not-a-jwks")
+        for (jwks in jwksVariants) {
+            val statement = signedStatement(anchorKey, ANCHOR_ID, LEAF_ID) { if (jwks != null) claim("jwks", jwks) }
+            assertThat(
+                untrustedReason(decide(listOf(leafConfiguration(), statement))),
+            ).describedAs("jwks %s", jwks).contains(noKeys)
+        }
+        // Three levels: the intermediate's statement about the leaf attests nothing, and the
+        // leaf configuration is signed with the intermediate's own key — which an
+        // inheriting verifier would have accepted.
+        val chain =
+            listOf(
+                leafConfiguration(
+                    authorityHint = FederationFixtures.INTERMEDIATE_ID,
+                    federationKey = FederationFixtures.intermediateKey,
+                ),
+                signedStatement(FederationFixtures.intermediateKey, FederationFixtures.INTERMEDIATE_ID, LEAF_ID),
+                signedStatement(anchorKey, ANCHOR_ID, FederationFixtures.INTERMEDIATE_ID) {
+                    claim("jwks", jwksClaim(FederationFixtures.intermediateKey))
+                },
+            )
+        assertThat(untrustedReason(decide(chain))).contains(noKeys)
+    }
+
+    @Test
+    fun `a minute of clock skew is tolerated on both ends of a statement's validity`() {
+        fun anchorStatement(
+            issuedAt: Long,
+            expiresIn: Long,
+        ) = signedStatement(
+            anchorKey,
+            ANCHOR_ID,
+            LEAF_ID,
+            expiresInSeconds = expiresIn,
+            issuedAtOffsetSeconds = issuedAt,
+        ) { claim("jwks", jwksClaim(leafFederationKey)) }
+        // Issued 30 s in our future, or expired 30 s ago: a peer's clock drift, accepted.
+        assertThat(
+            trustedKeyIds(decide(listOf(leafConfiguration(), anchorStatement(30, 3600)))),
+        ).containsExactly(issuerKid)
+        assertThat(
+            trustedKeyIds(decide(listOf(leafConfiguration(), anchorStatement(-3600, -30)))),
+        ).containsExactly(issuerKid)
+        // Two minutes is no longer drift.
+        assertThat(
+            untrustedReason(decide(listOf(leafConfiguration(), anchorStatement(120, 3600)))),
+        ).contains("not yet valid")
+        assertThat(
+            untrustedReason(decide(listOf(leafConfiguration(), anchorStatement(-3600, -120)))),
+        ).contains("expired")
+    }
+
+    @Test
+    fun `a federation key below 2048 RSA bits verifies nothing`() {
+        // RFC 7518 §3.3. Nimbus refuses to generate such a key but verifies with one.
+        for ((bits, trusted) in listOf(1024 to false, 2048 to true)) {
+            val leafKey = FederationFixtures.rsaKey(bits, "leaf-rsa-$bits")
+            val chain =
+                listOf(
+                    FederationFixtures.signedRsaStatement(leafKey, LEAF_ID, LEAF_ID) {
+                        claim("jwks", jwksClaim(leafKey))
+                        claim(
+                            "metadata",
+                            mapOf(
+                                "openid_credential_issuer" to FederationFixtures.credentialIssuerSection(),
+                            ),
+                        )
+                    },
+                    signedStatement(anchorKey, ANCHOR_ID, LEAF_ID) { claim("jwks", jwksClaim(leafKey)) },
+                )
+            val decision = decide(chain)
+            if (trusted) {
+                assertThat(trustedKeyIds(decision)).describedAs("$bits bits").containsExactly(issuerKid)
+            } else {
+                assertThat(untrustedReason(decision)).describedAs("$bits bits").contains("does not verify")
+            }
+        }
+        // A weak key configured for the anchor does not verify the anchor's statement either.
+        val weakAnchor = FederationFixtures.rsaKey(1024, "ta-rsa-1024")
+        val statement =
+            FederationFixtures.signedRsaStatement(weakAnchor, ANCHOR_ID, LEAF_ID) {
+                claim("jwks", jwksClaim(leafFederationKey))
+            }
+        val anchor = TrustAnchorConfig(ANCHOR_ID, listOf(weakAnchor.toPublicJWK()))
+        assertThat(untrustedReason(decide(listOf(leafConfiguration(), statement), anchor))).contains("does not verify")
+    }
+
+    @Test
+    fun `the entity statement typ is compared as a media type`() {
+        // RFC 7515 §4.1.9: "application/" is implied, and case does not matter. The IT-Wallet
+        // 1.4.6 §6.11 example chain uses the long form in every statement.
+        for (typ in listOf("application/entity-statement+jwt", "Entity-Statement+JWT")) {
+            val chain =
+                listOf(
+                    signedStatement(leafFederationKey, LEAF_ID, LEAF_ID, typ = typ) {
+                        claim("jwks", jwksClaim(leafFederationKey))
+                        claim(
+                            "metadata",
+                            mapOf(
+                                "openid_credential_issuer" to FederationFixtures.credentialIssuerSection(),
+                            ),
+                        )
+                    },
+                    signedStatement(
+                        anchorKey,
+                        ANCHOR_ID,
+                        LEAF_ID,
+                        typ = typ,
+                    ) { claim("jwks", jwksClaim(leafFederationKey)) },
+                )
+            assertThat(trustedKeyIds(decide(chain))).describedAs(typ).containsExactly(issuerKid)
+        }
+        // A different type, or none, is still not an entity statement.
+        for (typ in listOf("JWT", "application/jwt", "application/entity-statement+jwt;v=1", null)) {
+            val chain =
+                listOf(
+                    leafConfiguration(),
+                    signedStatement(
+                        anchorKey,
+                        ANCHOR_ID,
+                        LEAF_ID,
+                        typ = typ,
+                    ) { claim("jwks", jwksClaim(leafFederationKey)) },
+                )
+            assertThat(untrustedReason(decide(chain))).describedAs("typ %s", typ).contains("typ")
+        }
+    }
+
+    @Test
     fun `the configured anchor keys need a unique kid each`() {
         assertThatIllegalArgumentException()
             .isThrownBy {

@@ -35,11 +35,12 @@ import java.time.Clock
  *    `{iss}/.well-known/openid-federation`, then subordinate statements walking
  *    `authority_hints` up to the configured anchor, via the injectable [FederationFetcher].
  *
- * On success the decision carries the keys the issuer signs credentials with:
- * the `jwks` of its `openid_credential_issuer` metadata AFTER applying the
- * `metadata_policy` of the superior statements (merged anchor-first, OID-FED §6.1),
- * falling back to the leaf's federation keys when that metadata carries no dedicated
- * set. A policy conflict or violation fails the evaluation.
+ * On success the decision carries the keys the issuer signs credentials with: the `jwks`
+ * of its `openid_credential_issuer` metadata AFTER applying the `metadata_policy` of the
+ * superior statements (merged anchor-first, OID-FED §6.1). There is no fallback: a leaf
+ * whose resolved `openid_credential_issuer` metadata advertises no `jwks` is untrusted;
+ * federation keys only ever verify entity statements. A policy conflict or violation
+ * fails the evaluation.
  */
 class FederationTrustEvaluator(
     private val anchor: TrustAnchorConfig,
