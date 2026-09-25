@@ -52,8 +52,12 @@ import java.time.Instant
  *    transaction (see [Transaction]), so a store that keeps expired entries should redact
  *    them at [Transaction.expiresAt], as the in-memory one does, or remove them then.
  *
- * `TransactionStoreContractTest`, in this module's test fixtures, checks the first five:
- * extend it with a factory for your store and run it. The fourth internal review found the
+ * `TransactionStoreContractTest` checks properties 1 to 5 — not retention, which a generic
+ * test cannot observe without waiting on the store's own clock: extend it with a factory for
+ * your store and run it. It is in the Zilath repository, in the test fixtures of
+ * `verifier-openid4vp` (`src/testFixtures`), and NOT on Maven Central, where test fixtures
+ * are not published: copy it into your tests — it needs only JUnit 5 and AssertJ — or build
+ * Zilath from source. The fourth internal review found the
  * list implicit and unchecked, and plausible stores breaking it — an eventually consistent
  * read, a minimising codec, the new value in place of the old — with nothing in the
  * library to notice.
