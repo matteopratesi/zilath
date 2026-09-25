@@ -16,21 +16,16 @@
  */
 package dev.zilath.verifier.openid4vp
 
-import com.nimbusds.jose.CompressionAlgorithm
 import com.nimbusds.jose.EncryptionMethod
 import com.nimbusds.jose.JWEAlgorithm
 import com.nimbusds.jose.JWEHeader
 import com.nimbusds.jose.JWEObject
 import com.nimbusds.jose.Payload
 import com.nimbusds.jose.crypto.ECDHEncrypter
-import com.nimbusds.jose.crypto.ECDSAVerifier
 import com.nimbusds.jose.jwk.Curve
-import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
-import com.nimbusds.jose.util.JSONObjectUtils
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.ClaimPathSegment
-import dev.zilath.verifier.core.CredentialStatus
 import dev.zilath.verifier.core.CredentialVerifier
 import dev.zilath.verifier.core.RawPresentation
 import dev.zilath.verifier.core.RejectionReason
@@ -39,8 +34,6 @@ import dev.zilath.verifier.core.StatusChecker
 import dev.zilath.verifier.core.TestVectors
 import dev.zilath.verifier.core.VerificationContext
 import dev.zilath.verifier.core.VerificationResult
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -52,80 +45,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.time.Duration
 
-class OpenId4VpFlowIntegrationTest {
-    private val signingKey = ECKeyGenerator(Curve.P_256).keyID("rp-sign").generate()
-    private val encryptionKey = ECKeyGenerator(Curve.P_256).keyID("rp-enc").generate()
-    private val clock = SteppingClock(TestVectors.NOW)
-    private val config =
-        RelyingPartyConfiguration(
-            clientId = TestVectors.AUDIENCE,
-            endpoints =
-                RpEndpoints(
-                    requestUriBase = "https://rp.example/openid4vp/request",
-                    responseUriBase = "https://rp.example/openid4vp/response",
-                    sameDeviceCallbackBase = "https://rp.example/cb",
-                ),
-            keys = RpKeys(requestSigningKey = signingKey, responseEncryptionKey = encryptionKey),
-            trustEvaluator = TestVectors.trustIssuerEc(),
-            statusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
-        )
-    private val flow =
-        OpenId4VpVerificationFlow.withInMemoryStore(config, SdJwtVcCredentialVerifier(), clock)
-
-    /**
-     * Simulated wallet: fetches the request object exactly like a wallet would, verifies
-     * its signature, then answers with an SD-JWT VC presentation encrypted to the RP key
-     * advertised in `client_metadata` (IT-Wallet `direct_post.jwt` profile).
-     */
-    @Suppress("LongParameterList") // test factory: independent, defaulted axes
-    private fun walletBody(
-        started: StartedTransaction,
-        nonceOverride: String? = null,
-        stateOverride: String? = null,
-        vpToken: (String) -> JsonElement = ::onePresentationForPid,
-        encryptTo: JWK? = null,
-        audienceOverride: String? = null,
-        jweHeader: JWEHeader = JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM),
-        vct: String = TestVectors.VCT,
-        echoedNonce: String? = null,
-        source: VerificationFlow = flow,
-    ): DirectPostBody {
-        val jar = checkNotNull(source.requestJwtFor(started.id)) { "request JWT not available" }
-        val jwt = SignedJWT.parse(jar)
-        assertThat(jwt.verify(ECDSAVerifier(signingKey.toPublicJWK()))).isTrue()
-        val claims = jwt.jwtClaimsSet
-        val advertisedKey = advertisedEncryptionKey(claims.getJSONObjectClaim("client_metadata"))
-        val compact =
-            TestVectors.vector(
-                nonce = nonceOverride ?: claims.getStringClaim("nonce"),
-                audience = audienceOverride ?: config.clientId,
-                vct = vct,
-            )
-        val payload =
-            buildJsonObject {
-                put("vp_token", vpToken(compact))
-                put("state", stateOverride ?: claims.getStringClaim("state"))
-                echoedNonce?.let { put("nonce", it) }
-            }
-        val jwe = JWEObject(jweHeader, Payload(payload.toString()))
-        jwe.encrypt(ECDHEncrypter((encryptTo ?: advertisedKey).toECKey()))
-        return DirectPostBody(mapOf("response" to jwe.serialize()))
-    }
-
-    private fun onePresentationForPid(compact: String): JsonElement =
-        buildJsonObject { put("pid", buildJsonArray { add(compact) }) }
-
-    private fun advertisedEncryptionKey(clientMetadata: Map<String, Any?>): JWK {
-        val jwks = clientMetadata["jwks"] as Map<*, *>
-        val keys = jwks["keys"] as List<*>
-
-        @Suppress("UNCHECKED_CAST")
-        return JWK.parse(JSONObjectUtils.toJSONString(keys.first() as Map<String, Any?>))
-    }
-
-    private fun startForPid(): StartedTransaction =
-        flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
-
+class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
     @Test
     fun `full cross-device flow ends verified with the disclosed claims`() {
         val started = startForPid()
@@ -242,42 +162,6 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
-    fun `a recorded outcome outlives the transaction only as a claim-free tombstone`() {
-        // This asserted that a Verified outcome, claims and all, stayed readable after the
-        // transaction expired — so a checkout that polled late still got them. That is the
-        // retention the privacy document promises not to have: the time to live is the
-        // bound, and letting a late poll exceed it empties the promise.
-        //
-        // The transaction still answers after expiry, so "expired" stays distinguishable
-        // from "never existed". What it no longer answers with is the claims.
-        val started = startForPid()
-        flow.handleWalletResponse(started.id, walletBody(started))
-        clock.advance(Duration.ofMinutes(6))
-        val outcome = flow.awaitOutcome(started.id)
-        assertThat(outcome).isNotInstanceOf(FlowOutcome.Verified::class.java)
-        assertThat(outcome.toString()).doesNotContain("given_name").doesNotContain("family_name")
-    }
-
-    @Test
-    fun `an expired wallet error does not keep the wallet's own text readable`() {
-        // The tombstone drops the description too: it came from the wallet response and
-        // has no business outliving the transaction it belonged to.
-        // Cross-device on purpose: a same-device transaction with no completed return leg
-        // answers Expired whatever the tombstone did, so that version of this test would
-        // have passed with the redaction removed — it would have tested nothing.
-        val started = startForPid()
-        flow.handleWalletResponse(
-            started.id,
-            DirectPostBody(mapOf("error" to "access_denied", "error_description" to "user said no")),
-        )
-        clock.advance(Duration.ofMinutes(6))
-        val outcome = flow.awaitOutcome(started.id)
-        assertThat(outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
-        assertThat((outcome as FlowOutcome.WalletErrorAcknowledged).description).isNull()
-        assertThat(outcome.error).isEqualTo("access_denied")
-    }
-
-    @Test
     fun `a throwing status checker ends in a terminal internal error, not a stuck transaction`() {
         val throwingStatus = StatusChecker { _, _ -> error("status backend down") }
         val fragileFlow =
@@ -322,24 +206,6 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
-    fun `a time to live beyond the cap is refused at construction, and the cap itself works`() {
-        // Long.MAX_VALUE seconds used to pass construction and overflow in createdAt + ttl
-        // at the first request object: a configuration error found by the first wallet.
-        assertThatThrownBy { config.copy(transactionTimeToLive = Duration.ofSeconds(Long.MAX_VALUE)) }
-            .isInstanceOf(IllegalArgumentException::class.java)
-        assertThatThrownBy {
-            config.copy(transactionTimeToLive = RelyingPartyConfiguration.MAX_TIME_TO_LIVE.plusSeconds(1))
-        }.isInstanceOf(IllegalArgumentException::class.java)
-        val atCap = config.copy(transactionTimeToLive = RelyingPartyConfiguration.MAX_TIME_TO_LIVE)
-        val atCapFlow = OpenId4VpVerificationFlow.withInMemoryStore(atCap, SdJwtVcCredentialVerifier(), clock)
-        val first = atCapFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
-        val jar = SignedJWT.parse(checkNotNull(atCapFlow.requestJwtFor(first.id)))
-        assertThat(jar.jwtClaimsSet.expirationTime.toInstant())
-            .isEqualTo(TestVectors.NOW.plus(RelyingPartyConfiguration.MAX_TIME_TO_LIVE))
-        atCapFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
-    }
-
-    @Test
     fun `configuration toString never contains private key material`() {
         assertThat(config.toString()).doesNotContain(signingKey.d.toString())
         assertThat(config.toString()).doesNotContain(encryptionKey.d.toString())
@@ -357,20 +223,6 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
-    fun `an expired transaction cannot complete`() {
-        val started = startForPid()
-        val body = walletBody(started)
-        clock.advance(Duration.ofMinutes(6))
-        // Expired on every path, and consistently: the entry is redacted in place and kept
-        // until the store drops it, so later reads still say "expired", never "unknown" —
-        // and never carry anything the transaction held.
-        assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
-        assertThat(flow.handleWalletResponse(started.id, body)).isEqualTo(FlowOutcome.Expired)
-        assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
-        assertThat(flow.requestJwtFor(started.id)).isNull()
-    }
-
-    @Test
     fun `state mismatch is rejected as malformed`() {
         val started = startForPid()
         val outcome = flow.handleWalletResponse(started.id, walletBody(started, stateOverride = "someone-else"))
@@ -382,109 +234,6 @@ class OpenId4VpFlowIntegrationTest {
         val started = startForPid()
         val outcome = flow.handleWalletResponse(started.id, walletBody(started, nonceOverride = "stolen-nonce"))
         assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.NONCE_MISMATCH)
-    }
-
-    @Test
-    fun `missing response parameter is rejected as malformed`() {
-        val started = startForPid()
-        val outcome = flow.handleWalletResponse(started.id, DirectPostBody(emptyMap()))
-        assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
-    }
-
-    @Test
-    fun `garbage response is rejected as malformed`() {
-        val started = startForPid()
-        val outcome = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("response" to "not-a-jwe")))
-        assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
-    }
-
-    @Test
-    fun `response encrypted to the wrong key is rejected as malformed`() {
-        val started = startForPid()
-        val wrongKey = ECKeyGenerator(Curve.P_256).keyID("wrong").generate().toPublicJWK()
-        val outcome = flow.handleWalletResponse(started.id, walletBody(started, encryptTo = wrongKey))
-        assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
-    }
-
-    @Test
-    fun `a response using an encryption the RP never advertised is rejected`() {
-        // ECDHDecrypter would accept every one of these; the RP's metadata advertises none
-        // of them, and a compressed payload on an unauthenticated endpoint is a
-        // decompression bomb. What is advertised is what is accepted.
-        val notAdvertised =
-            listOf(
-                JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A128CBC_HS256),
-                JWEHeader(JWEAlgorithm.ECDH_ES_A256KW, EncryptionMethod.A256GCM),
-                JWEHeader
-                    .Builder(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM)
-                    .compressionAlgorithm(CompressionAlgorithm.DEF)
-                    .build(),
-            )
-        for (header in notAdvertised) {
-            val started = startForPid()
-            val outcome = flow.handleWalletResponse(started.id, walletBody(started, jweHeader = header))
-            assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
-        }
-    }
-
-    @Test
-    fun `the advertised A128GCM alternative is accepted`() {
-        val started = startForPid()
-        val body = walletBody(started, jweHeader = JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A128GCM))
-        assertThat(flow.handleWalletResponse(started.id, body)).isInstanceOf(FlowOutcome.Verified::class.java)
-    }
-
-    @Test
-    fun `vp_token carries exactly one presentation for the query`() {
-        // OpenID4VP 1.0 §8.1: without `multiple` the array MUST hold one presentation, and
-        // §14.1.2 wants every presentation in a response validated. The first element used
-        // to be verified and the rest dropped unseen — here the second is not even ours.
-        val two = startForPid()
-        val extra =
-            flow.handleWalletResponse(
-                two.id,
-                walletBody(two, vpToken = { compact ->
-                    buildJsonObject {
-                        put(
-                            "pid",
-                            buildJsonArray {
-                                add(compact)
-                                add("not-a-presentation")
-                            },
-                        )
-                    }
-                }),
-            )
-        assertThat((extra as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
-        assertThat(extra.detail).isEqualTo("vp_token carries more presentations than requested")
-
-        val empty = startForPid()
-        val none =
-            flow.handleWalletResponse(
-                empty.id,
-                walletBody(empty, vpToken = { buildJsonObject { put("pid", buildJsonArray { }) } }),
-            )
-        assertThat((none as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
-
-        // IT-Wallet WP_093: the single presentation may also come without the array.
-        val single = startForPid()
-        val unwrapped =
-            flow.handleWalletResponse(
-                single.id,
-                walletBody(single, vpToken = { compact -> buildJsonObject { put("pid", compact) } }),
-            )
-        assertThat(unwrapped).isInstanceOf(FlowOutcome.Verified::class.java)
-    }
-
-    @Test
-    fun `a bare vp_token string is the legacy shape, refused under IT-Wallet`() {
-        // IT-Wallet: the vp_token MUST be a JSON object keyed by credential query id. The
-        // ARF baseline profile keeps the pre-1.0 form (see the ARF profile test below).
-        val started = startForPid()
-        val outcome = flow.handleWalletResponse(started.id, walletBody(started, vpToken = { JsonPrimitive(it) }))
-        assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
-        assertThat(ItWalletProfile.acceptsBareVpToken).isFalse()
-        assertThat(ArfBaselineProfile.acceptsBareVpToken).isTrue()
     }
 
     @Test
@@ -534,225 +283,9 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
-    fun `a response above the size limit is refused before it is decoded`() {
-        // The size used to be bounded only by the servlet container: a JWE of several MiB,
-        // encrypted to the RP's published key, was decoded, decrypted and parsed in full.
-        // Two configurations over one store: one to start transactions, one with a limit.
-        val decoded =
-            java.util.concurrent.atomic
-                .AtomicInteger()
-        val counting =
-            object : WalletProfile by ItWalletProfile {
-                override fun decodeWalletResponse(
-                    body: DirectPostBody,
-                    config: RelyingPartyConfiguration,
-                ): JsonObject = ItWalletProfile.decodeWalletResponse(body, config).also { decoded.incrementAndGet() }
-            }
-        val store = InMemoryTransactionStore(clock)
-        val starter = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), store, clock)
-
-        fun limitedTo(max: Int) =
-            OpenId4VpVerificationFlow(
-                config.copy(profile = counting, maxWalletResponseLength = max),
-                SdJwtVcCredentialVerifier(),
-                store,
-                clock,
-            )
-
-        fun lengthOf(body: DirectPostBody) = body.parameters.entries.sumOf { it.key.length + it.value.length }
-
-        val over = starter.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
-        val overBody = walletBody(over, source = starter)
-        val refused = limitedTo(lengthOf(overBody) - 1).handleWalletResponse(over.id, overBody)
-        assertThat((refused as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
-        assertThat(refused.detail).isEqualTo("wallet response exceeds the size limit")
-        assertThat(decoded.get()).isZero()
-
-        val at = starter.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
-        val atBody = walletBody(at, source = starter)
-        assertThat(limitedTo(lengthOf(atBody)).handleWalletResponse(at.id, atBody))
-            .isInstanceOf(FlowOutcome.Verified::class.java)
-        assertThat(decoded.get()).isEqualTo(1)
-
-        assertThat(RelyingPartyConfiguration.DEFAULT_MAX_WALLET_RESPONSE_LENGTH).isEqualTo(1024 * 1024)
-        assertThatThrownBy { config.copy(maxWalletResponseLength = 0) }
-            .isInstanceOf(IllegalArgumentException::class.java)
-    }
-
-    @Test
-    fun `the wallet's error text is bounded before the transaction keeps it`() {
-        // Anyone holding a transaction id can post an error, and its text lives in the
-        // store for the whole time to live. It used to be kept verbatim at whatever size the
-        // container accepted: a million characters stayed a million characters.
-        val flood = startForPid()
-        val huge = "e".repeat(1_000_000)
-        val flooded =
-            flow.handleWalletResponse(flood.id, DirectPostBody(mapOf("error" to huge, "error_description" to huge)))
-        val kept = flow.awaitOutcome(flood.id) as FlowOutcome.WalletErrorAcknowledged
-        assertThat(kept).isEqualTo(flooded)
-        assertThat(kept.error).isEqualTo(FlowOutcome.WalletErrorAcknowledged.MALFORMED_ERROR)
-        assertThat(kept.description).hasSize(MAX_ERROR_DESCRIPTION_LENGTH)
-
-        // Outside the RFC 6749 character set: a code with a line break is no code, and a
-        // description keeps its length with the offending characters replaced.
-        val forged = startForPid()
-        val injected =
-            flow.handleWalletResponse(
-                forged.id,
-                DirectPostBody(
-                    mapOf(
-                        "error" to "access_denied\r\nX",
-                        "error_description" to "line\r\n2026-09-04 WARN forged \"quote\" \\ ok",
-                    ),
-                ),
-            ) as FlowOutcome.WalletErrorAcknowledged
-        assertThat(injected.error).isEqualTo(FlowOutcome.WalletErrorAcknowledged.MALFORMED_ERROR)
-        assertThat(injected.description).isEqualTo("line??2026-09-04 WARN forged ?quote? ? ok")
-
-        // A description with nothing printable left is no description.
-        val blank = startForPid()
-        val control =
-            flow.handleWalletResponse(
-                blank.id,
-                DirectPostBody(
-                    mapOf(
-                        "error" to "access_denied",
-                        "error_description" to " ",
-                    ),
-                ),
-            )
-        assertThat(control).isEqualTo(FlowOutcome.WalletErrorAcknowledged("access_denied", null))
-    }
-
-    @Test
-    fun `an error post cannot collect the return ticket of a verification it did not make`() {
-        // The attack this test exists for. A same-device verification completes: the
-        // wallet has answered, the outcome is Verified, and the user's browser has not yet
-        // come back through the callback. An attacker who knows only the transaction id —
-        // it travels in the URL the user was sent to — posts an unauthenticated error.
-        //
-        // Before the fix, that request was acknowledged with a body carrying the victim's
-        // freshly minted response_code: one unauthenticated POST bought somebody else's
-        // verified entitlement, and burned their return leg on the way out.
-        val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
-        val verified = flow.handleWalletResponse(started.id, walletBody(started))
-        assertThat(verified).isInstanceOf(FlowOutcome.Verified::class.java)
-
-        val attacker = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
-        assertThat(attacker).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
-
-        // The attacker is owed an acknowledgement, and nothing else.
-        assertThat(flow.sameDeviceRedirectFor(started.id, attacker)).isNull()
-
-        // The verification itself is untouched: the wallet's own ack still carries the
-        // ticket, and the user completes the flow they started.
-        val redirect = checkNotNull(flow.sameDeviceRedirectFor(started.id, verified))
-        val code = redirect.substringAfter("response_code=")
-        assertThat(flow.consumeResponseCode(started.id, code)).isTrue()
-    }
-
-    @Test
-    fun `a wallet error while the transaction is still open still returns the user`() {
-        // The legitimate case the fix must not break (RPR-59): the user cancels inside the
-        // wallet, the wallet posts an error, and the acknowledgement must still bring them
-        // back to the relying party rather than stranding them.
-        val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
-        val cancelled = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
-        assertThat(flow.sameDeviceRedirectFor(started.id, cancelled)).contains("response_code=")
-    }
-
-    @Test
     fun `pending transaction reports pending`() {
         val started = startForPid()
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Pending)
-    }
-
-    @Test
-    fun `an unreturned same-device outcome expires instead of leaking`() {
-        val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
-        val outcome =
-            flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
-        assertThat(outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
-        val redirect = checkNotNull(flow.sameDeviceRedirectFor(started.id, outcome))
-        val code = redirect.substringAfter("response_code=")
-        // The user never comes back within the transaction TTL.
-        clock.advance(config.transactionTimeToLive.plusSeconds(1))
-        // No new code is minted for an expired transaction.
-        assertThat(flow.sameDeviceRedirectFor(started.id, outcome)).isNull()
-        // The stale code is not consumable, and the wallet outcome is never exposed:
-        // the first read after expiry took the entry, so what is left is Unknown.
-        assertThat(flow.awaitOutcome(started.id)).isIn(FlowOutcome.Expired, FlowOutcome.Unknown)
-        assertThat(flow.consumeResponseCode(started.id, code)).isFalse()
-        assertThat(flow.awaitOutcome(started.id)).isIn(FlowOutcome.Expired, FlowOutcome.Unknown)
-    }
-
-    @Test
-    fun `a verified outcome is never read past the time to live, whatever the store keeps`() {
-        // awaitOutcome returned a recorded outcome before looking at the clock, and left the
-        // redaction to the store: one that kept entries longer — a TTL of its own, a
-        // periodic cleanup — kept the claims readable for as long as it kept the entry.
-        val retaining = RetainingTransactionStore()
-        val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
-
-        val crossDevice = retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
-        retainingFlow.handleWalletResponse(crossDevice.id, walletBody(crossDevice, source = retainingFlow))
-
-        val sameDevice =
-            retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
-        val verified = retainingFlow.handleWalletResponse(sameDevice.id, walletBody(sameDevice, source = retainingFlow))
-        val code =
-            checkNotNull(retainingFlow.sameDeviceRedirectFor(sameDevice.id, verified)).substringAfter("response_code=")
-        assertThat(retainingFlow.consumeResponseCode(sameDevice.id, code)).isTrue()
-        assertThat(retainingFlow.awaitOutcome(sameDevice.id)).isInstanceOf(FlowOutcome.Verified::class.java)
-
-        clock.advance(config.transactionTimeToLive.plusSeconds(1))
-        for (id in listOf(crossDevice.id, sameDevice.id)) {
-            val late = retainingFlow.awaitOutcome(id)
-            assertThat(late).isEqualTo(FlowOutcome.Rejected(RejectionReason.EXPIRED))
-            // ...and redacted where it is kept, not only in the answer.
-            assertThat(retaining.get(id)?.outcome).isEqualTo(FlowOutcome.Rejected(RejectionReason.EXPIRED))
-            assertThat(retaining.get(id)?.responseCode).isNull()
-            assertThat(retainingFlow.awaitOutcome(id)).isEqualTo(late)
-        }
-    }
-
-    @Test
-    fun `a response to an expired transaction leaves it expired, error or presentation`() {
-        // An error posted to an expired but not yet swept transaction used to become its
-        // outcome, while a valid presentation next to it was answered Expired and removed:
-        // the checkout read "wallet error" for one and "unknown" for the other.
-        val erred = startForPid()
-        val presented = startForPid()
-        val presentation = walletBody(presented)
-        clock.advance(config.transactionTimeToLive.plusSeconds(1))
-        val ack =
-            flow.handleWalletResponse(
-                erred.id,
-                DirectPostBody(mapOf("error" to "access_denied", "error_description" to "too late")),
-            )
-        // Still acknowledged to the wallet: OpenID4VP §8.2 owes the error an answer.
-        assertThat(ack).isEqualTo(FlowOutcome.WalletErrorAcknowledged("access_denied", "too late"))
-        assertThat(flow.handleWalletResponse(presented.id, presentation)).isEqualTo(FlowOutcome.Expired)
-        assertThat(flow.awaitOutcome(erred.id)).isEqualTo(FlowOutcome.Expired)
-        assertThat(flow.awaitOutcome(presented.id)).isEqualTo(FlowOutcome.Expired)
-    }
-
-    @Test
-    fun `a retaining store still refuses to consume an expired response code`() {
-        // A shared store may RETAIN expired entries: expiry must be a precondition of
-        // consumption itself, not a side effect of the in-memory sweep.
-        val retaining = RetainingTransactionStore()
-        val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
-        val started =
-            retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
-        val cancelled =
-            retainingFlow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
-        val code =
-            checkNotNull(retainingFlow.sameDeviceRedirectFor(started.id, cancelled)).substringAfter("response_code=")
-        clock.advance(config.transactionTimeToLive.plusSeconds(1))
-        // The retained entry is findable, but the stale code must not complete the flow.
-        assertThat(retainingFlow.consumeResponseCode(started.id, code)).isFalse()
-        assertThat(retainingFlow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
     }
 
     @Test

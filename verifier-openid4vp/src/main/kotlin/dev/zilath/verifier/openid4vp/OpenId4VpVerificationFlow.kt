@@ -30,13 +30,25 @@ import java.time.Clock
  * The nonce is consumed atomically on the first wallet response: any further
  * response is rejected as [RejectionReason.REPLAY] without touching the stored
  * outcome, and the checkout keeps polling the first result.
+ *
+ * [close] closes the store only when the flow created it ([withInMemoryStore]); a store
+ * passed to the constructor is its owner's to close. A Spring bean of this class is closed
+ * with its application context.
  */
 class OpenId4VpVerificationFlow(
     private val config: RelyingPartyConfiguration,
     private val verifier: CredentialVerifier,
     private val store: TransactionStore,
     private val clock: Clock,
-) : VerificationFlow {
+) : VerificationFlow,
+    AutoCloseable {
+    /** The store this flow created, and therefore closes. */
+    private var ownedStore: AutoCloseable? = null
+
+    override fun close() {
+        ownedStore?.close()
+    }
+
     override fun start(
         request: PresentationRequest,
         mode: FlowMode,
@@ -264,17 +276,19 @@ class OpenId4VpVerificationFlow(
         /** The same-device response_code is a bearer return ticket: same entropy as the nonce. */
         private const val RESPONSE_CODE_BYTES = 32
 
-        /** Convenience factory wiring the default in-memory store. */
+        /**
+         * Convenience factory wiring the default in-memory store, which the flow owns and
+         * closes with [close]. [maxTransactions] bounds what [VerificationFlow.start] may
+         * allocate: see [InMemoryTransactionStore].
+         */
         fun withInMemoryStore(
             config: RelyingPartyConfiguration,
             verifier: CredentialVerifier,
             clock: Clock = Clock.systemUTC(),
-        ): OpenId4VpVerificationFlow =
-            OpenId4VpVerificationFlow(
-                config,
-                verifier,
-                InMemoryTransactionStore(clock),
-                clock,
-            )
+            maxTransactions: Int = InMemoryTransactionStore.DEFAULT_MAX_TRANSACTIONS,
+        ): OpenId4VpVerificationFlow {
+            val store = InMemoryTransactionStore(clock, maxTransactions)
+            return OpenId4VpVerificationFlow(config, verifier, store, clock).also { it.ownedStore = store }
+        }
     }
 }

@@ -44,6 +44,10 @@ interface VerificationFlow {
      * Each call mints a fresh nonce and a fresh transaction id: never reuse a
      * [StartedTransaction] across users or page loads, because the nonce is what binds one
      * presentation to one request and it is accepted exactly once.
+     *
+     * Each call also allocates server-side state for the time to live, on behalf of
+     * whoever reached the page that calls it: rate-limit it or bind it to a session. The
+     * default store refuses beyond its capacity with [TooManyTransactionsException].
      */
     fun start(
         request: PresentationRequest,
