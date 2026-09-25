@@ -16,8 +16,11 @@
  */
 package dev.zilath.verifier.openid4vp
 
+import com.nimbusds.jose.JWEAlgorithm
+import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.crypto.ECDSAVerifier
 import com.nimbusds.jose.jwk.Curve
+import com.nimbusds.jose.jwk.KeyUse
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.CredentialStatus
@@ -116,6 +119,64 @@ class RpEntityConfigurationTest {
         @Suppress("UNCHECKED_CAST")
         val keys = (verifier["jwks"] as Map<String, Any?>)["keys"] as List<Map<String, Any?>>
         assertThat(keys.map { it["kid"] }).containsExactly("rp-sign")
+    }
+
+    @Test
+    fun `one key per purpose, under a kid of its own`() {
+        // Nothing compared the keys: the same key for signing and encryption, two keys under
+        // one kid, or a signing key marked for encryption all passed.
+        val sign = ECKeyGenerator(Curve.P_256).keyID("rp-sign").generate()
+        val enc = ECKeyGenerator(Curve.P_256).keyID("rp-enc").generate()
+        assertThatIllegalArgumentException().isThrownBy { RpKeys(sign, sign) }
+        assertThatIllegalArgumentException()
+            .isThrownBy { RpKeys(sign, ECKeyGenerator(Curve.P_256).keyID("rp-sign").generate()) }
+            .withMessageContaining("distinct kids")
+        assertThatIllegalArgumentException()
+            .isThrownBy { RpKeys(ECKeyGenerator(Curve.P_256).keyID("s").keyUse(KeyUse.ENCRYPTION).generate(), enc) }
+        assertThatIllegalArgumentException()
+            .isThrownBy { RpKeys(ECKeyGenerator(Curve.P_256).keyID("s").algorithm(JWSAlgorithm.ES384).generate(), enc) }
+        assertThatIllegalArgumentException()
+            .isThrownBy { RpKeys(sign, ECKeyGenerator(Curve.P_256).keyID("e").keyUse(KeyUse.SIGNATURE).generate()) }
+        // Keys marked for what they do are fine.
+        RpKeys(
+            ECKeyGenerator(Curve.P_256)
+                .keyID("s")
+                .keyUse(KeyUse.SIGNATURE)
+                .algorithm(JWSAlgorithm.ES256)
+                .generate(),
+            ECKeyGenerator(Curve.P_256)
+                .keyID("e")
+                .keyUse(KeyUse.ENCRYPTION)
+                .algorithm(JWEAlgorithm.ECDH_ES)
+                .generate(),
+        )
+
+        // ...and the federation key is none of the protocol keys.
+        val base = config("openid_federation:https://rp.example")
+        assertThatIllegalArgumentException().isThrownBy {
+            base.copy(federation = federation().copy(federationKey = base.keys.requestSigningKey))
+        }
+        assertThatIllegalArgumentException().isThrownBy {
+            base.copy(
+                federation = federation().copy(federationKey = ECKeyGenerator(Curve.P_256).keyID("rp-enc").generate()),
+            )
+        }
+    }
+
+    @Test
+    fun `the published jwks holds one signing and one encryption key, each marked`() {
+        val config = config("openid_federation:https://rp.example")
+        val jwt = SignedJWT.parse(RpEntityConfiguration.build(config, config.federation!!, clock))
+
+        @Suppress("UNCHECKED_CAST")
+        val verifier =
+            jwt.jwtClaimsSet.getJSONObjectClaim("metadata")["openid_credential_verifier"] as Map<String, Any?>
+
+        @Suppress("UNCHECKED_CAST")
+        val keys = (verifier["jwks"] as Map<String, Any?>)["keys"] as List<Map<String, Any?>>
+        assertThat(keys.map { it["use"] }).containsExactlyInAnyOrder("sig", "enc")
+        assertThat(keys.single { it["use"] == "sig" }).containsEntry("kid", "rp-sign").containsEntry("alg", "ES256")
+        assertThat(keys.single { it["use"] == "enc" }).containsEntry("kid", "rp-enc").containsEntry("alg", "ECDH-ES")
     }
 
     @Test

@@ -16,8 +16,11 @@
  */
 package dev.zilath.verifier.openid4vp
 
+import com.nimbusds.jose.JWEAlgorithm
+import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.KeyUse
 import dev.zilath.verifier.core.StatusChecker
 import dev.zilath.verifier.core.TrustEvaluator
 import java.time.Duration
@@ -63,7 +66,26 @@ data class RpKeys(
 ) {
     init {
         requireProfileKey("requestSigningKey", requestSigningKey)
-        responseEncryptionKey?.let { requireProfileKey("responseEncryptionKey", it) }
+        // A key marked for one purpose is not used for the other (RFC 7517 §4.2, §4.4).
+        require(
+            requestSigningKey.keyUse in setOf(null, KeyUse.SIGNATURE),
+        ) { "requestSigningKey must not be marked use=enc" }
+        require(
+            requestSigningKey.algorithm in setOf(null, JWSAlgorithm.ES256),
+        ) { "requestSigningKey must be for ES256" }
+        responseEncryptionKey?.let { encryption ->
+            requireProfileKey("responseEncryptionKey", encryption)
+            require(encryption.keyUse in setOf(null, KeyUse.ENCRYPTION)) {
+                "responseEncryptionKey must not be marked use=sig"
+            }
+            require(encryption.algorithm in setOf(null, JWEAlgorithm.ECDH_ES)) {
+                "responseEncryptionKey must be for ECDH-ES"
+            }
+        }
+        // The fourth internal review found nothing comparing the two: the same key for both
+        // jobs, or two keys under one kid — which the wallet uses to pick one (RFC 7517
+        // §4.5) — passed, and the entity configuration then published two keys as "enc".
+        requireDistinctKeys(listOfNotNull(requestSigningKey, responseEncryptionKey))
     }
 
     private fun requireProfileKey(
@@ -140,6 +162,11 @@ data class RelyingPartyConfiguration(
         // Under the openid_federation scheme the wallet resolves us through the trust
         // chain and checks client_id against our entity configuration `sub` (WP_086):
         // a config without federation identity, or with a mismatched one, can never work.
+        // The federation key signs entity statements and nothing else: sharing it with the
+        // request signer would leave only `typ` telling a request object from a statement.
+        federation?.let {
+            requireDistinctKeys(listOfNotNull(keys.requestSigningKey, keys.responseEncryptionKey, it.federationKey))
+        }
         if (clientId.startsWith(OPENID_FEDERATION_PREFIX)) {
             requireNotNull(federation) {
                 "the openid_federation client id scheme requires a federation configuration"
@@ -171,4 +198,12 @@ data class RelyingPartyConfiguration(
          */
         const val DEFAULT_MAX_WALLET_RESPONSE_LENGTH: Int = 1024 * 1024
     }
+}
+
+/** Distinct keys under distinct kids: one key, one purpose, one name (RFC 7517 §4.5). */
+private fun requireDistinctKeys(keys: List<ECKey>) {
+    require(keys.map { it.computeThumbprint() }.toSet().size == keys.size) {
+        "the relying party keys must be distinct: one key per purpose"
+    }
+    require(keys.map { it.keyID }.toSet().size == keys.size) { "the relying party keys must carry distinct kids" }
 }

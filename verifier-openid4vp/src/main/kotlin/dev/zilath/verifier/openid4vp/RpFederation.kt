@@ -22,6 +22,7 @@ import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSASigner
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.KeyUse
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import java.time.Clock
@@ -196,8 +197,13 @@ object RpEntityConfiguration {
                         mapOf(
                             "keys" to
                                 listOfNotNull(
-                                    config.keys.requestSigningKey
-                                        .toPublicJWK()
+                                    // Published with its use and alg, as the encryption key is:
+                                    // a key without `use` is a key for anything.
+                                    ECKey
+                                        .Builder(config.keys.requestSigningKey.toPublicJWK())
+                                        .keyUse(KeyUse.SIGNATURE)
+                                        .algorithm(JWSAlgorithm.ES256)
+                                        .build()
                                         .toJSONObject(),
                                     config.keys.responseEncryptionKey?.let { publicEncryptionJwk(it).toJSONObject() },
                                 ),
