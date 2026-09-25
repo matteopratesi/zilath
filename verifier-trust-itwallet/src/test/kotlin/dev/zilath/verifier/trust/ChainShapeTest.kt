@@ -64,6 +64,16 @@ class ChainShapeTest {
     }
 
     @Test
+    fun `a closing anchor configuration must be the anchor's, although nothing in it is used`() {
+        // §10.2: the last statement's signature validates with a key of the trust anchor. A
+        // refreshed chain leaves the closing configuration out, so this is checked with the
+        // shape, before any fetch.
+        val impostor = ECKeyGenerator(Curve.P_256).keyID(anchorKey.keyID).generate()
+        val forged = signedStatement(impostor, ANCHOR_ID, ANCHOR_ID) { claim("jwks", jwksClaim(impostor)) }
+        assertThat(untrustedReason(decide(FederationFixtures.offlineChain() + forged))).contains("does not verify")
+    }
+
+    @Test
     fun `a duplicated leaf cannot stand in for its own immediate superior`() {
         // [leaf, leaf, anchor's statement] links and verifies: the anchor's statement
         // attests the leaf's key, which signs both copies. It used to make the leaf its

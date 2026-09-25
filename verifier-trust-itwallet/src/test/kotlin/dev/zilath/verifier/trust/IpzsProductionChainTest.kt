@@ -90,7 +90,10 @@ class IpzsProductionChainTest {
             FederationTrustEvaluator(anchor, unreachable, IpzsFederationSnapshot.clock, offlineFallback = true)
 
         assertTrustedForTheRealIssuerKey(offline.evaluate(input(trustChain = IpzsFederationSnapshot.cedIssuerChain)))
-        assertThat(fetched).containsExactly("${IpzsFederationSnapshot.CED_ISSUER}/.well-known/openid-federation")
+        assertThat(fetched).containsExactly(
+            "${IpzsFederationSnapshot.CED_ISSUER}/.well-known/openid-federation",
+            "${IpzsFederationSnapshot.TRUST_ANCHOR}/.well-known/openid-federation",
+        )
         // Without the fallback, the same outage is an untrusted issuer, not a stale answer.
         val online = FederationTrustEvaluator(anchor, unreachable, IpzsFederationSnapshot.clock)
         assertThat(online.evaluate(input(trustChain = IpzsFederationSnapshot.cedIssuerChain)))

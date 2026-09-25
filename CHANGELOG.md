@@ -86,10 +86,13 @@ moves with them. So far: `verifier-core` and the build, then `verifier-trust-itw
 - **A credential without `iss` is untrusted on the offline path too.**
 - **A provided `trust_chain` is refreshed online**: its shape and anchor are checked, then
   the chain is resolved again and the fresh documents decide, so a statement the superior
-  has withdrawn is a revocation. `offlineFallback = true` uses the provided chain alone,
-  and only while the federation cannot be reached. Subordinate statements valid for more
-  than 24 hours are refused (`maxStatementLifetime`, IT-Wallet §6.11.1): that bounds how long
-  a withdrawn statement can be replayed.
+  has withdrawn is a revocation. With `offlineFallback = true` the chain is refreshed along
+  its own path one statement at a time, and only a document that cannot be fetched at all
+  is taken from the header: the superiors are asked even when the leaf's own configuration
+  cannot be fetched, so a withdrawn statement is missed only while the superior that
+  withdrew it is unreachable. Subordinate statements valid for more than 24 hours are
+  refused (`maxStatementLifetime`, IT-Wallet §6.11.1): that bounds how long a withdrawn
+  statement can be replayed.
 - A `null` metadata parameter, an array operator on a parameter that is not an array, and an
   `add` outside `subset_of` are policy errors, as the specification says.
 - Every `Untrusted.reason` is a fixed phrase: none repeats an identifier or a name read
