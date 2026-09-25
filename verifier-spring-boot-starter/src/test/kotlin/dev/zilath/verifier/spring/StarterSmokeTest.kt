@@ -57,7 +57,6 @@ class StarterSmokeTest {
 
     companion object {
         private val signingKey = ECKeyGenerator(Curve.P_256).keyID("rp-sign").generate()
-        private val encryptionKey = ECKeyGenerator(Curve.P_256).keyID("rp-enc").generate()
 
         @JvmStatic
         @DynamicPropertySource
@@ -66,7 +65,6 @@ class StarterSmokeTest {
             registry.add("zilath.openid4vp.request-uri-base") { "https://rp.example/openid4vp/request" }
             registry.add("zilath.openid4vp.response-uri-base") { "https://rp.example/openid4vp/response" }
             registry.add("zilath.openid4vp.request-signing-key-jwk") { signingKey.toJSONString() }
-            registry.add("zilath.openid4vp.response-encryption-key-jwk") { encryptionKey.toJSONString() }
         }
     }
 

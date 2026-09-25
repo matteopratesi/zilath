@@ -88,7 +88,7 @@ class OpenId4VpAutoConfiguration {
                 keys =
                     RpKeys(
                         requestSigningKey = ECKey.parse(properties.requestSigningKeyJwk),
-                        responseEncryptionKey = ECKey.parse(properties.responseEncryptionKeyJwk),
+                        responseEncryptionKey = properties.responseEncryptionKeyJwk.ifBlank { null }?.let(ECKey::parse),
                     ),
                 trustEvaluator = trustEvaluator,
                 statusChecker = statusChecker,

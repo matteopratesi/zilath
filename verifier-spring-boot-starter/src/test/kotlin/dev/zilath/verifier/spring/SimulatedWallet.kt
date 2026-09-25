@@ -38,15 +38,15 @@ import kotlinx.serialization.json.put
 /**
  * The `response` a wallet posts for the transaction of [requestObject]: a vp_token for the
  * `pid` query and the transaction's `state`, encrypted to the key the request object
- * publishes. The presentation is a placeholder: the tests that post it choose the verdict
- * with a [ScriptedVerifier].
+ * publishes, or to [encryptTo]. The presentation is a placeholder: the tests that post it
+ * choose the verdict with a [ScriptedVerifier].
  */
-internal fun encryptedResponseFor(requestObject: String): String {
+internal fun encryptedResponseFor(
+    requestObject: String,
+    encryptTo: JWK? = null,
+): String {
     val claims = SignedJWT.parse(requestObject).jwtClaimsSet
-    val jwks = claims.getJSONObjectClaim("client_metadata")["jwks"] as Map<*, *>
-
-    @Suppress("UNCHECKED_CAST")
-    val key = JWK.parse(JSONObjectUtils.toJSONString((jwks["keys"] as List<*>).first() as Map<String, Any?>))
+    val key = encryptTo ?: publishedEncryptionKeyOf(requestObject)
     val payload =
         buildJsonObject {
             put("vp_token", buildJsonObject { put("pid", buildJsonArray { add("placeholder~") }) })
@@ -55,6 +55,14 @@ internal fun encryptedResponseFor(requestObject: String): String {
     val jwe = JWEObject(JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM), Payload(payload.toString()))
     jwe.encrypt(ECDHEncrypter(key.toECKey()))
     return jwe.serialize()
+}
+
+/** The one encryption key [requestObject] publishes in its `client_metadata`. */
+internal fun publishedEncryptionKeyOf(requestObject: String): JWK {
+    val jwks = SignedJWT.parse(requestObject).jwtClaimsSet.getJSONObjectClaim("client_metadata")["jwks"] as Map<*, *>
+
+    @Suppress("UNCHECKED_CAST")
+    return JWK.parse(JSONObjectUtils.toJSONString((jwks["keys"] as List<*>).single() as Map<String, Any?>))
 }
 
 /** A verifier whose next verdict the test sets: what the endpoint does with each one is the point. */

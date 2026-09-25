@@ -32,7 +32,18 @@ data class OpenId4VpProperties(
     val responseUriBase: String = "",
     /** JWK JSON of the EC P-256 request signing key (with kid). */
     val requestSigningKeyJwk: String = "",
-    /** JWK JSON of the EC P-256 response encryption key (with kid). */
+    /**
+     * OPTIONAL, and best left empty: JWK JSON of a long-lived EC P-256 key (with kid) for
+     * wallet responses.
+     *
+     * Without it every transaction encrypts to a key of its own, which the request object
+     * publishes and the flow drops when the response arrives. Setting it is the opt-in to the
+     * fallback [dev.zilath.verifier.openid4vp.RpKeys.responseEncryptionKey] describes: the key
+     * is published in the federation entity configuration and a response encrypted to it is
+     * accepted, for wallets that encrypt to the key resolved from the federation. Before the
+     * fourth internal review this property was required, so that every application built on
+     * the starter had the fallback on.
+     */
     val responseEncryptionKeyJwk: String = "",
     val walletAuthorizationScheme: String = "openid4vp://",
     val transactionTimeToLiveSeconds: Long = DEFAULT_TTL_SECONDS,
