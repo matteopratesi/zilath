@@ -96,6 +96,24 @@ class StarterConfigurationTest {
             }
     }
 
+    @Test
+    fun `the wallet response limit is the one configured`() {
+        val oversized = DirectPostBody(mapOf("response" to "x".repeat(5_000)))
+        runner.withPropertyValues("zilath.openid4vp.max-wallet-response-length=4096").run { context ->
+            val flow = context.getBean(VerificationFlow::class.java)
+            val started = start(flow)
+            val outcome = flow.handleWalletResponse(started.id, oversized).outcome as FlowOutcome.Rejected
+            assertThat(outcome.detail).isEqualTo("wallet response exceeds the size limit")
+        }
+        // The same body under the default limit goes on to be decoded.
+        runner.run { context ->
+            val flow = context.getBean(VerificationFlow::class.java)
+            val started = start(flow)
+            val outcome = flow.handleWalletResponse(started.id, oversized).outcome as FlowOutcome.Rejected
+            assertThat(outcome.detail).isEqualTo("wallet response is not a JWE")
+        }
+    }
+
     private fun start(flow: VerificationFlow): StartedTransaction =
         flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
 

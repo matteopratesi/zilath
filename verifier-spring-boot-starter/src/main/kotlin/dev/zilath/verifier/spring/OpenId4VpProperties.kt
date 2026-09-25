@@ -16,6 +16,7 @@
  */
 package dev.zilath.verifier.spring
 
+import dev.zilath.verifier.openid4vp.RelyingPartyConfiguration
 import org.springframework.boot.context.properties.ConfigurationProperties
 
 /**
@@ -50,13 +51,28 @@ data class OpenId4VpProperties(
     /** Same-device callback base, e.g. `https://rp.example/cb`; empty = cross-device only.
      *  Appended LAST to preserve positional-constructor compatibility for existing callers. */
     val sameDeviceCallbackBase: String = "",
+    /**
+     * The largest wallet response the flow decodes, in characters of the form body: a larger
+     * one is refused as malformed before it is decrypted
+     * ([RelyingPartyConfiguration.maxWalletResponseLength]). 1 MiB by default, room for an
+     * issuer's trust chain in the credential header and a disclosed portrait.
+     *
+     * The servlet container limits the same body before the flow sees it, with a form limit
+     * of its own, and a response it cuts never reaches the flow as a response: keep the
+     * container's limit ABOVE this one, or holders are refused there. Tomcat, Spring Boot's
+     * default, reads `server.tomcat.max-http-form-post-size`, 2 MiB unless set; Jetty reads
+     * `server.jetty.max-http-form-post-size`, 200 000 bytes unless set — below this default,
+     * so on Jetty raise it, or lower this.
+     */
+    val maxWalletResponseLength: Int = RelyingPartyConfiguration.DEFAULT_MAX_WALLET_RESPONSE_LENGTH,
 ) {
     /** The JWK properties carry private key material: never let them reach a log. */
     override fun toString(): String =
         "OpenId4VpProperties(clientId=$clientId, requestUriBase=$requestUriBase, " +
             "responseUriBase=$responseUriBase, requestSigningKeyJwk=[REDACTED], " +
             "responseEncryptionKeyJwk=[REDACTED], walletAuthorizationScheme=$walletAuthorizationScheme, " +
-            "transactionTimeToLiveSeconds=$transactionTimeToLiveSeconds)"
+            "transactionTimeToLiveSeconds=$transactionTimeToLiveSeconds, " +
+            "sameDeviceCallbackBase=$sameDeviceCallbackBase, maxWalletResponseLength=$maxWalletResponseLength)"
 
     companion object {
         const val DEFAULT_TTL_SECONDS = 300L

@@ -94,6 +94,7 @@ class OpenId4VpAutoConfiguration {
                 statusChecker = statusChecker,
                 walletAuthorizationScheme = properties.walletAuthorizationScheme,
                 transactionTimeToLive = Duration.ofSeconds(properties.transactionTimeToLiveSeconds),
+                maxWalletResponseLength = properties.maxWalletResponseLength,
             )
         return OpenId4VpVerificationFlow.withInMemoryStore(config, verifier, clock)
     }
