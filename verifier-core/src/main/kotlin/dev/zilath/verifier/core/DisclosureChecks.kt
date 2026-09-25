@@ -105,10 +105,12 @@ internal fun recreateClaimsOf(sdJwt: SdJwt<SignedJWT>): RecreatedClaims {
  * only a digest: a `status` behind a disclosure skipped the revocation check, an `exp`
  * behind one the expiry, whether the holder presented the disclosure or withheld it
  * (fourth internal review). The duty is the issuer's; the verifier refuses to be the one
- * that pays for a non-conformant issuer. A withheld disclosure cannot be recognised — a
- * digest is opaque — but a credential without a plaintext `exp` is already refused, and a
- * disclosure for any of these names, at any depth below them, is refused here. `_sd_alg`
- * is the SD-JWT machinery itself (RFC 9901 §4.1.1) and joins them.
+ * that pays for a non-conformant issuer. A disclosure for any of these names, or for
+ * anything below them, is refused here. A withheld one cannot be recognised — a digest is
+ * opaque: a withheld `exp` leaves the credential without a plaintext `exp`, which is refused
+ * anyway, but a withheld `status` looks exactly like a credential that has none, and only
+ * the issuer can close that. `_sd_alg` is the SD-JWT machinery itself (RFC 9901 §4.1.1) and
+ * joins them.
  */
 internal fun checkEnvelopeIsPlaintext(recreated: RecreatedClaims) {
     val disclosedEnvelope =

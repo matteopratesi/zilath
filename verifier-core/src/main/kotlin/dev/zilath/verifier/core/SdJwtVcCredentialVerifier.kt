@@ -48,13 +48,14 @@ private fun checkTypIfPresent(
 /**
  * Verifies SD-JWT VC presentations (issuer JWT + selective disclosures + key binding JWT)
  * against the full set of checks required for a presentation to be accepted, in this
- * order: size limits before anything is parsed ([PresentationLimits]), issuer signature via
- * [TrustEvaluator], disclosure integrity, disclosure names and the envelope claims kept in
- * plaintext, the issuer's authorisation and the requested type, temporal validity against
- * the injected clock, key binding (signature with the `cnf` key, `typ`, audience, nonce,
- * freshness, `sd_hash`), the claims the request asked for
- * ([VerificationContext.requestedClaims]), and revocation via [StatusChecker]. What a
- * verified presentation hands over is an allowlist: see [VerificationResult.Verified].
+ * order: size limits before anything is parsed ([PresentationLimits]); the issuer trusted
+ * by the [TrustEvaluator]; issuer signature, disclosure integrity, and the key binding's
+ * signature with the `cnf` key and its `sd_hash` (these three in the EUDI library);
+ * disclosure names and the envelope claims kept in plaintext; the issuer's authorisation
+ * for the type and the type requested; temporal validity against the injected clock; the
+ * key binding's `typ`, audience, nonce and freshness; the claims the request asked for
+ * ([VerificationContext.requestedClaims]); revocation via [StatusChecker]. What a verified
+ * presentation hands over is an allowlist: see [VerificationResult.Verified].
  *
  * Cryptography and SD-JWT processing are delegated to Nimbus JOSE+JWT and the
  * EUDI `eudi-lib-jvm-sdjwt-kt` library; this class only orchestrates and maps

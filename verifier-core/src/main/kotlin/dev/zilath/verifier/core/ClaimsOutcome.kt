@@ -47,7 +47,8 @@ internal fun outcomeClaims(
     requested: RequestedClaims?,
 ): JsonObject {
     val kept = if (requested == null) recreated.disclosedPaths else satisfiedPaths(recreated.claims, requested)
-    val allowed = kept + ALWAYS_KEPT.map { listOf(ClaimPathSegment.Key(it)) }
+    // The root is never a kept path: keeping it would keep everything.
+    val allowed = kept.filter { it.isNotEmpty() }.toSet() + ALWAYS_KEPT.map { listOf(ClaimPathSegment.Key(it)) }
     val pruned =
         pruned(recreated.claims, emptyList(), allowed, ancestorsOf(allowed)) as? JsonObject ?: JsonObject(emptyMap())
     return JsonObject(pruned.filterKeys { it !in ENVELOPE_CLAIMS })
@@ -70,26 +71,28 @@ private fun satisfiedPaths(
     requested: RequestedClaims,
 ): Set<ConcretePath> {
     val satisfied =
-        requested.claims.associateWith { claim ->
-            selectionOf(claims, claim.path)
-                // JSON equality is type and value, as §6.3 asks: true is not "true", 1 is not "1".
-                ?.filter { (_, element) -> claim.values == null || claim.values.any { it == element } }
-                ?.map { (path, _) -> path }
-                .orEmpty()
+        requested.claims.map { claim ->
+            val paths =
+                selectionOf(claims, claim.path)
+                    // JSON equality is type and value, as §6.3 asks: true is not "true", 1 is not "1".
+                    ?.filter { (_, element) -> claim.values == null || claim.values.any { it == element } }
+                    ?.map { (path, _) -> path }
+                    .orEmpty()
+            claim to paths
         }
     val satisfiedIds =
         satisfied
-            .filterValues { it.isNotEmpty() }
-            .keys
-            .mapNotNull { it.id }
+            .filter { (_, paths) ->
+                paths.isNotEmpty()
+            }.mapNotNull { (claim, _) -> claim.id }
             .toSet()
     val answered =
         requested.claimSets?.any { set -> set.all { it in satisfiedIds } }
-            ?: satisfied.values.all { it.isNotEmpty() }
+            ?: satisfied.all { (_, paths) -> paths.isNotEmpty() }
     if (!answered) {
         reject(RejectionReason.QUERY_NOT_SATISFIED, "presentation does not disclose what was requested")
     }
-    return satisfied.values.flatten().toSet()
+    return satisfied.flatMap { (_, paths) -> paths }.toSet()
 }
 
 /**

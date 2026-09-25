@@ -66,8 +66,10 @@ fun interface StatusListFetcher {
  *   failure: neither the draft (§5.1) nor IT-Wallet 1.4.6 (§11.4.4.1.1) requires it, and
  *   both examples omit it. The signature above already binds the token to that issuer;
  * - `sub` equals the `uri` the credential pointed at;
- * - `exp`, when present, is strictly in the future;
- * - `iat` is present, at most a minute ahead of our clock and not older than `maxAge`.
+ * - `exp`, when present, is a plausible date strictly in the future — read as a number, not
+ *   through Nimbus's `Date`, whose conversion wraps around;
+ * - `iat` is present, a plausible date, at most a minute ahead of our clock and not older
+ *   than `maxAge`.
  *
  * Any failure at any step — transport, parsing, signature, or a claim that does not match —
  * degrades to [CredentialStatus.UNKNOWN], never to valid, and both the token and the

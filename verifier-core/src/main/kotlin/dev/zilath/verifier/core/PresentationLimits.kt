@@ -72,7 +72,7 @@ internal fun checkPresentationLimits(
     if (compact.length > limits.maxLength) {
         reject(RejectionReason.MALFORMED, "presentation exceeds the size limit")
     }
-    val segments = compact.split(SEGMENT_SEPARATOR)
+    val segments = compact.split(TILDE)
     // issuer-jwt ~ d1 ~ ... ~ dn ~ kb-jwt: the disclosures are everything in between.
     val disclosures = if (segments.size > 2) segments.subList(1, segments.lastIndex) else emptyList()
     if (disclosures.size > limits.maxDisclosures) {
@@ -113,5 +113,3 @@ private fun jsonDepthExceeds(
     }
     return false
 }
-
-private const val SEGMENT_SEPARATOR = '~'

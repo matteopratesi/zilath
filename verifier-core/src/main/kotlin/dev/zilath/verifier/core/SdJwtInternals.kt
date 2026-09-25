@@ -29,7 +29,8 @@ import eu.europa.ec.eudi.sdjwt.VerificationError
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 
-private const val TILDE = '~'
+/** Separates the issuer JWT, the disclosures and the key binding JWT (RFC 9901 §4). */
+internal const val TILDE = '~'
 
 /** Internal short-circuit carrying the rejection out of the verification pipeline. */
 internal class SdJwtRejection(
