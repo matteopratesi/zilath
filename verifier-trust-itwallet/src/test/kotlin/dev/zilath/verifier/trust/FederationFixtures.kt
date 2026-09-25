@@ -25,7 +25,12 @@ import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import com.nimbusds.jwt.JWTClaimsSet
+import dev.zilath.verifier.core.IssuerTrustInput
 import dev.zilath.verifier.core.TestVectors
+import dev.zilath.verifier.core.TrustDecision
+import org.assertj.core.api.Assertions.assertThat
+import java.time.Clock
+import java.time.ZoneOffset
 import java.util.Date
 
 /**
@@ -191,6 +196,41 @@ object FederationFixtures {
                 claim("jwks", jwksClaim(leafFederationKey))
             },
         )
+
+    val clock: Clock = Clock.fixed(TestVectors.NOW, ZoneOffset.UTC)
+
+    /**
+     * An evaluator for tests about how a PROVIDED chain is validated: nothing it needs is
+     * served, so everything it decides comes from the chain it is given.
+     */
+    fun chainEvaluator(anchor: TrustAnchorConfig = anchorConfig()): FederationTrustEvaluator =
+        FederationTrustEvaluator(anchor, fetcherOf(emptyMap()), clock)
+
+    fun inputFor(
+        issuer: String? = LEAF_ID,
+        trustChain: List<String> = emptyList(),
+    ) = IssuerTrustInput(issuer = issuer, keyId = null, certificateChain = emptyList(), trustChain = trustChain)
+
+    /** The kids of a Trusted decision's credential keys; fails the test on anything else. */
+    fun trustedKeyIds(decision: TrustDecision): List<String?> {
+        assertThat(decision).isInstanceOf(TrustDecision.Trusted::class.java)
+        return (decision as TrustDecision.Trusted).issuerKeys.map { it.keyID }
+    }
+
+    /** The reason of an Untrusted decision; fails the test on anything else. */
+    fun untrustedReason(decision: TrustDecision): String {
+        assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+        return checkNotNull((decision as TrustDecision.Untrusted).reason)
+    }
+
+    /** The leaf's entity configuration with [configure] applied on top of the usual claims. */
+    fun leafConfigurationWith(configure: JWTClaimsSet.Builder.() -> Unit): String =
+        signedStatement(leafFederationKey, LEAF_ID, LEAF_ID) {
+            claim("jwks", jwksClaim(leafFederationKey))
+            claim("authority_hints", listOf(ANCHOR_ID))
+            claim("metadata", mapOf("openid_credential_issuer" to credentialIssuerSection()))
+            configure()
+        }
 
     fun encode(value: String) =
         java.net.URLEncoder

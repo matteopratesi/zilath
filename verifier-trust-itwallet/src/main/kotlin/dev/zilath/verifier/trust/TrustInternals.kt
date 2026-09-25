@@ -21,10 +21,8 @@ import com.nimbusds.jose.util.JSONObjectUtils
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.InternalZilathApi
 import dev.zilath.verifier.core.mediaTypeMatches
-import dev.zilath.verifier.core.verifiesWithAnyAcceptableKey
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
-import java.time.Clock
 import java.time.Instant
 
 internal const val ENTITY_STATEMENT_TYP = "entity-statement+jwt"
@@ -92,6 +90,9 @@ internal class EntityStatement(
             ?: trustFail("entity statement claim $name of $subject is malformed")
     }
 
+    /** Whether the payload names [claim] at all, whatever its value. */
+    fun hasClaim(claim: String): Boolean = claims.claims.containsKey(claim)
+
     val federationFetchEndpoint: String?
         get() = metadataSection("federation_entity")?.get("federation_fetch_endpoint") as? String
 
@@ -123,7 +124,7 @@ internal fun parseStatement(serialized: String): EntityStatement {
     return EntityStatement(serialized, jwt)
 }
 
-private fun jwksOf(container: Map<*, *>?): List<JWK> {
+internal fun jwksOf(container: Map<*, *>?): List<JWK> {
     val keys = container?.get("keys") as? List<*> ?: return emptyList()
     return keys.mapNotNull { key ->
         (key as? Map<*, *>)?.let { entry ->
@@ -169,100 +170,3 @@ internal const val DEFAULT_MAX_CHAIN_LENGTH = 4
 
 /** Tolerance for a federation peer's clock differing from ours. */
 internal val CLOCK_SKEW: java.time.Duration = java.time.Duration.ofMinutes(1)
-
-/**
- * Validates a trust chain ordered leaf-first (spec v1.4.x §6.11): each statement's
- * signature is checked top-down starting from the out-of-band anchor keys, iss/sub
- * linking and temporal validity are enforced, and the leaf's credential signing keys
- * are returned.
- */
-internal fun validateChain(
-    chain: List<String>,
-    expectedIssuer: String?,
-    anchor: TrustAnchorConfig,
-    clock: Clock,
-    maxChainLength: Int = DEFAULT_MAX_CHAIN_LENGTH,
-): List<JWK> {
-    if (chain.size < 2) trustFail("a trust chain needs at least the leaf and an anchor statement")
-    // The offline chain comes from an attacker-controlled header: bound it before any parsing.
-    if (chain.size > maxChainLength) trustFail("trust chain longer than $maxChainLength statements")
-    val statements = chain.map(::parseStatement)
-    val leaf = statements.first()
-    checkChainShape(statements, leaf, expectedIssuer, anchor)
-    val now = clock.instant()
-    var trustedKeys = anchor.federationKeys
-    for (statement in statements.asReversed()) {
-        // A minute of tolerance, the same the status list checker allows. With none, a
-        // superior whose clock runs two seconds ahead makes its entire federation
-        // untrusted — every credential under it rejected, which on this project means
-        // people turned away at a counter for someone else's NTP drift.
-        if (now.plus(CLOCK_SKEW).isBefore(statement.issuedAt)) {
-            trustFail("statement of ${statement.subject} not yet valid")
-        }
-        if (!now.minus(CLOCK_SKEW).isBefore(statement.expiresAt)) {
-            trustFail("statement of ${statement.subject} is expired")
-        }
-        if (!verifiesWithAny(statement.jwt, trustedKeys)) {
-            trustFail("signature of the statement about ${statement.subject} does not verify")
-        }
-        // Each statement attests the keys of the entity below it. One that carries none
-        // used to inherit its superior's, which means a subordinate with an absent, empty
-        // or malformed jwks silently kept the chain going under keys it never held.
-        trustedKeys =
-            statement.federationJwks.ifEmpty {
-                trustFail("the statement about ${statement.subject} carries no federation keys")
-            }
-    }
-    // metadata_policy: superiors constrain the leaf metadata. The immediate
-    // superior's statement metadata overrides the leaf's first; then the policies,
-    // merged anchor-first, are applied. The credential keys come from the RESOLVED
-    // metadata, so a superior can restrict or replace what the leaf advertises.
-    val effectiveMetadata = MetadataPolicy.overlay(leaf.metadata, statements[1].metadata)
-    val subordinates = statements.drop(1)
-    val policies = subordinates.asReversed().mapNotNull { it.metadataPolicy }
-    val criticalOperators = subordinates.flatMap { it.metadataPolicyCrit }.toSet()
-    val resolvedMetadata = MetadataPolicy.resolve(effectiveMetadata, policies, criticalOperators)
-    val resolvedIssuer = resolvedMetadata["openid_credential_issuer"] as? Map<*, *>
-    // No fallback. Credential-signing keys come from the RESOLVED metadata or from nowhere.
-    //
-    // Falling back to the leaf's federation keys turned a metadata_policy that RESTRICTS
-    // openid_credential_issuer.jwks into one that widens: policy removes the key set, the
-    // fallback hands over a different, unconstrained one. A leaf that published no
-    // openid_credential_issuer at all got the same gift. Federation keys sign entity
-    // statements; credential keys sign credentials. The separation is the point.
-    val credentialKeys = jwksOf(resolvedIssuer?.get("jwks") as? Map<*, *>)
-    if (credentialKeys.isEmpty()) {
-        trustFail("the resolved metadata advertises no credential signing keys")
-    }
-    return credentialKeys
-}
-
-private fun checkChainShape(
-    statements: List<EntityStatement>,
-    leaf: EntityStatement,
-    expectedIssuer: String?,
-    anchor: TrustAnchorConfig,
-) {
-    if (leaf.issuer != leaf.subject) trustFail("the leaf entity configuration is not self-issued")
-    if (expectedIssuer != null && leaf.subject != expectedIssuer) {
-        trustFail("credential iss does not match the trust chain leaf")
-    }
-    if (statements.last().issuer != anchor.entityId) {
-        trustFail(
-            "the chain does not end at the configured trust anchor ${anchor.entityId} " +
-                "(chain ends at ${statements.last().issuer})",
-        )
-    }
-    for (index in 1 until statements.size) {
-        val expectedSubject = if (index == 1) leaf.subject else statements[index - 1].issuer
-        if (statements[index].subject != expectedSubject) {
-            trustFail("broken iss/sub linking at chain position $index")
-        }
-    }
-}
-
-@OptIn(InternalZilathApi::class)
-private fun verifiesWithAny(
-    jwt: SignedJWT,
-    keys: List<JWK>,
-): Boolean = verifiesWithAnyAcceptableKey(jwt, keys)
