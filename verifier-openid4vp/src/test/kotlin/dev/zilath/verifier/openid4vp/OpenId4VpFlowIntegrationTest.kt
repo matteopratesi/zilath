@@ -40,6 +40,7 @@ import dev.zilath.verifier.core.TestVectors
 import dev.zilath.verifier.core.VerificationContext
 import dev.zilath.verifier.core.VerificationResult
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -87,8 +88,9 @@ class OpenId4VpFlowIntegrationTest {
         jweHeader: JWEHeader = JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM),
         vct: String = TestVectors.VCT,
         echoedNonce: String? = null,
+        source: VerificationFlow = flow,
     ): DirectPostBody {
-        val jar = checkNotNull(flow.requestJwtFor(started.id)) { "request JWT not available" }
+        val jar = checkNotNull(source.requestJwtFor(started.id)) { "request JWT not available" }
         val jwt = SignedJWT.parse(jar)
         assertThat(jwt.verify(ECDSAVerifier(signingKey.toPublicJWK()))).isTrue()
         val claims = jwt.jwtClaimsSet
@@ -528,6 +530,52 @@ class OpenId4VpFlowIntegrationTest {
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(outcome)
         val afterwards = flow.handleWalletResponse(started.id, DirectPostBody(emptyMap()))
         assertThat((afterwards as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.REPLAY)
+    }
+
+    @Test
+    fun `a response above the size limit is refused before it is decoded`() {
+        // The size used to be bounded only by the servlet container: a JWE of several MiB,
+        // encrypted to the RP's published key, was decoded, decrypted and parsed in full.
+        // Two configurations over one store: one to start transactions, one with a limit.
+        val decoded =
+            java.util.concurrent.atomic
+                .AtomicInteger()
+        val counting =
+            object : WalletProfile by ItWalletProfile {
+                override fun decodeWalletResponse(
+                    body: DirectPostBody,
+                    config: RelyingPartyConfiguration,
+                ): JsonObject = ItWalletProfile.decodeWalletResponse(body, config).also { decoded.incrementAndGet() }
+            }
+        val store = InMemoryTransactionStore(clock, config.transactionTimeToLive)
+        val starter = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), store, clock)
+
+        fun limitedTo(max: Int) =
+            OpenId4VpVerificationFlow(
+                config.copy(profile = counting, maxWalletResponseLength = max),
+                SdJwtVcCredentialVerifier(),
+                store,
+                clock,
+            )
+
+        fun lengthOf(body: DirectPostBody) = body.parameters.entries.sumOf { it.key.length + it.value.length }
+
+        val over = starter.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
+        val overBody = walletBody(over, source = starter)
+        val refused = limitedTo(lengthOf(overBody) - 1).handleWalletResponse(over.id, overBody)
+        assertThat((refused as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
+        assertThat(refused.detail).isEqualTo("wallet response exceeds the size limit")
+        assertThat(decoded.get()).isZero()
+
+        val at = starter.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
+        val atBody = walletBody(at, source = starter)
+        assertThat(limitedTo(lengthOf(atBody)).handleWalletResponse(at.id, atBody))
+            .isInstanceOf(FlowOutcome.Verified::class.java)
+        assertThat(decoded.get()).isEqualTo(1)
+
+        assertThat(RelyingPartyConfiguration.DEFAULT_MAX_WALLET_RESPONSE_LENGTH).isEqualTo(1024 * 1024)
+        assertThatThrownBy { config.copy(maxWalletResponseLength = 0) }
+            .isInstanceOf(IllegalArgumentException::class.java)
     }
 
     @Test

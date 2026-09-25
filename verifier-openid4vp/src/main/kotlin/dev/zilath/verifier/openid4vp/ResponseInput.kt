@@ -28,6 +28,23 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 
 /**
+ * Refuses a response body larger than [RelyingPartyConfiguration.maxWalletResponseLength]
+ * before any profile decodes it. The fourth internal review found the servlet container's
+ * form limit to be the only bound: a well-formed JWE of several MiB, encrypted to the RP's
+ * PUBLISHED key, was base64-decoded, decrypted and parsed in full before being rejected.
+ * Checked here rather than in each profile so a third-party profile is covered too.
+ */
+internal fun checkWalletResponseSize(
+    body: DirectPostBody,
+    config: RelyingPartyConfiguration,
+) {
+    val length = body.parameters.entries.sumOf { (name, value) -> name.length.toLong() + value.length }
+    if (length > config.maxWalletResponseLength) {
+        flowReject(RejectionReason.MALFORMED, "wallet response exceeds the size limit")
+    }
+}
+
+/**
  * Extracts the compact SD-JWT presentation for the requested credential from `vp_token`.
  *
  * OpenID4VP 1.0 §8.1: an object keyed by credential query id, each value an array of

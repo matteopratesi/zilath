@@ -99,8 +99,17 @@ data class RelyingPartyConfiguration(
      * Absent for the `x509_hash` scheme.
      */
     val federation: RpFederationConfig? = null,
+    /**
+     * The largest wallet response body, in characters, the flow will decode. Above it the
+     * response is rejected as malformed before any decoding or decryption. The default,
+     * [DEFAULT_MAX_WALLET_RESPONSE_LENGTH], is four times a realistic worst case; a servlet
+     * container may cut the body earlier (Tomcat's form limit is 2 MiB, Jetty's 200 000
+     * bytes), and that limit must stay above this one or holders are refused there.
+     */
+    val maxWalletResponseLength: Int = DEFAULT_MAX_WALLET_RESPONSE_LENGTH,
 ) {
     init {
+        require(maxWalletResponseLength > 0) { "maxWalletResponseLength must be positive" }
         require(transactionTimeToLive > Duration.ZERO) {
             "transactionTimeToLive must be positive: zero or less expires every transaction as it is created"
         }
@@ -136,5 +145,15 @@ data class RelyingPartyConfiguration(
          * transaction outlive the visit it belongs to.
          */
         val MAX_TIME_TO_LIVE: Duration = Duration.ofHours(1)
+
+        /**
+         * 1 MiB. Not the "few KiB" an SD-JWT VC with a key binding usually weighs: an
+         * issuer may put its trust chain in the credential header — the real IT-Wallet
+         * disability card issuer's entity configuration alone is 39 668 bytes, 48 KB with
+         * the anchor's statement — and a disclosed portrait adds tens of KB more, each
+         * base64url-encoded again inside the response JWE: a few hundred KB can be genuine,
+         * and refusing a genuine holder's response for its size would be the worse failure.
+         */
+        const val DEFAULT_MAX_WALLET_RESPONSE_LENGTH: Int = 1024 * 1024
     }
 }

@@ -174,6 +174,7 @@ class OpenId4VpVerificationFlow(
         body: DirectPostBody,
     ): FlowOutcome =
         runCatching {
+            checkWalletResponseSize(body, config)
             val payload = config.profile.decodeWalletResponse(body, config)
             checkState(payload, transaction)
             checkEchoedNonce(payload, transaction)
