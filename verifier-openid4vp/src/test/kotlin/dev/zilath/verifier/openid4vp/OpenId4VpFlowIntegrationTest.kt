@@ -29,11 +29,16 @@ import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import com.nimbusds.jose.util.JSONObjectUtils
 import com.nimbusds.jwt.SignedJWT
+import dev.zilath.verifier.core.ClaimPathSegment
 import dev.zilath.verifier.core.CredentialStatus
+import dev.zilath.verifier.core.CredentialVerifier
+import dev.zilath.verifier.core.RawPresentation
 import dev.zilath.verifier.core.RejectionReason
 import dev.zilath.verifier.core.SdJwtVcCredentialVerifier
 import dev.zilath.verifier.core.StatusChecker
 import dev.zilath.verifier.core.TestVectors
+import dev.zilath.verifier.core.VerificationContext
+import dev.zilath.verifier.core.VerificationResult
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -127,6 +132,47 @@ class OpenId4VpFlowIntegrationTest {
         val claims = (outcome as FlowOutcome.Verified).claims.claims
         assertThat(claims["given_name"]?.jsonPrimitive?.content).isEqualTo("Ada")
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(outcome)
+    }
+
+    @Test
+    fun `the verifier is told which claims the query asked for`() {
+        // Enforcing them is the verifier's job; handing them over is the flow's. Before the
+        // fourth internal review nothing on the response path read the query's claims.
+        val seen = mutableListOf<VerificationContext>()
+        val recording =
+            object : CredentialVerifier {
+                private val real = SdJwtVcCredentialVerifier()
+
+                override fun verify(
+                    presentation: RawPresentation,
+                    ctx: VerificationContext,
+                ): VerificationResult = real.verify(presentation, ctx).also { seen += ctx }
+            }
+        val recordingFlow = OpenId4VpVerificationFlow.withInMemoryStore(config, recording, clock)
+        val request = PresentationRequest.forTestPid("urn:zilath:test:entitlement")
+        val started = recordingFlow.start(request)
+        val jar = SignedJWT.parse(checkNotNull(recordingFlow.requestJwtFor(started.id)))
+        val compact = TestVectors.vector(nonce = jar.jwtClaimsSet.getStringClaim("nonce"), audience = config.clientId)
+        val payload =
+            buildJsonObject {
+                put("vp_token", buildJsonObject { put("pid", buildJsonArray { add(JsonPrimitive(compact)) }) })
+                put("state", jar.jwtClaimsSet.getStringClaim("state"))
+            }
+        val jwe = JWEObject(JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM), Payload(payload.toString()))
+        jwe.encrypt(
+            ECDHEncrypter(advertisedEncryptionKey(jar.jwtClaimsSet.getJSONObjectClaim("client_metadata")).toECKey()),
+        )
+        recordingFlow.handleWalletResponse(started.id, DirectPostBody(mapOf("response" to jwe.serialize())))
+
+        assertThat(seen.single().requestedClaims).isEqualTo(request.requestedClaims())
+        assertThat(
+            seen
+                .single()
+                .requestedClaims!!
+                .claims
+                .map { it.path },
+        ).containsExactly(listOf(ClaimPathSegment.Key("given_name")), listOf(ClaimPathSegment.Key("family_name")))
+        assertThat(seen.single().expectedVcts).containsExactly("urn:zilath:test:entitlement")
     }
 
     @Test

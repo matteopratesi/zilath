@@ -187,6 +187,11 @@ class OpenId4VpVerificationFlow(
                     clock = clock,
                     trustEvaluator = config.trustEvaluator,
                     statusChecker = config.statusChecker,
+                    // What the query asked for, so that "verified" means the answer satisfies
+                    // the question and carries nothing more (OpenID4VP 1.0 §6.4.1). Before the
+                    // fourth internal review nothing on the response path read the query's
+                    // claims, and a presentation disclosing none of them came back Verified.
+                    requestedClaims = transaction.request.requestedClaims(),
                 )
             when (val result = verifier.verify(RawPresentation.SdJwtVcPresentation(compact), context)) {
                 is VerificationResult.Verified -> FlowOutcome.Verified(result.claims)

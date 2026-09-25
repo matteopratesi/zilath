@@ -18,9 +18,8 @@ package dev.zilath.verifier.openid4vp
 
 import dev.zilath.verifier.core.DisclosedClaims
 import dev.zilath.verifier.core.RejectionReason
-import kotlinx.serialization.json.JsonArray
+import dev.zilath.verifier.core.RequestedClaims
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -127,13 +126,30 @@ data class TransactionId(
     val value: String,
 )
 
-/** What the relying party asks the wallet to present. */
+/**
+ * What the relying party asks the wallet to present: ONE credential, described by the
+ * single Credential Query of a DCQL query.
+ *
+ * The query is read when the request is constructed, and a query this library cannot
+ * evaluate is refused there with [IllegalArgumentException]: no `credentials` array, not
+ * exactly one credential query, one not named [credentialQueryId], `credential_sets`,
+ * `multiple: true`, or `claims`/`claim_sets`/`vct_values` that do not follow OpenID4VP 1.0
+ * §6 and §7. Before the fourth internal review such a query passed [VerificationFlow.start],
+ * reached the wallet inside the signed request, and then failed every response as an
+ * internal error; a query asking for two credentials verified one and ignored the other.
+ */
 data class PresentationRequest(
     /** A DCQL query as required by IT-Wallet v1.4.x (`dcql_query` claim). */
     val dcqlQuery: JsonObject,
     /** The id of the credential query inside [dcqlQuery], used to pick the vp_token entry. */
     val credentialQueryId: String,
 ) {
+    // Read once, here, so that construction is the validation. Not constructor properties:
+    // equality and copies stay those of the query itself.
+    private val credentialQuery: JsonObject = credentialQueryOf(dcqlQuery, credentialQueryId)
+    private val vctValues: Set<String> = vctValuesOf(credentialQuery)
+    private val claims: RequestedClaims? = requestedClaimsOf(credentialQuery)
+
     /**
      * The credential types this request will accept, read back out of the DCQL query's
      * `meta.vct_values` for the credential query this request names.
@@ -142,33 +158,20 @@ data class PresentationRequest(
      * the two cannot drift apart. An empty result — a caller-built query that does not
      * constrain the type — leaves the verifier unconstrained too, rather than rejecting.
      */
-    fun expectedVcts(): Set<String> {
-        // No runCatching here, deliberately. Swallowing a parse failure would return the
-        // empty set, and the empty set means "do not check the credential type" — so a
-        // malformed query would silently switch off a security check instead of failing.
-        // That is the same fail-open this audit found elsewhere, and a query this library
-        // cannot read is the relying party's own bug, which should surface at start().
-        val credentials =
-            requireNotNull(dcqlQuery["credentials"] as? JsonArray) {
-                "dcql_query has no credentials array"
-            }
-        val matching =
-            credentials
-                .mapNotNull { it as? JsonObject }
-                .filter { (it["id"] as? JsonPrimitive)?.content == credentialQueryId }
-        require(matching.isNotEmpty()) { "dcql_query has no credential with id $credentialQueryId" }
-        return matching
-            .flatMap { credential ->
-                ((credential["meta"] as? JsonObject)?.get("vct_values") as? JsonArray)
-                    .orEmpty()
-                    .mapNotNull { (it as? JsonPrimitive)?.content }
-            }.toSet()
-    }
+    fun expectedVcts(): Set<String> = vctValues
+
+    /**
+     * The claims this request asks for, from the credential query's `claims` and
+     * `claim_sets`, for [dev.zilath.verifier.core.VerificationContext.requestedClaims].
+     * Null when the query names no claims.
+     */
+    fun requestedClaims(): RequestedClaims? = claims
 
     companion object {
         /**
          * DCQL query for a single SD-JWT VC type: [claimPaths] are top-level claim names
          * (nested paths can be expressed with the full [PresentationRequest] constructor).
+         * No claim paths means no `claims` member: DCQL does not allow an empty array.
          */
         fun forVct(
             vct: String,
@@ -184,9 +187,11 @@ data class PresentationRequest(
                             putJsonObject("meta") {
                                 putJsonArray("vct_values") { add(vct) }
                             }
-                            putJsonArray("claims") {
-                                claimPaths.forEach { path ->
-                                    addJsonObject { putJsonArray("path") { add(path) } }
+                            if (claimPaths.isNotEmpty()) {
+                                putJsonArray("claims") {
+                                    claimPaths.forEach { path ->
+                                        addJsonObject { putJsonArray("path") { add(path) } }
+                                    }
                                 }
                             }
                         }
