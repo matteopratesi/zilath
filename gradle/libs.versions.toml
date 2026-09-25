@@ -1,6 +1,7 @@
 # Coordinates verified on Maven Central on 2026-08-24; the versions are pinned on purpose,
 # not kept at the latest. They are checked against the advisory databases at every release
-# (docs/releasing.md, step 2), and Dependabot proposes updates as pull requests.
+# (docs/releasing.md, step 2). Bumps are made by hand: Dependabot cannot regenerate
+# gradle/verification-metadata.xml, which a new version has to be recorded in.
 # Dependency choices are bound by the project plan (varco repo, docs/03 §4):
 # do not swap libraries without recording the decision in the project log.
 

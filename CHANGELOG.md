@@ -34,8 +34,9 @@ moves with them. So far: `verifier-core` and the build, then `verifier-trust-itw
   curve but P-256, P-384 and P-521 are skipped, for issuer, holder, status list and
   federation signatures alike: Nimbus enforces a minimum only when generating a key.
 - **The status list URI is held to the URL rule** SECURITY.md already claimed for it: https
-  with a hostname, no userinfo, no IP literals except loopback. A credential pointing
-  anywhere else is `STATUS_CHECK_FAILED` before the status checker is called.
+  with a hostname, no userinfo, no IP literals except loopback, plain http only to the
+  loopback names, for local development. A credential pointing anywhere else is
+  `STATUS_CHECK_FAILED` before the status checker is called.
 - **`Verified` means the query was answered.** With `VerificationContext.requestedClaims`, a
   presentation that does not disclose what was asked is `QUERY_NOT_SATISFIED` (OpenID4VP 1.0
   §6.3, §6.4.1, §7 claims path pointers); before, one disclosing nothing at all was
@@ -156,7 +157,8 @@ moves with them. So far: `verifier-core` and the build, then `verifier-trust-itw
   is excluded from every published module and from the POMs; a check task fails the build
   if it comes back.
 - CI actions are pinned by commit SHA, and a step refuses any that is not; Dependabot
-  proposes updates for them and for the Gradle dependencies.
+  proposes updates for them. Not for the Gradle dependencies: it cannot regenerate the
+  verification metadata below, so every pull request it opened would fail the build.
 - The Gradle wrapper verifies the distribution's SHA-256.
 - Every dependency and plugin is checked against the SHA-256 recorded in
   `gradle/verification-metadata.xml`: a changed or unknown artifact fails the build. The
