@@ -40,6 +40,49 @@ class SdJwtInternalsTest {
     }
 
     @Test
+    fun `a status mechanism other than status_list has its own phrase`() {
+        // IT-Wallet's status_assertion / status_attestation: well formed, not evaluable.
+        // Still rejected — but an operator must be able to tell it from a broken reference.
+        assertThat(detailOf(mapOf("status_assertion" to mapOf("credential_hash_alg" to "sha-256"))))
+            .isEqualTo("status mechanism not supported")
+        assertThat(detailOf(mapOf("status_attestation" to mapOf("x" to 1)))).isEqualTo("status mechanism not supported")
+        assertThat(detailOf(mapOf("status_list" to mapOf("uri" to 1)))).isEqualTo("malformed status_list reference")
+        assertThat(detailOf(mapOf("status_list" to "https://status.example/1")))
+            .isEqualTo("malformed status_list reference")
+        assertThat(detailOf(emptyMap<String, Any>())).isEqualTo("status claim without a status_list reference")
+    }
+
+    @Test
+    fun `a status uri that is not a usable https url is refused before any fetch`() {
+        listOf(
+            "http://169.254.169.254/latest/meta-data/",
+            "file:///etc/passwd",
+            "https://user:pw@status.example/1",
+            "https://2130706433/status/1",
+            "https://[fe80::1]:8080/status",
+            "ftp://status.example/1",
+            "not a uri at all",
+            "",
+        ).forEach { bad ->
+            assertThat(detailOf(mapOf("status_list" to mapOf("uri" to bad, "idx" to 0))))
+                .`as`(bad)
+                .isEqualTo("status_list uri is not a usable https url")
+        }
+        val withQuery =
+            mapOf("status" to mapOf("status_list" to mapOf("uri" to "https://s.example/l?id=1", "idx" to 2)))
+        assertThat(
+            statusReferenceOf(JWTClaimsSet.parse(withQuery)),
+        ).isEqualTo(StatusReference("https://s.example/l?id=1", 2))
+    }
+
+    private fun detailOf(status: Map<String, Any>): String? {
+        val claims = JWTClaimsSet.Builder().claim("status", status).build()
+        val rejection = runCatching { statusReferenceOf(claims) }.exceptionOrNull() as SdJwtRejection
+        assertThat(rejection.reason).isEqualTo(RejectionReason.STATUS_CHECK_FAILED)
+        return rejection.detail
+    }
+
+    @Test
     fun `status_list without uri or idx is a status check failure`() {
         val claims =
             JWTClaimsSet
@@ -88,17 +131,5 @@ class SdJwtInternalsTest {
                 .ECDSASigner(TestVectors.issuerEcKey),
         )
         assertThat(trustInputOf(withChain).trustChain).containsExactly("statement-a", "statement-b")
-    }
-
-    @Test
-    fun `sd_hash changes when a disclosure is withheld`() {
-        val compact = TestVectors.vector()
-        val withheld =
-            compact
-                .split('~')
-                .toMutableList()
-                .also { it.removeAt(1) }
-                .joinToString("~")
-        assertThat(sdHashOf(withheld)).isNotEqualTo(sdHashOf(compact))
     }
 }

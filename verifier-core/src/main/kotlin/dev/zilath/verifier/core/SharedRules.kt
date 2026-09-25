@@ -117,6 +117,48 @@ fun usableHttpsUriOrNull(value: String): URI? {
 }
 
 /**
+ * [value] made safe to put in a log line or a `detail` it may end up in: at most
+ * [MAX_PRINTABLE_LENGTH] characters, and every ISO control character — CR, LF, NUL, ESC,
+ * NEL among them — and the Unicode line and paragraph separators replaced with `?`.
+ *
+ * For text the library does not write itself: a [TrustEvaluator]'s reason, a wallet's error
+ * string. The fourth internal review forged whole log lines through a credential's `iss`
+ * that reached a rejection's `detail` with its CRLF intact, and flooded the log with a
+ * hundred kilobytes per request. A surrogate pair cut by the limit is dropped whole, so the
+ * result is always well-formed text.
+ */
+@InternalZilathApi
+fun boundedPrintable(value: String): String {
+    val cut =
+        value.take(MAX_PRINTABLE_LENGTH).let {
+            if (it.lastOrNull()?.isHighSurrogate() ==
+                true
+            ) {
+                it.dropLast(1)
+            } else {
+                it
+            }
+        }
+    return cut
+        .map {
+            if (it.isISOControl() ||
+                it == LINE_SEPARATOR ||
+                it == PARAGRAPH_SEPARATOR
+            ) {
+                '?'
+            } else {
+                it
+            }
+        }.joinToString("")
+}
+
+/** Long enough for any diagnostic phrase, too short to flood a log. */
+private const val MAX_PRINTABLE_LENGTH = 200
+
+private const val LINE_SEPARATOR = '\u2028'
+private const val PARAGRAPH_SEPARATOR = '\u2029'
+
+/**
  * Bracketed IPv6, or anything made only of digits and dots.
  *
  * Not only the dotted quad. The JVM's resolver reads `2130706433` as 127.0.0.1 and

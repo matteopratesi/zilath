@@ -30,16 +30,13 @@ import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import java.security.KeyPairGenerator
-import java.security.interfaces.RSAPrivateKey
-import java.security.interfaces.RSAPublicKey
 
 @OptIn(InternalZilathApi::class)
 class SharedRulesTest {
     @Test
     fun `rsa keys below 2048 bits get no verifier`() {
-        assertThat(acceptableJwsVerifierFor(weakRsaKey(512))).isNull()
-        assertThat(acceptableJwsVerifierFor(weakRsaKey(1024))).isNull()
+        assertThat(acceptableJwsVerifierFor(weakRsaKey(512).toPublicJWK())).isNull()
+        assertThat(acceptableJwsVerifierFor(weakRsaKey(1024).toPublicJWK())).isNull()
         assertThat(acceptableJwsVerifierFor(RSAKeyGenerator(2048).generate().toPublicJWK())).isNotNull()
     }
 
@@ -53,7 +50,7 @@ class SharedRulesTest {
 
     @Test
     fun `a signature under a weak rsa key does not verify, a strong one does`() {
-        val weak = weakRsaKey(1024, private = true)
+        val weak = weakRsaKey(1024)
         val strong = RSAKeyGenerator(2048).generate()
         assertThat(verifiesWithAnyAcceptableKey(signedWith(weak), listOf(weak.toPublicJWK()))).isFalse()
         assertThat(verifiesWithAnyAcceptableKey(signedWith(strong), listOf(strong.toPublicJWK()))).isTrue()
@@ -101,18 +98,18 @@ class SharedRulesTest {
         ).forEach { assertThat(usableHttpsUriOrNull(it)).`as`(it).isNull() }
     }
 
+    @Test
+    fun `printable text is bounded, on one line and well formed`() {
+        assertThat(boundedPrintable("issuer not in the federation")).isEqualTo("issuer not in the federation")
+        assertThat(boundedPrintable("a\r\nb\u0000c\u001bd\u0085e\u2028f\u2029g\u007f")).isEqualTo("a??b?c?d?e?f?g?")
+        assertThat(boundedPrintable("x".repeat(10_000))).hasSize(200)
+        // A surrogate pair cut in half by the limit is dropped, not left dangling.
+        val cut = boundedPrintable("x".repeat(199) + "\uD83D\uDE00")
+        assertThat(cut).isEqualTo("x".repeat(199))
+    }
+
     private fun signedWith(key: RSAKey): SignedJWT =
         SignedJWT(JWSHeader(JWSAlgorithm.RS256), JWTClaimsSet.Builder().subject("x").build()).apply {
             sign(RSASSASigner(key.toRSAPrivateKey(), setOf(AllowWeakRSAKey.getInstance())))
         }
-
-    /** Nimbus refuses to GENERATE a key this small, which is the whole point: it will verify with one. */
-    private fun weakRsaKey(
-        bits: Int,
-        private: Boolean = false,
-    ): RSAKey {
-        val pair = KeyPairGenerator.getInstance("RSA").apply { initialize(bits) }.generateKeyPair()
-        val builder = RSAKey.Builder(pair.public as RSAPublicKey)
-        return if (private) builder.privateKey(pair.private as RSAPrivateKey).build() else builder.build()
-    }
 }

@@ -23,7 +23,6 @@ import com.nimbusds.jwt.SignedJWT
 import eu.europa.ec.eudi.sdjwt.NimbusSdJwtOps
 import eu.europa.ec.eudi.sdjwt.SdJwtAndKbJwt
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.JsonObject
 import java.time.Duration
 
 /**
@@ -48,10 +47,15 @@ private fun checkTypIfPresent(
 
 /**
  * Verifies SD-JWT VC presentations (issuer JWT + selective disclosures + key binding JWT)
- * against the full set of checks required for a presentation to be accepted:
- * issuer signature via [TrustEvaluator], disclosure integrity, key binding
- * (signature with the `cnf` key, audience, nonce, freshness, `sd_hash`),
- * temporal validity against the injected clock, and revocation via [StatusChecker].
+ * against the full set of checks required for a presentation to be accepted, in this
+ * order: size limits before anything is parsed ([PresentationLimits]); the issuer trusted
+ * by the [TrustEvaluator]; issuer signature, disclosure integrity, and the key binding's
+ * signature with the `cnf` key and its `sd_hash` (these three in the EUDI library);
+ * disclosure names and the envelope claims kept in plaintext; the issuer's authorisation
+ * for the type and the type requested; temporal validity against the injected clock; the
+ * key binding's `typ`, audience, nonce and freshness; the claims the request asked for
+ * ([VerificationContext.requestedClaims]); revocation via [StatusChecker]. What a verified
+ * presentation hands over is an allowlist: see [VerificationResult.Verified].
  *
  * Cryptography and SD-JWT processing are delegated to Nimbus JOSE+JWT and the
  * EUDI `eudi-lib-jvm-sdjwt-kt` library; this class only orchestrates and maps
@@ -77,22 +81,34 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         compact: String,
         ctx: VerificationContext,
     ): VerificationResult.Verified {
+        checkPresentationLimits(compact, ctx.presentationLimits)
         val issuerJwt = parseIssuerJwt(compact)
         checkTypIfPresent(issuerJwt.header, ISSUER_JWT_TYPS, RejectionReason.UNSUPPORTED_FORMAT)
         val trusted = trustedIssuer(issuerJwt, ctx)
         val issuerKeys = trusted.issuerKeys
         val verified = verifyWithEudiLibrary(compact, issuerKeys)
+        checkDisclosureNames(verified.sdJwt.disclosures)
+        val recreated = recreateClaimsOf(verified.sdJwt)
+        checkEnvelopeIsPlaintext(recreated)
         val issuerClaims = verified.sdJwt.jwt.jwtClaimsSet
         checkIssuerAuthorisedForType(issuerClaims, trusted)
         checkCredentialType(issuerClaims, ctx)
-        checkTemporalValidity(issuerClaims, ctx)
+        checkTemporalValidity(verified.sdJwt.jwt, ctx)
         checkTypIfPresent(verified.keyBindingJwt.header, KEY_BINDING_TYPS, RejectionReason.INVALID_KEY_BINDING)
-        checkKeyBinding(verified.keyBindingJwt.jwtClaimsSet, compact, ctx)
+        checkKeyBinding(verified.keyBindingJwt, ctx)
+        // Before the status check: a presentation that does not answer the request is
+        // refused without a fetch on its behalf.
+        val claims = outcomeClaims(recreated, ctx.requestedClaims)
         checkStatus(issuerClaims, issuerKeys, ctx)
-        val claims = with(NimbusSdJwtOps) { verified.sdJwt.recreateClaims(null) }
-        return VerificationResult.Verified(DisclosedClaims(withoutInternalClaims(claims)))
+        return VerificationResult.Verified(DisclosedClaims(claims))
     }
 
+    /**
+     * The evaluator's reason becomes the rejection's `detail`, the one `detail` this class
+     * does not write itself; it goes through [boundedPrintable] here, at the sink, so that
+     * every [TrustEvaluator] is covered, not only the ones that already behave.
+     */
+    @OptIn(InternalZilathApi::class)
     private fun trustedIssuer(
         issuerJwt: SignedJWT,
         ctx: VerificationContext,
@@ -102,7 +118,11 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
                 decision.also {
                     if (it.issuerKeys.isEmpty()) reject(RejectionReason.UNTRUSTED_ISSUER, "no trusted issuer keys")
                 }
-            is TrustDecision.Untrusted -> reject(RejectionReason.UNTRUSTED_ISSUER, decision.reason)
+            is TrustDecision.Untrusted ->
+                reject(
+                    RejectionReason.UNTRUSTED_ISSUER,
+                    decision.reason?.let(::boundedPrintable),
+                )
         }
 
     private fun verifyWithEudiLibrary(
@@ -137,88 +157,98 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
     }
 
     /**
+     * `exp` is required and must be a plausible date; `nbf` is checked when present. Both are
+     * read as numbers from the signed payload ([numericDateClaim]), not through Nimbus's
+     * `Date`, whose seconds-to-milliseconds conversion wraps around silently.
+     *
+     * A credential without `exp` used to verify for ever: SD-JWT VC leaves the claim
+     * optional, but IT-Wallet 1.4.6 makes it mandatory in the credential data model, and a
+     * profile-conformant issuer never omits it. The commoner issuer bug, a timestamp in
+     * milliseconds, reads as a year beyond 9999 and is no NumericDate at all; the ceiling
+     * refuses whatever else would make a credential outlive its holder — fifty years is far
+     * beyond any credential's validity and still short of the absurd.
+     *
      * `detail` is retained on the transaction and reaches the application log, so it carries
      * no value taken from the credential — not even a timestamp. The reason code says what
      * failed; the exact instant is the holder's, not the log's.
      */
     private fun checkTemporalValidity(
-        issuerClaims: JWTClaimsSet,
+        issuerJwt: SignedJWT,
         ctx: VerificationContext,
     ) {
         val now = ctx.clock.instant()
-        val expiration = issuerClaims.expirationTime?.toInstant()
-        if (expiration != null && !expiration.isAfter(now.minus(CLOCK_SKEW))) {
+        val payload = issuerJwt.payload.toJSONObject()
+        val expiration =
+            when (val exp = numericDateClaim(payload, "exp")) {
+                NumericDateClaim.Absent -> reject(RejectionReason.MALFORMED, "credential has no exp")
+                NumericDateClaim.Invalid -> reject(RejectionReason.MALFORMED, "credential exp is not a plausible date")
+                is NumericDateClaim.At -> exp.instant
+            }
+        if (expiration.isAfter(now.plus(MAX_EXP_AHEAD))) {
+            reject(RejectionReason.MALFORMED, "credential exp is not a plausible date")
+        }
+        if (!expiration.isAfter(now.minus(CLOCK_SKEW))) {
             reject(RejectionReason.EXPIRED, "credential is expired")
         }
-        val notBefore = issuerClaims.notBeforeTime?.toInstant()
+        val notBefore =
+            when (val nbf = numericDateClaim(payload, "nbf")) {
+                NumericDateClaim.Absent -> null
+                NumericDateClaim.Invalid -> reject(RejectionReason.MALFORMED, "credential nbf is not a plausible date")
+                is NumericDateClaim.At -> nbf.instant
+            }
         if (notBefore != null && notBefore.isAfter(now.plus(CLOCK_SKEW))) {
             reject(RejectionReason.NOT_YET_VALID, "credential is not yet valid")
         }
     }
 
+    /**
+     * Audience, nonce and freshness. The key binding's signature under the `cnf` key and its
+     * `sd_hash` are checked by the EUDI library before this runs (`MustBePresentAndValid`),
+     * with the digest `_sd_alg` names, as RFC 9901 §4.3 requires. Zilath used to recompute
+     * `sd_hash` in SHA-256 whatever `_sd_alg` said: redundant for SHA-256, and for an issuer
+     * using sha-384 or sha-512 a rejection of every genuine presentation, blamed on the
+     * wallet (fourth internal review).
+     *
+     * Exactly one audience. RFC 9901 §4.3 says `aud` MUST be a single string, and IT-Wallet
+     * 1.4.6 that it MUST match the relying party's identifier; a list that names us beside
+     * someone else was accepted. A one-element array naming us is accepted: Nimbus reads
+     * both forms as the same list, and the array names the same single receiver the string
+     * would — nothing is bound differently, and refusing it would only turn a wallet's
+     * serialisation habit into a denial.
+     */
     private fun checkKeyBinding(
-        kbClaims: JWTClaimsSet,
-        compact: String,
+        kbJwt: SignedJWT,
         ctx: VerificationContext,
     ) {
-        if (kbClaims.audience.orEmpty().none { it in ctx.expectedAudiences }) {
+        val kbClaims = kbJwt.jwtClaimsSet
+        val audience = kbClaims.audience.orEmpty()
+        if (audience.size != 1 || audience.single() !in ctx.expectedAudiences) {
             reject(RejectionReason.AUDIENCE_MISMATCH, "key binding not addressed to this verifier")
         }
         val nonce = runCatching { kbClaims.getStringClaim("nonce") }.getOrNull()
         if (nonce != ctx.expectedNonce) {
             reject(RejectionReason.NONCE_MISMATCH, "key binding nonce does not match the transaction")
         }
-        checkKeyBindingFreshness(kbClaims, ctx)
-        val sdHash = runCatching { kbClaims.getStringClaim("sd_hash") }.getOrNull()
-        if (sdHash != sdHashOf(compact)) {
-            reject(RejectionReason.INVALID_KEY_BINDING, "sd_hash does not match the presented credential")
-        }
+        checkKeyBindingFreshness(kbJwt, ctx)
     }
 
+    /** An `iat` outside the representable range is, a fortiori, outside the window. */
     private fun checkKeyBindingFreshness(
-        kbClaims: JWTClaimsSet,
+        kbJwt: SignedJWT,
         ctx: VerificationContext,
     ) {
         val issuedAt =
-            kbClaims.issueTime?.toInstant()
-                ?: reject(RejectionReason.INVALID_KEY_BINDING, "key binding has no iat")
+            when (val iat = numericDateClaim(kbJwt.payload.toJSONObject(), "iat")) {
+                NumericDateClaim.Absent -> reject(RejectionReason.INVALID_KEY_BINDING, "key binding has no iat")
+                NumericDateClaim.Invalid ->
+                    reject(RejectionReason.INVALID_KEY_BINDING, "key binding iat outside the accepted window")
+                is NumericDateClaim.At -> iat.instant
+            }
         val distance = Duration.between(issuedAt, ctx.clock.instant()).abs()
         if (distance > ctx.keyBindingMaxAge) {
             reject(RejectionReason.INVALID_KEY_BINDING, "key binding iat outside the accepted window")
         }
     }
-
-    /**
-     * Strips the issuer envelope, keeping what the holder disclosed plus the two envelope
-     * claims that say WHAT was verified without saying WHICH copy.
-     *
-     * `recreateClaims` returns the whole issuer-signed payload, not only what the holder chose
-     * to disclose. Most of that envelope is stable per credential: `cnf` (the holder key),
-     * `status` (the index in the issuer's revocation list), and just as much `iat`, `exp`,
-     * `nbf`, `jti`, `sub` — an issuance instant at second granularity, together with `iss` and
-     * `vct`, singles out one credential almost as surely as a serial number would. Handing any
-     * of them over would let an integrator, or anything downstream, link two verifications of
-     * the same person across venues and across months. The third internal review found that
-     * only `cnf` and `status` were being removed.
-     *
-     * `iss` and `vct` stay: they name the issuer and the credential type, are identical for
-     * every holder of that type, and are what an application needs to know what it verified.
-     *
-     * **This is a blocklist, and a blocklist is not a guarantee.** It removes the envelope
-     * this specification defines; a claim the ISSUER chose to put in the credential
-     * unprotected — outside selective disclosure, under a name of its own invention — is
-     * neither disclosed by the holder nor listed here, and it survives. Nothing in the
-     * verifier can tell such a claim from a legitimate always-visible attribute. The
-     * airtight form is an allowlist of the names the holder actually disclosed, which means
-     * telling disclosed claims apart from the issuer's plaintext ones: computable as the
-     * difference between the recreated claims and the issuer JWT payload, except that a
-     * plaintext object with selectively disclosed members inside it would then lose them.
-     * Getting that right needs the nested case covered by tests against a real issuer, so
-     * it is recorded as a known limit (docs/privacy-by-design.md) rather than guessed at
-     * here. Raised by automated review on this pull request.
-     */
-    private fun withoutInternalClaims(claims: JsonObject): JsonObject =
-        JsonObject(claims.filterKeys { it !in ENVELOPE_CLAIMS })
 
     private fun checkStatus(
         issuerClaims: JWTClaimsSet,
@@ -239,14 +269,6 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
     }
 
     private companion object {
-        /**
-         * The issuer envelope: every RFC 7519 registered claim that dates or identifies the
-         * credential, plus the SD-JWT VC machinery. Never part of an outcome — see
-         * [withoutInternalClaims] for why, and for why `iss` and `vct` are not listed.
-         */
-        private val ENVELOPE_CLAIMS =
-            setOf("cnf", "status", "sub", "aud", "exp", "nbf", "iat", "jti", "_sd_alg")
-
         /** `dc+sd-jwt` is the current media type; `vc+sd-jwt` is the earlier draft, still in the wild. */
         private val ISSUER_JWT_TYPS = setOf("dc+sd-jwt", "vc+sd-jwt")
 
@@ -261,5 +283,8 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
          * is minutes wide and symmetric already.
          */
         private val CLOCK_SKEW: java.time.Duration = java.time.Duration.ofMinutes(1)
+
+        /** See [checkTemporalValidity]: fifty years of 365 days. */
+        private val MAX_EXP_AHEAD: Duration = Duration.ofDays(50L * 365)
     }
 }

@@ -76,15 +76,17 @@ class SdJwtVcCredentialVerifierTest {
     }
 
     @Test
-    fun `an issuer plaintext claim survives the blocklist, which is the documented limit`() {
-        // Not a bug being pinned as correct: the documented boundary of a blocklist. The
-        // issuer can name a plaintext claim anything, and nothing here tells `serial_no`
-        // apart from a legitimate always-visible attribute. If this ever starts failing,
-        // an allowlist has landed and docs/privacy-by-design.md limit 8 must go with it.
-        val result = verify(TestVectors.vector())
-        val claims = (result as VerificationResult.Verified).claims.claims
-        assertThat(claims.keys).contains("iss", "vct")
-        assertThat(claims.keys).doesNotContainAnyElementsOf(listOf("iat", "exp", "cnf", "status"))
+    fun `an issuer plaintext claim no longer reaches the application`() {
+        // This test used to pin the documented limit of a blocklist: an issuer can name a
+        // plaintext claim anything, and `serial_no` survived. The outcome is now an
+        // allowlist of what the holder disclosed, plus iss and vct, and the limit is gone.
+        val compact =
+            TestVectors.vectorWith {
+                claim("serial_no", "CED-000123")
+                sdClaim("given_name", "Ada")
+            }
+        val claims = (verify(compact) as VerificationResult.Verified).claims.claims
+        assertThat(claims.keys).containsExactlyInAnyOrder("given_name", "iss", "vct")
     }
 
     @Test
@@ -226,6 +228,21 @@ class SdJwtVcCredentialVerifierTest {
     }
 
     @Test
+    fun `an untrusted reason reaches the detail bounded and on one line`() {
+        // The fourth internal review forged log lines through an iss that the federation
+        // evaluator echoed into its reason, and flooded the log with 100 KB per request.
+        // Bounded at the sink, so ANY evaluator is covered.
+        val forged =
+            "https://evil.example/\r\n2026-09-04 WARN [forged] wallet response rejected: OK" + "A".repeat(20_000)
+        val result = verify(TestVectors.vector(), context(trust = { TrustDecision.Untrusted(forged) }))
+        val detail = (result as VerificationResult.Rejected).detail
+        assertThat(result.reason).isEqualTo(RejectionReason.UNTRUSTED_ISSUER)
+        assertThat(detail).hasSize(200).doesNotContain("\r", "\n").startsWith("https://evil.example/??2026-09-04 WARN")
+        assertThat(verify(TestVectors.vector(), context(trust = { TrustDecision.Untrusted(null) })))
+            .isEqualTo(VerificationResult.Rejected(RejectionReason.UNTRUSTED_ISSUER, null))
+    }
+
+    @Test
     fun `trusted decision without keys is rejected`() {
         val noKeys = TrustEvaluator { TrustDecision.Trusted(emptyList()) }
         val result = verify(TestVectors.vector(), context(trust = noKeys))
@@ -242,6 +259,40 @@ class SdJwtVcCredentialVerifierTest {
         val compact = TestVectors.vector(statusUri = "https://status.example/1", statusIndex = 3)
         val result = verify(compact, context(status = StatusChecker { _, _ -> CredentialStatus.REVOKED }))
         assertThat(rejectionOf(result)).isEqualTo(RejectionReason.REVOKED)
+    }
+
+    @Test
+    fun `a suspended credential and one in an application-specific state are rejected as such`() {
+        val compact = TestVectors.vector(statusUri = "https://status.example/1", statusIndex = 3)
+        assertThat(verify(compact, context(status = { _, _ -> CredentialStatus.SUSPENDED })))
+            .isEqualTo(VerificationResult.Rejected(RejectionReason.SUSPENDED, "credential is suspended"))
+        assertThat(verify(compact, context(status = { _, _ -> CredentialStatus.APPLICATION_SPECIFIC })))
+            .isEqualTo(VerificationResult.Rejected(RejectionReason.STATUS_NOT_VALID, "credential status is not valid"))
+    }
+
+    @Test
+    fun `a credential whose status uri is not a usable https url never reaches the status checker`() {
+        // SECURITY.md B1 promised this shape rule for the status list URI; the fourth
+        // internal review found that a credential pointing at a cloud metadata address was
+        // handed straight to the fetcher, and verified when the fetch failed open.
+        val checked = mutableListOf<StatusReference>()
+        val recording = StatusChecker { ref, _ -> CredentialStatus.VALID.also { checked.add(ref) } }
+        for (bad in listOf(
+            "http://169.254.169.254/latest/meta-data/",
+            "file:///etc/passwd",
+            "https://[fe80::1]:8080/s",
+        )) {
+            val compact = TestVectors.vector(statusUri = bad, statusIndex = 0)
+            assertThat(verify(compact, context(status = recording)))
+                .`as`(bad)
+                .isEqualTo(
+                    VerificationResult.Rejected(
+                        RejectionReason.STATUS_CHECK_FAILED,
+                        "status_list uri is not a usable https url",
+                    ),
+                )
+        }
+        assertThat(checked).isEmpty()
     }
 
     @Test

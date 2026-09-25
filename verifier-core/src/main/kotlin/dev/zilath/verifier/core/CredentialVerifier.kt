@@ -89,15 +89,23 @@ data class VerificationContext(
      * answers. Null means no requirement.
      *
      * When present, a presentation that does not satisfy it is rejected with
-     * [RejectionReason.QUERY_NOT_SATISFIED] — none of the combinations
-     * [RequestedClaims.claimSets] allows is disclosed in full (without `claim_sets`: not
-     * every claim is), or a disclosed value is not among the [RequestedClaim.values]
-     * asked for — and [VerificationResult.Verified.claims] carries only the requested
-     * paths, plus `iss` and `vct`. Before the fourth internal review a presentation that
-     * disclosed nothing at all came back Verified: OpenID4VP puts the duty on the wallet,
-     * but "verified" has to mean the answer satisfies the question.
+     * [RejectionReason.QUERY_NOT_SATISFIED]: none of the combinations
+     * [RequestedClaims.claimSets] allows (without `claim_sets`: all the claims) is
+     * satisfied. A requested claim is satisfied when its path selects something in the
+     * credential (OpenID4VP 1.0 §7) and, when it names [RequestedClaim.values], something
+     * it selects equals one of them in type and value (§6.3). Issuer plaintext satisfies it
+     * as well as a disclosure does. [VerificationResult.Verified.claims] then carries only
+     * the requested paths that are present — for a claim with `values`, only the selected
+     * elements that match, so a value outside them is never handed over — plus `iss` and
+     * `vct`, and never the issuer envelope.
+     *
+     * Before the fourth internal review a presentation that disclosed nothing at all came
+     * back Verified: OpenID4VP puts the duty on the wallet, but "verified" has to mean the
+     * answer satisfies the question.
      */
     val requestedClaims: RequestedClaims? = null,
+    /** Size limits checked before anything is parsed; see [PresentationLimits] for the defaults' reasoning. */
+    val presentationLimits: PresentationLimits = PresentationLimits(),
 ) {
     init {
         require(expectedAudiences.isNotEmpty()) { "at least one expected audience is required" }
@@ -112,10 +120,13 @@ data class VerificationContext(
 /** The outcome of a single verification. Exhaustive: there is no third state. */
 sealed interface VerificationResult {
     /**
-     * Every check passed. [claims] holds what the holder chose to disclose plus `iss` and
-     * `vct` — never the rest of the issuer envelope (`iat`, `exp`, `nbf`, `jti`, `sub`, `cnf`,
-     * `status`), every member of which is stable per credential and would let a consumer link
-     * two verifications of the same person. `SdJwtVcCredentialVerifier` holds the list.
+     * Every check passed. [claims] is an allowlist: with [VerificationContext.requestedClaims],
+     * the requested claims that are present; without, the claims the holder disclosed (a
+     * disclosed member of a plaintext object keeps its container, not its plaintext
+     * siblings). Plus `iss` and `vct` in both cases. Never the issuer envelope (`iat`, `exp`,
+     * `nbf`, `jti`, `sub`, `aud`, `cnf`, `status`, `_sd_alg`), every member of which is stable
+     * per credential and would let a consumer link two verifications of the same person, and
+     * never an issuer plaintext claim nobody asked for.
      */
     data class Verified(
         val claims: DisclosedClaims,
@@ -125,11 +136,16 @@ sealed interface VerificationResult {
      * A check failed. [reason] is the stable, machine-readable outcome; [detail] is a
      * short human-readable hint for LOGS ONLY.
      *
-     * Two rules for [detail], both deliberate: it never carries a claim value or any part
-     * of the presentation, and it is not meant for the person at the other end. Telling a
-     * holder which check failed turns the verifier into an oracle for probing credentials,
-     * and the surrounding UI has no need for it — the answer the flow owes its caller is
-     * yes or no.
+     * Two rules for [detail], both deliberate: it is not meant for the person at the other
+     * end, and every phrase `SdJwtVcCredentialVerifier` writes is a fixed one, never a claim
+     * value or any part of the presentation. Telling a holder which check failed turns the
+     * verifier into an oracle for probing credentials, and the surrounding UI has no need
+     * for it — the answer the flow owes its caller is yes or no.
+     *
+     * One exception, for [RejectionReason.UNTRUSTED_ISSUER]: the detail is the
+     * [TrustEvaluator]'s own [TrustDecision.Untrusted.reason], cut to 200 characters with
+     * control characters and line separators replaced, but otherwise the evaluator's text.
+     * An evaluator that puts something from the presentation in its reason puts it here.
      */
     data class Rejected(
         val reason: RejectionReason,
@@ -137,7 +153,10 @@ sealed interface VerificationResult {
     ) : VerificationResult
 }
 
-/** The claims actually disclosed by the holder, with selective-disclosure digests resolved. */
+/**
+ * The claims a verification hands over, with selective-disclosure digests resolved: see
+ * [VerificationResult.Verified] for which.
+ */
 data class DisclosedClaims(
     val claims: JsonObject,
 )
@@ -169,7 +188,7 @@ enum class RejectionReason {
     DISCLOSURE_TAMPERED,
     UNSUPPORTED_FORMAT,
 
-    /** The presentation does not disclose what the request asked for (see [VerificationContext.requestedClaims]). */
+    /** The presentation does not answer what the request asked for: see [VerificationContext.requestedClaims]. */
     QUERY_NOT_SATISFIED,
 
     /** A wallet response arrived for a transaction whose nonce was already consumed. */

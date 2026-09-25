@@ -16,6 +16,7 @@
  */
 package dev.zilath.verifier.core
 
+import com.nimbusds.jose.Header
 import com.nimbusds.jose.JWSVerifier
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.util.Base64URL
@@ -27,10 +28,9 @@ import eu.europa.ec.eudi.sdjwt.SdJwtVerificationException
 import eu.europa.ec.eudi.sdjwt.VerificationError
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
-import java.security.MessageDigest
 
-private const val TILDE = '~'
-private const val SHA_256 = "SHA-256"
+/** Separates the issuer JWT, the disclosures and the key binding JWT (RFC 9901 §4). */
+internal const val TILDE = '~'
 
 /** Internal short-circuit carrying the rejection out of the verification pipeline. */
 internal class SdJwtRejection(
@@ -43,10 +43,29 @@ internal fun reject(
     detail: String? = null,
 ): Nothing = throw SdJwtRejection(reason, detail)
 
-/** Parses the issuer-signed JWT part of a compact SD-JWT without verifying it. */
-internal fun parseIssuerJwt(compact: String): SignedJWT =
-    runCatching { SignedJWT.parse(compact.substringBefore(TILDE)) }
+/**
+ * Parses the issuer-signed JWT part of a compact SD-JWT without verifying it.
+ *
+ * Nimbus refuses a JOSE header longer than [Header.MAX_HEADER_STRING_LENGTH] decoded
+ * characters, and so does the EUDI library, which parses the same JWT with Nimbus again. The
+ * limit is not configurable, and a legitimate header can exceed it: IT-Wallet 1.4.6 lets an
+ * issuer embed its federation `trust_chain` in the header, and the production disability
+ * card issuer's entity configuration alone is 39,668 characters. The signature covers the
+ * header, so nothing can be dropped before parsing either. Such a credential cannot be
+ * verified with this library today; what the fourth internal review found wrong is that
+ * it was reported as unparseable, indistinguishable from garbage. It now has its own phrase.
+ */
+internal fun parseIssuerJwt(compact: String): SignedJWT {
+    val issuerJwt = compact.substringBefore(TILDE)
+    val header =
+        runCatching { Base64URL(issuerJwt.substringBefore('.')).decodeToString() }
+            .getOrElse { reject(RejectionReason.MALFORMED, "issuer JWT does not parse") }
+    if (header.length > Header.MAX_HEADER_STRING_LENGTH) {
+        reject(RejectionReason.MALFORMED, "issuer JWT header exceeds the parser limit")
+    }
+    return runCatching { SignedJWT.parse(issuerJwt) }
         .getOrElse { reject(RejectionReason.MALFORMED, "issuer JWT does not parse") }
+}
 
 internal fun trustInputOf(issuerJwt: SignedJWT): IssuerTrustInput =
     IssuerTrustInput(
@@ -126,14 +145,18 @@ internal fun rejectionOf(failure: Throwable): SdJwtRejection =
         else -> SdJwtRejection(RejectionReason.MALFORMED, "presentation does not parse")
     }
 
-/** Recomputes the `sd_hash` the key binding must commit to: SHA-256 over `issuer-jwt~d1~...~`. */
-internal fun sdHashOf(compact: String): String {
-    val presentedPart = compact.substringBeforeLast(TILDE) + TILDE
-    val digest = MessageDigest.getInstance(SHA_256).digest(presentedPart.toByteArray(Charsets.US_ASCII))
-    return Base64URL.encode(digest).toString()
-}
-
-/** Extracts the OAuth Status List reference, if the credential carries one. */
+/**
+ * Extracts the OAuth Status List reference, if the credential carries one.
+ *
+ * Only the Token Status List mechanism (`status.status_list`) is evaluated. A `status`
+ * object that carries other members and no `status_list` — IT-Wallet's earlier
+ * `status_assertion` and `status_attestation`, which the production disability card issuer
+ * still advertises — is well formed (draft-ietf-oauth-status-list §6.1 lets other
+ * specifications define members), but the library cannot evaluate it, so the credential is
+ * rejected. Its own phrase says so, where the fourth internal review found the same words
+ * as for a broken reference: an operator must be able to tell "unsupported" from "wrong".
+ */
+@OptIn(InternalZilathApi::class)
 internal fun statusReferenceOf(issuerClaims: JWTClaimsSet): StatusReference? {
     // Absent is fine: not every credential is revocable. Present but not an object is NOT
     // fine — swallowing that would skip the revocation check entirely, while the sibling
@@ -144,8 +167,16 @@ internal fun statusReferenceOf(issuerClaims: JWTClaimsSet): StatusReference? {
         runCatching { issuerClaims.getJSONObjectClaim("status") }.getOrNull()
             ?: reject(RejectionReason.STATUS_CHECK_FAILED, "status claim is not an object")
     val statusList =
-        status["status_list"] as? Map<*, *>
-            ?: reject(RejectionReason.STATUS_CHECK_FAILED, "status claim without a status_list reference")
+        when (val member = status["status_list"]) {
+            is Map<*, *> -> member
+            null ->
+                if (status.isEmpty()) {
+                    reject(RejectionReason.STATUS_CHECK_FAILED, "status claim without a status_list reference")
+                } else {
+                    reject(RejectionReason.STATUS_CHECK_FAILED, "status mechanism not supported")
+                }
+            else -> reject(RejectionReason.STATUS_CHECK_FAILED, "malformed status_list reference")
+        }
     val uri = statusList["uri"] as? String
     // Two ways a Number can quietly become the wrong entry, and both read somebody else's
     // status bit: toInt() keeps the low 32 bits of anything larger, and toLong() truncates
@@ -159,6 +190,13 @@ internal fun statusReferenceOf(issuerClaims: JWTClaimsSet): StatusReference? {
             ?.toInt()
     if (uri == null || index == null) {
         reject(RejectionReason.STATUS_CHECK_FAILED, "malformed status_list reference")
+    }
+    // The fetcher is handed this URI, and the issuer chose it: SECURITY.md B1 promises the
+    // same shape rule as for federation URLs, which the fourth internal review found was
+    // never applied here — file:, http: to a metadata address, userinfo and bare IPs all
+    // reached the fetcher.
+    if (usableHttpsUriOrNull(uri) == null) {
+        reject(RejectionReason.STATUS_CHECK_FAILED, "status_list uri is not a usable https url")
     }
     return StatusReference(uri, index)
 }

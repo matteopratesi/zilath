@@ -81,10 +81,13 @@ sealed interface TrustDecision {
      * The issuer is not trusted, or trust could not be established.
      *
      * [reason] is diagnostic detail, not a log-only string: `SdJwtVcCredentialVerifier`
-     * passes it straight through as the `detail` of [VerificationResult.Rejected], so it
-     * travels with the result. The Spring endpoint keeps it server-side and returns only
-     * the reason code, but any other caller holding a [VerificationResult] can read it —
-     * so keep it free of anything that must not leave the process.
+     * passes it on as the `detail` of [VerificationResult.Rejected], so it travels with the
+     * result and is logged. On the way it is cut to 200 characters and its control
+     * characters and line separators are replaced — no evaluator can forge log lines or
+     * flood a log through it — but nothing else is changed. The Spring endpoint keeps it
+     * server-side and returns only the reason code, but any other caller holding a
+     * [VerificationResult] can read it. Make it a fixed phrase: never a value taken from the
+     * credential or from a fetched document, which were written by someone else.
      */
     data class Untrusted(
         val reason: String? = null,
