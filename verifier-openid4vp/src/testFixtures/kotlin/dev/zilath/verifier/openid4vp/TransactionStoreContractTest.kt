@@ -171,18 +171,21 @@ abstract class TransactionStoreContractTest {
      * A transaction with every field set, expiring an hour from now. Instants are whole
      * milliseconds: the contract asks for no finer precision.
      */
-    protected open fun sampleTransaction(id: String): Transaction =
-        Transaction(
+    protected open fun sampleTransaction(id: String): Transaction {
+        val now = Instant.now().truncatedTo(ChronoUnit.MILLIS)
+        return Transaction(
             id = TransactionId(id),
             nonce = "nonce-$id-0123456789abcdefghijklmnopqrstuvwxyz",
             state = TransactionState.CREATED,
-            createdAt = Instant.now().truncatedTo(ChronoUnit.MILLIS),
+            createdAt = now,
+            expiresAt = now.plus(1, ChronoUnit.HOURS),
             request = PresentationRequest.forVct("urn:zilath:test:entitlement", listOf("given_name"), "pid"),
             outcome = null,
             mode = FlowMode.SAME_DEVICE,
             responseCode = "response-code-$id",
             returned = false,
         )
+    }
 
     /** One of each outcome the flow records, with claims a lossy codec would get wrong. */
     protected open fun sampleOutcomes(): List<FlowOutcome?> =

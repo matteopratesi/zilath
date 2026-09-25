@@ -108,7 +108,7 @@ internal fun buildRequestJwt(
             .claim("client_metadata", config.profile.clientMetadataFor(config))
             .issueTime(Date.from(now))
             // The JAR must not advertise a validity window outliving the transaction itself.
-            .expirationTime(Date.from(transaction.createdAt.plus(config.transactionTimeToLive)))
+            .expirationTime(Date.from(transaction.expiresAt))
             .build()
     val headerBuilder =
         JWSHeader

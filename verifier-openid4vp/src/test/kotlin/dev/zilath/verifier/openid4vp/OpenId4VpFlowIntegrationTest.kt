@@ -361,12 +361,13 @@ class OpenId4VpFlowIntegrationTest {
         val started = startForPid()
         val body = walletBody(started)
         clock.advance(Duration.ofMinutes(6))
-        // One read answers "expired" and takes the entry with it; after that there is
-        // nothing left to answer about, which is the point — an expired transaction must
-        // not stay queryable, because staying queryable is what kept its claims alive.
+        // Expired on every path, and consistently: the entry is redacted in place and kept
+        // until the store drops it, so later reads still say "expired", never "unknown" —
+        // and never carry anything the transaction held.
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
-        assertThat(flow.handleWalletResponse(started.id, body)).isEqualTo(FlowOutcome.Unknown)
-        assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Unknown)
+        assertThat(flow.handleWalletResponse(started.id, body)).isEqualTo(FlowOutcome.Expired)
+        assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
+        assertThat(flow.requestJwtFor(started.id)).isNull()
     }
 
     @Test
@@ -547,7 +548,7 @@ class OpenId4VpFlowIntegrationTest {
                     config: RelyingPartyConfiguration,
                 ): JsonObject = ItWalletProfile.decodeWalletResponse(body, config).also { decoded.incrementAndGet() }
             }
-        val store = InMemoryTransactionStore(clock, config.transactionTimeToLive)
+        val store = InMemoryTransactionStore(clock)
         val starter = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), store, clock)
 
         fun limitedTo(max: Int) =
@@ -686,34 +687,61 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
+    fun `a verified outcome is never read past the time to live, whatever the store keeps`() {
+        // awaitOutcome returned a recorded outcome before looking at the clock, and left the
+        // redaction to the store: one that kept entries longer — a TTL of its own, a
+        // periodic cleanup — kept the claims readable for as long as it kept the entry.
+        val retaining = RetainingTransactionStore()
+        val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
+
+        val crossDevice = retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
+        retainingFlow.handleWalletResponse(crossDevice.id, walletBody(crossDevice, source = retainingFlow))
+
+        val sameDevice =
+            retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        val verified = retainingFlow.handleWalletResponse(sameDevice.id, walletBody(sameDevice, source = retainingFlow))
+        val code =
+            checkNotNull(retainingFlow.sameDeviceRedirectFor(sameDevice.id, verified)).substringAfter("response_code=")
+        assertThat(retainingFlow.consumeResponseCode(sameDevice.id, code)).isTrue()
+        assertThat(retainingFlow.awaitOutcome(sameDevice.id)).isInstanceOf(FlowOutcome.Verified::class.java)
+
+        clock.advance(config.transactionTimeToLive.plusSeconds(1))
+        for (id in listOf(crossDevice.id, sameDevice.id)) {
+            val late = retainingFlow.awaitOutcome(id)
+            assertThat(late).isEqualTo(FlowOutcome.Rejected(RejectionReason.EXPIRED))
+            // ...and redacted where it is kept, not only in the answer.
+            assertThat(retaining.get(id)?.outcome).isEqualTo(FlowOutcome.Rejected(RejectionReason.EXPIRED))
+            assertThat(retaining.get(id)?.responseCode).isNull()
+            assertThat(retainingFlow.awaitOutcome(id)).isEqualTo(late)
+        }
+    }
+
+    @Test
+    fun `a response to an expired transaction leaves it expired, error or presentation`() {
+        // An error posted to an expired but not yet swept transaction used to become its
+        // outcome, while a valid presentation next to it was answered Expired and removed:
+        // the checkout read "wallet error" for one and "unknown" for the other.
+        val erred = startForPid()
+        val presented = startForPid()
+        val presentation = walletBody(presented)
+        clock.advance(config.transactionTimeToLive.plusSeconds(1))
+        val ack =
+            flow.handleWalletResponse(
+                erred.id,
+                DirectPostBody(mapOf("error" to "access_denied", "error_description" to "too late")),
+            )
+        // Still acknowledged to the wallet: OpenID4VP §8.2 owes the error an answer.
+        assertThat(ack).isEqualTo(FlowOutcome.WalletErrorAcknowledged("access_denied", "too late"))
+        assertThat(flow.handleWalletResponse(presented.id, presentation)).isEqualTo(FlowOutcome.Expired)
+        assertThat(flow.awaitOutcome(erred.id)).isEqualTo(FlowOutcome.Expired)
+        assertThat(flow.awaitOutcome(presented.id)).isEqualTo(FlowOutcome.Expired)
+    }
+
+    @Test
     fun `a retaining store still refuses to consume an expired response code`() {
         // A shared store may RETAIN expired entries: expiry must be a precondition of
         // consumption itself, not a side effect of the in-memory sweep.
-        val retaining =
-            object : TransactionStore {
-                // The interface contract makes compareAndUpdate atomic: even a test
-                // double must honor it, or the exactly-once code exchange is untested.
-                val lock = Any()
-                val entries = HashMap<TransactionId, Transaction>()
-
-                override fun put(transaction: Transaction) {
-                    synchronized(lock) { entries[transaction.id] = transaction }
-                }
-
-                override fun get(id: TransactionId): Transaction? = synchronized(lock) { entries[id] }
-
-                override fun compareAndUpdate(
-                    id: TransactionId,
-                    update: (Transaction) -> Transaction,
-                ): Transaction? =
-                    synchronized(lock) {
-                        entries[id]?.also { entries[id] = update(it) }
-                    }
-
-                override fun remove(id: TransactionId) {
-                    synchronized(lock) { entries.remove(id) }
-                }
-            }
+        val retaining = RetainingTransactionStore()
         val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
         val started =
             retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)

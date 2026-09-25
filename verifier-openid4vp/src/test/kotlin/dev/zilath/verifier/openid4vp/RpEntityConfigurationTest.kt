@@ -179,6 +179,7 @@ class RpEntityConfigurationTest {
                 nonce = "n".repeat(32),
                 state = TransactionState.CREATED,
                 createdAt = clock.instant(),
+                expiresAt = clock.instant().plusSeconds(300),
                 request = PresentationRequest.forTestPid("urn:eudi:pid:it:1"),
             )
         val jar = SignedJWT.parse(buildRequestJwt(withChain, transaction, clock.instant()))

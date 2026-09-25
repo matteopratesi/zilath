@@ -55,6 +55,35 @@ class OptimisticTransactionStore : TransactionStore {
     }
 }
 
+/**
+ * A conforming store that never expires anything: what a shared store with a periodic or
+ * lazy cleanup looks like between two cleanups. The flow must not depend on the store's
+ * expiry for anything it promises.
+ */
+class RetainingTransactionStore : TransactionStore {
+    private val lock = Any()
+    private val entries = HashMap<TransactionId, Transaction>()
+
+    override fun put(transaction: Transaction) {
+        synchronized(lock) { entries[transaction.id] = transaction }
+    }
+
+    override fun get(id: TransactionId): Transaction? = synchronized(lock) { entries[id] }
+
+    override fun compareAndUpdate(
+        id: TransactionId,
+        update: (Transaction) -> Transaction,
+    ): Transaction? = synchronized(lock) { entries[id]?.also { entries[id] = update(it) } }
+
+    override fun remove(id: TransactionId) {
+        synchronized(lock) { entries.remove(id) }
+    }
+}
+
+class RetainingTransactionStoreContractTest : TransactionStoreContractTest() {
+    override fun newStore(): TransactionStore = RetainingTransactionStore()
+}
+
 class OptimisticTransactionStoreContractTest : TransactionStoreContractTest() {
     override fun newStore(): TransactionStore = OptimisticTransactionStore()
 }

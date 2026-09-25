@@ -17,9 +17,8 @@
 package dev.zilath.verifier.openid4vp
 
 import java.time.Clock
-import java.time.Duration
 
 /** The library's own store passes the kit it asks integrators to pass. */
 class InMemoryTransactionStoreContractTest : TransactionStoreContractTest() {
-    override fun newStore(): TransactionStore = InMemoryTransactionStore(Clock.systemUTC(), Duration.ofHours(1))
+    override fun newStore(): TransactionStore = InMemoryTransactionStore(Clock.systemUTC())
 }

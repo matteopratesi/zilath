@@ -23,44 +23,40 @@ import java.time.Duration
 
 class InMemoryTransactionStoreTest {
     private val clock = SteppingClock(TestVectors.NOW)
-    private val store = InMemoryTransactionStore(clock, Duration.ofMinutes(5))
+    private val store = InMemoryTransactionStore(clock)
 
-    private fun transaction(id: String) =
-        Transaction(
-            id = TransactionId(id),
-            nonce = "nonce-$id",
-            state = TransactionState.CREATED,
-            createdAt = clock.instant(),
-            request = PresentationRequest.forTestPid("urn:zilath:test:entitlement"),
-        )
+    private fun transaction(
+        id: String,
+        timeToLive: Duration = Duration.ofMinutes(5),
+    ) = Transaction(
+        id = TransactionId(id),
+        nonce = "nonce-$id",
+        state = TransactionState.CREATED,
+        createdAt = clock.instant(),
+        expiresAt = clock.instant().plus(timeToLive),
+        request = PresentationRequest.forTestPid("urn:zilath:test:entitlement"),
+    )
 
     @Test
-    fun `expired transactions are swept on the next put`() {
+    fun `an expired entry is kept a minute longer, then swept`() {
         store.put(transaction("old"))
-        clock.advance(Duration.ofMinutes(6))
+        // Expired, but inside the retention: still there, so the flow can say "expired".
+        clock.advance(Duration.ofMinutes(5).plus(InMemoryTransactionStore.EXPIRED_RETENTION))
         store.put(transaction("fresh"))
+        assertThat(store.get(TransactionId("old"))).isNotNull()
+        clock.advance(Duration.ofSeconds(1))
+        store.put(transaction("fresher"))
         assertThat(store.get(TransactionId("old"))).isNull()
         assertThat(store.get(TransactionId("fresh"))).isNotNull()
     }
 
     @Test
-    fun `compareAndUpdate returns the previous value and applies the update`() {
-        store.put(transaction("tx"))
-        val previous =
-            store.compareAndUpdate(TransactionId("tx")) { it.copy(state = TransactionState.PRESENTED) }
-        assertThat(previous?.state).isEqualTo(TransactionState.CREATED)
-        assertThat(store.get(TransactionId("tx"))?.state).isEqualTo(TransactionState.PRESENTED)
-    }
-
-    @Test
-    fun `compareAndUpdate on a missing transaction returns null`() {
-        assertThat(store.compareAndUpdate(TransactionId("ghost")) { it }).isNull()
-    }
-
-    @Test
-    fun `remove deletes the transaction`() {
-        store.put(transaction("tx"))
-        store.remove(TransactionId("tx"))
-        assertThat(store.get(TransactionId("tx"))).isNull()
+    fun `an entry lives as long as its own expiry says, not as long as the store likes`() {
+        // The store used to apply a time to live of its own, independent of the flow's: a
+        // shorter one dropped transactions whose request object the wallet still held.
+        store.put(transaction("long", timeToLive = Duration.ofMinutes(50)))
+        clock.advance(Duration.ofMinutes(45))
+        store.put(transaction("other"))
+        assertThat(store.get(TransactionId("long"))).isNotNull()
     }
 }

@@ -46,7 +46,18 @@ class OpenId4VpVerificationFlow(
         }
         val id = TransactionId(randomToken(TRANSACTION_ID_BYTES))
         val nonce = randomToken(NONCE_BYTES)
-        store.put(Transaction(id, nonce, TransactionState.CREATED, clock.instant(), request, mode = mode))
+        val now = clock.instant()
+        store.put(
+            Transaction(
+                id = id,
+                nonce = nonce,
+                state = TransactionState.CREATED,
+                createdAt = now,
+                expiresAt = now.plus(config.transactionTimeToLive),
+                request = request,
+                mode = mode,
+            ),
+        )
         val requestUri = "${config.endpoints.requestUriBase}/${id.value}"
         return StartedTransaction(id, requestUri, qrPayloadOf(config, requestUri))
     }
@@ -56,7 +67,7 @@ class OpenId4VpVerificationFlow(
         return when {
             transaction == null -> null
             transaction.state != TransactionState.CREATED -> null
-            transaction.isExpired(clock.instant(), config.transactionTimeToLive) -> null
+            transaction.isExpired(clock.instant()) -> null
             else -> buildRequestJwt(config, transaction, clock.instant())
         }
     }
@@ -65,47 +76,51 @@ class OpenId4VpVerificationFlow(
         txId: TransactionId,
         body: DirectPostBody,
     ): FlowOutcome {
+        val now = clock.instant()
+        // An expired transaction's nonce is not consumed: nothing may complete it any more.
         val before =
             store.compareAndUpdate(txId) { current ->
-                if (current.state == TransactionState.CREATED) {
+                if (current.state == TransactionState.CREATED && !current.isExpired(now)) {
                     current.copy(state = TransactionState.PRESENTED)
                 } else {
                     current
                 }
             } ?: return FlowOutcome.Unknown
-        val walletError = body.parameters["error"]
-        val outcome =
-            when {
-                // OpenID4VP §8.2: an authorization ERROR response is acknowledged, always.
-                // It grants nothing, so its state does not matter — and `record` below
-                // refuses to clobber an outcome that was already reached.
-                walletError != null -> walletErrorOf(walletError, body.parameters["error_description"])
-                before.isExpired(clock.instant(), config.transactionTimeToLive) -> FlowOutcome.Expired
-                before.state != TransactionState.CREATED ->
-                    FlowOutcome.Rejected(RejectionReason.REPLAY, "transaction nonce already consumed")
-                else -> verifyResponse(before, body)
+        val walletError = body.parameters["error"]?.let { walletErrorOf(it, body.parameters["error_description"]) }
+        return when {
+            // Expiry first, whatever was posted. An error is still acknowledged to the wallet
+            // (OpenID4VP §8.2), but it no longer becomes the transaction's outcome: the fourth
+            // internal review found an error on an expired, not yet swept transaction
+            // recorded as terminal, so that the checkout read "wallet error" where a valid
+            // presentation next to it read "unknown". Both now read Expired.
+            before.isExpired(now) -> {
+                store.redactIfExpired(txId, now)
+                walletError ?: FlowOutcome.Expired
             }
-        record(txId, before, outcome)
-        return outcome
+            // OpenID4VP §8.2: an authorization ERROR response is acknowledged, always. It
+            // grants nothing, so its state does not matter — and `record` refuses to clobber
+            // an outcome that was already reached.
+            walletError != null -> walletError.also { record(txId, before, it) }
+            before.state != TransactionState.CREATED ->
+                FlowOutcome.Rejected(RejectionReason.REPLAY, "transaction nonce already consumed")
+            else -> verifyResponse(before, body).also { record(txId, before, it) }
+        }
     }
 
     override fun awaitOutcome(txId: TransactionId): FlowOutcome {
+        val now = clock.instant()
         val transaction = store.get(txId) ?: return FlowOutcome.Unknown
         return when {
+            // Expiry is checked FIRST, here as on every other path. It used to come after the
+            // recorded outcome, which was returned as it stood: the redaction was left to the
+            // store, so a store keeping entries past the flow's time to live — a longer TTL of
+            // its own, a periodic cleanup — kept the claims readable as long as it kept them.
+            transaction.isExpired(now) -> expiredAnswerFor(store.redactIfExpired(txId, now) ?: transaction)
             // Same-device: the transaction is complete only when the user-agent has come
-            // back through the response-code exchange (WP_094) — pending until then, and
-            // EXPIRED (never the wallet outcome) when the return leg never happened.
-            transaction.mode == FlowMode.SAME_DEVICE &&
-                transaction.outcome != null &&
-                !transaction.returned ->
-                if (transaction.isExpired(clock.instant(), config.transactionTimeToLive)) {
-                    FlowOutcome.Expired
-                } else {
-                    FlowOutcome.Pending
-                }
-            // A recorded outcome survives expiry: the checkout must still observe it.
+            // back through the response-code exchange (WP_094) — pending until then.
+            transaction.mode == FlowMode.SAME_DEVICE && transaction.outcome != null && !transaction.returned ->
+                FlowOutcome.Pending
             transaction.outcome != null -> transaction.outcome
-            transaction.isExpired(clock.instant(), config.transactionTimeToLive) -> FlowOutcome.Expired
             else -> FlowOutcome.Pending
         }
     }
@@ -133,7 +148,7 @@ class OpenId4VpVerificationFlow(
                 transaction.outcome != null &&
                 transaction.outcome == outcome &&
                 !transaction.returned &&
-                !transaction.isExpired(clock.instant(), config.transactionTimeToLive)
+                !transaction.isExpired(clock.instant())
         if (!eligible) return null
         val code = transaction.responseCode ?: assignResponseCode(txId)
         // The session id travels as the last path segment, the code as the query: the
@@ -162,7 +177,7 @@ class OpenId4VpVerificationFlow(
         store.compareAndUpdate(txId) { current ->
             val eligible =
                 current.responseCode == code &&
-                    !current.isExpired(clock.instant(), config.transactionTimeToLive)
+                    !current.isExpired(clock.instant())
             consumed = eligible
             if (eligible) current.copy(responseCode = null, returned = true) else current
         }
@@ -226,7 +241,6 @@ class OpenId4VpVerificationFlow(
         when {
             // A replayed response must not clobber the first, recorded outcome.
             before.state != TransactionState.CREATED -> Unit
-            outcome is FlowOutcome.Expired -> store.remove(txId)
             else ->
                 store.compareAndUpdate(txId) { current ->
                     val state =
@@ -259,7 +273,7 @@ class OpenId4VpVerificationFlow(
             OpenId4VpVerificationFlow(
                 config,
                 verifier,
-                InMemoryTransactionStore(clock, config.transactionTimeToLive),
+                InMemoryTransactionStore(clock),
                 clock,
             )
     }
