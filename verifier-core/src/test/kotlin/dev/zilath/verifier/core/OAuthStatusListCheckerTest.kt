@@ -20,9 +20,13 @@ import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSASigner
+import com.nimbusds.jose.crypto.RSASSASigner
+import com.nimbusds.jose.crypto.opts.AllowWeakRSAKey
 import com.nimbusds.jose.jwk.Curve
-import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.JWK
+import com.nimbusds.jose.jwk.RSAKey
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
+import com.nimbusds.jose.jwk.gen.RSAKeyGenerator
 import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
@@ -67,7 +71,7 @@ class OAuthStatusListCheckerTest {
     private fun token(
         bits: Int = 1,
         rawList: ByteArray = byteArrayOf(0),
-        signWith: ECKey = issuerKey,
+        signWith: JWK = issuerKey,
         iss: String? = issuer,
         sub: String? = uri,
         typ: String? = "statuslist+jwt",
@@ -84,12 +88,19 @@ class OAuthStatusListCheckerTest {
                     issuedAt?.let { issueTime(Date.from(it)) }
                     claim("status_list", mapOf("bits" to bits, "lst" to deflate(rawList)))
                 }.build()
+        val rsa = signWith is RSAKey
         val header =
             JWSHeader
-                .Builder(JWSAlgorithm.ES256)
+                .Builder(if (rsa) JWSAlgorithm.RS256 else JWSAlgorithm.ES256)
                 .apply { typ?.let { type(JOSEObjectType(it)) } }
                 .build()
-        return SignedJWT(header, claims).apply { sign(ECDSASigner(signWith)) }.serialize()
+        val signer =
+            if (rsa) {
+                RSASSASigner(signWith.toRSAKey().toRSAPrivateKey(), setOf(AllowWeakRSAKey.getInstance()))
+            } else {
+                ECDSASigner(signWith.toECKey())
+            }
+        return SignedJWT(header, claims).apply { sign(signer) }.serialize()
     }
 
     private fun checkerFor(token: String) = OAuthStatusListChecker({ token }, clock)
@@ -154,6 +165,18 @@ class OAuthStatusListCheckerTest {
     fun `a status list signed by someone else is unknown, not valid`() {
         val forged = token(rawList = byteArrayOf(0), signWith = attackerKey)
         assertThat(statusOf(forged)).isEqualTo(CredentialStatus.UNKNOWN)
+    }
+
+    @Test
+    fun `a status list signed with a weak rsa issuer key is unknown`() {
+        // The fourth internal review: with a factorable issuer key, a stranger forges a
+        // "valid" answer for a revoked credential. The key rule skips it like any unusable key.
+        val weak = weakRsaKey(1024)
+        assertThat(statusOf(token(signWith = weak), trust = StatusIssuerTrust(issuer, listOf(weak.toPublicJWK()))))
+            .isEqualTo(CredentialStatus.UNKNOWN)
+        val strong = RSAKeyGenerator(2048).generate()
+        assertThat(statusOf(token(signWith = strong), trust = StatusIssuerTrust(issuer, listOf(strong.toPublicJWK()))))
+            .isEqualTo(CredentialStatus.VALID)
     }
 
     @Test
