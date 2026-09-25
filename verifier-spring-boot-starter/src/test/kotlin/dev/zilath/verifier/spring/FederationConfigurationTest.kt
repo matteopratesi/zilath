@@ -35,6 +35,7 @@ import dev.zilath.verifier.openid4vp.WalletProfile
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext
+import org.springframework.core.env.MapPropertySource
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -172,6 +173,20 @@ class FederationConfigurationTest {
                 .perform(get("/.well-known/openid-federation"))
                 .andExpect(status().isNotFound)
         }
+    }
+
+    @Test
+    fun `a blank entity id is no federation, as an empty one is`() {
+        // Written as a property source: the test property helper would trim the blank away.
+        starterRunner(signingKey)
+            .withInitializer { context ->
+                context.environment.propertySources.addFirst(
+                    MapPropertySource("blank", mapOf("zilath.openid4vp.federation.entity-id" to "  ")),
+                )
+            }.run { context ->
+                assertThat(context).hasNotFailed().doesNotHaveBean(OpenId4VpFederationController::class.java)
+                assertThat(context.getBean(RelyingPartyConfiguration::class.java).federation).isNull()
+            }
     }
 
     private fun requestObjectOf(context: AssertableApplicationContext): SignedJWT {
