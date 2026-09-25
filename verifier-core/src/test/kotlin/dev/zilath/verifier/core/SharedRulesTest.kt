@@ -110,6 +110,10 @@ class SharedRulesTest {
         // A surrogate already unpaired in the input is replaced; a whole pair survives.
         assertThat(boundedPrintable("https://x/\uD800 and \uDC00 and \uD83D\uDE00"))
             .isEqualTo("https://x/? and ? and \uD83D\uDE00")
+        // An unpaired high surrogate at the very end is replaced too, not silently dropped,
+        // and so is one the limit leaves last when what follows it is not its pair.
+        assertThat(boundedPrintable("issuer\uD800")).isEqualTo("issuer?")
+        assertThat(boundedPrintable("x".repeat(199) + "\uD800" + "y")).isEqualTo("x".repeat(199) + "?")
     }
 
     @Test

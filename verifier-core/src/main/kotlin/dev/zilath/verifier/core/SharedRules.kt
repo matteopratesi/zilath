@@ -136,10 +136,13 @@ fun usableHttpsUriOrNull(value: String): URI? {
  */
 @InternalZilathApi
 fun boundedPrintable(value: String): String {
-    val cut =
-        value.take(MAX_PRINTABLE_LENGTH).let {
-            if (it.lastOrNull()?.isHighSurrogate() == true) it.dropLast(1) else it
-        }
+    // Drop the last character only when the cut itself split a valid pair; a high surrogate
+    // that was unpaired already is kept, to become `?` below like any other.
+    val splitPair =
+        value.length > MAX_PRINTABLE_LENGTH &&
+            value[MAX_PRINTABLE_LENGTH - 1].isHighSurrogate() &&
+            value[MAX_PRINTABLE_LENGTH].isLowSurrogate()
+    val cut = value.take(MAX_PRINTABLE_LENGTH).let { if (splitPair) it.dropLast(1) else it }
     return cut
         .mapIndexed { index, char ->
             when {
