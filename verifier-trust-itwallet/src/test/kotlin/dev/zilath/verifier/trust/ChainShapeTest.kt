@@ -64,6 +64,50 @@ class ChainShapeTest {
     }
 
     @Test
+    fun `a closing anchor configuration must be the anchor's, although nothing in it is used`() {
+        // §10.2: the last statement's signature validates with a key of the trust anchor. A
+        // refreshed chain leaves the closing configuration out, so this is checked with the
+        // shape, before any fetch.
+        val impostor = ECKeyGenerator(Curve.P_256).keyID(anchorKey.keyID).generate()
+        val forged = signedStatement(impostor, ANCHOR_ID, ANCHOR_ID) { claim("jwks", jwksClaim(impostor)) }
+        assertThat(untrustedReason(decide(FederationFixtures.offlineChain() + forged))).contains("does not verify")
+    }
+
+    @Test
+    fun `a subordinate statement carrying claims only an entity configuration may is malformed`() {
+        // OID-FED §3.2: authority_hints, trust_anchor_hints and the trust mark claims make the
+        // statement an entity configuration's; a superior's statement with them is malformed.
+        val configurationOnly =
+            listOf(
+                "authority_hints" to listOf(ANCHOR_ID),
+                "trust_anchor_hints" to listOf(ANCHOR_ID),
+                "trust_marks" to emptyList<Any>(),
+                "trust_mark_issuers" to emptyMap<String, Any>(),
+                "trust_mark_owners" to emptyMap<String, Any>(),
+            )
+        for ((name, value) in configurationOnly) {
+            val statement = anchorStatementAboutLeaf { claim(name, value) }
+            assertThat(untrustedReason(decide(listOf(leafConfiguration(), statement))))
+                .describedAs(name)
+                .contains("only an entity configuration may")
+        }
+    }
+
+    @Test
+    fun `the leaf's configuration must verify with a key of its own jwks too`() {
+        // §10.2: ES[0]'s signature validates with a key in ES[0]["jwks"], besides the one its
+        // superior attests. Here the anchor attests the signing key, the leaf publishes another.
+        val published = ECKeyGenerator(Curve.P_256).keyID("published-by-the-leaf").generate()
+        val leaf =
+            signedStatement(leafFederationKey, LEAF_ID, LEAF_ID) {
+                claim("jwks", jwksClaim(published))
+                claim("authority_hints", listOf(ANCHOR_ID))
+                claim("metadata", mapOf("openid_credential_issuer" to FederationFixtures.credentialIssuerSection()))
+            }
+        assertThat(untrustedReason(decide(listOf(leaf, anchorStatementAboutLeaf())))).contains("kid")
+    }
+
+    @Test
     fun `a duplicated leaf cannot stand in for its own immediate superior`() {
         // [leaf, leaf, anchor's statement] links and verifies: the anchor's statement
         // attests the leaf's key, which signs both copies. It used to make the leaf its
@@ -91,6 +135,7 @@ class ChainShapeTest {
                 "metadata_policy" to mapOf("openid_credential_issuer" to mapOf("jwks" to mapOf("essential" to true))),
                 "metadata_policy_crit" to listOf("regexp"),
                 "constraints" to mapOf("max_path_length" to 0),
+                "source_endpoint" to "$ANCHOR_ID/fetch",
             )
         for ((name, value) in directives) {
             val onTheLeaf = listOf(leafConfigurationWith { claim(name, value) }, anchorStatementAboutLeaf())

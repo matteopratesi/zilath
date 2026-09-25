@@ -36,8 +36,9 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
   curve but P-256, P-384 and P-521 are skipped, for issuer, holder, status list and
   federation signatures alike: Nimbus enforces a minimum only when generating a key.
 - **The status list URI is held to the URL rule** SECURITY.md already claimed for it: https
-  with a hostname, no userinfo, no IP literals except loopback. A credential pointing
-  anywhere else is `STATUS_CHECK_FAILED` before the status checker is called.
+  with a hostname, no userinfo, no IP literals except loopback, plain http only to the
+  loopback names, for local development. A credential pointing anywhere else is
+  `STATUS_CHECK_FAILED` before the status checker is called.
 - **`Verified` means the query was answered.** With `VerificationContext.requestedClaims`, a
   presentation that does not disclose what was asked is `QUERY_NOT_SATISFIED` (OpenID4VP 1.0
   §6.3, §6.4.1, §7 claims path pointers); before, one disclosing nothing at all was
@@ -79,7 +80,14 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
 - **A trust chain has the shape §4 gives it.** Every statement after the leaf is a
   subordinate statement, the leaf's superior is one of its `authority_hints`, and
   `metadata_policy`, `metadata_policy_crit` or `constraints` in an entity configuration make
-  the chain malformed. `[leaf, leaf, statement]` used to make the leaf its own superior.
+  the chain malformed. `[leaf, leaf, statement]` used to make the leaf its own superior. No
+  entity appears twice in a chain (§17.1), and the online walk skips an authority hint it
+  has already visited: a leaf that vouched for an entity of its own making, which vouched
+  back, dropped the metadata the anchor's statement imposes. The leaf's configuration must
+  verify with a key of its own `jwks` as well as with the one its superior attests, and the
+  claims reserved to one kind of statement (`authority_hints`, `trust_marks` and the like
+  for entity configurations, `source_endpoint` for subordinate statements) make the other
+  kind malformed.
 - **Each statement is verified only with the key its `kid` names**, and every attested key
   needs a unique `kid`.
 - **`crit` fails the chain**, the library understanding no extension, and an operator named
@@ -88,12 +96,16 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
 - **A credential without `iss` is untrusted on the offline path too.**
 - **A provided `trust_chain` is refreshed online**: its shape and anchor are checked, then
   the chain is resolved again and the fresh documents decide, so a statement the superior
-  has withdrawn is a revocation. `offlineFallback = true` uses the provided chain alone,
-  and only while the federation cannot be reached. Subordinate statements valid for more
-  than 24 hours are refused (`maxStatementLifetime`, IT-Wallet §6.11.1): that bounds how long
-  a withdrawn statement can be replayed.
-- A `null` metadata parameter, an array operator on a parameter that is not an array, and an
-  `add` outside `subset_of` are policy errors, as the specification says.
+  has withdrawn is a revocation. With `offlineFallback = true` the chain is refreshed along
+  its own path one statement at a time, and only a document that cannot be fetched at all
+  is taken from the header: the superiors are asked even when the leaf's own configuration
+  cannot be fetched, so a withdrawn statement is missed only while the superior that
+  withdrew it is unreachable. Subordinate statements valid for more than 24 hours are
+  refused (`maxStatementLifetime`, IT-Wallet §6.11.1): that bounds how long a withdrawn
+  statement can be replayed.
+- A `null` metadata parameter, an array operator on a parameter that is not an array (`scope`,
+  a space-separated list, counts as one, §6.1.3.1.8), and an `add` outside `subset_of` are
+  policy errors, as the specification says.
 - Every `Untrusted.reason` is a fixed phrase: none repeats an identifier or a name read
   from a document or a credential before any signature was checked.
 
@@ -226,7 +238,8 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
   is excluded from every published module and from the POMs; a check task fails the build
   if it comes back.
 - CI actions are pinned by commit SHA, and a step refuses any that is not; Dependabot
-  proposes updates for them and for the Gradle dependencies.
+  proposes updates for them. Not for the Gradle dependencies: it cannot regenerate the
+  verification metadata below, so every pull request it opened would fail the build.
 - The Gradle wrapper verifies the distribution's SHA-256.
 - Every dependency and plugin is checked against the SHA-256 recorded in
   `gradle/verification-metadata.xml`: a changed or unknown artifact fails the build. The

@@ -45,8 +45,8 @@ internal open class TrustFailure(
 /**
  * The federation could not be asked: the [FederationFetcher] failed to bring back an
  * answer. Distinct from every other failure because it is the only one an evaluator in
- * offline-fallback mode may answer with the chain the credential carried — an answer
- * that says no, including "no such statement", is never papered over.
+ * offline-fallback mode may answer with the copy of that document the credential's chain
+ * carries — an answer that says no, including "no such statement", is never papered over.
  */
 internal class FederationUnreachable(
     message: String,
@@ -180,6 +180,20 @@ internal const val DEFAULT_MAX_CHAIN_LENGTH = 4
 internal val DEFAULT_MAX_STATEMENT_LIFETIME: Duration = Duration.ofHours(MAX_STATEMENT_LIFETIME_HOURS)
 
 private const val MAX_STATEMENT_LIFETIME_HOURS = 24L
+
+/**
+ * A provided chain whose shape has been checked, ends at the configured anchor and passes
+ * through no entity twice — no signature, no fetch yet: the leaf's configuration and the
+ * subordinate statements, the leaf's superior's first. A chain that fails here is refused
+ * before it can send the evaluator anywhere.
+ */
+internal class ProvidedChain(
+    val leaf: EntityStatement,
+    val subordinates: List<EntityStatement>,
+) {
+    /** The entities the chain names above the leaf, its immediate superior first. */
+    val superiors: List<String> get() = subordinates.map { it.issuer }
+}
 
 /** What a chain is validated against: the evaluator's configuration, in one place. */
 internal class ChainRules(

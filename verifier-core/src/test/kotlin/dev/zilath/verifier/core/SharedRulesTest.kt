@@ -26,6 +26,7 @@ import com.nimbusds.jose.jwk.RSAKey
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import com.nimbusds.jose.jwk.gen.OctetSequenceKeyGenerator
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator
+import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import org.assertj.core.api.Assertions.assertThat
@@ -76,7 +77,7 @@ class SharedRulesTest {
     }
 
     @Test
-    fun `only https urls with a hostname are usable`() {
+    fun `https urls with a hostname are usable, and plain http only on the loopback names`() {
         listOf(
             "https://status.example/1",
             "https://status.example/1?x=y",
@@ -106,6 +107,31 @@ class SharedRulesTest {
         // A surrogate pair cut in half by the limit is dropped, not left dangling.
         val cut = boundedPrintable("x".repeat(199) + "\uD83D\uDE00")
         assertThat(cut).isEqualTo("x".repeat(199))
+        // A surrogate already unpaired in the input is replaced; a whole pair survives.
+        assertThat(boundedPrintable("https://x/\uD800 and \uDC00 and \uD83D\uDE00"))
+            .isEqualTo("https://x/? and ? and \uD83D\uDE00")
+    }
+
+    @Test
+    fun `a weak rsa modulus padded with zero bytes is still weak`() {
+        val weak = weakRsaKey(1024)
+        val padded =
+            RSAKey
+                .Builder(zeroPadded(weak.modulus, 256), weak.publicExponent)
+                .privateKey(weak.toRSAPrivateKey())
+                .build()
+        // What the size check used to read: the encoded length, not the modulus.
+        assertThat(padded.size()).isEqualTo(2048)
+        assertThat(acceptableJwsVerifierFor(padded.toPublicJWK())).isNull()
+        assertThat(verifiesWithAnyAcceptableKey(signedWith(padded), listOf(padded.toPublicJWK()))).isFalse()
+    }
+
+    private fun zeroPadded(
+        value: Base64URL,
+        bytes: Int,
+    ): Base64URL {
+        val raw = value.decode()
+        return Base64URL.encode(ByteArray(bytes - raw.size) + raw)
     }
 
     private fun signedWith(key: RSAKey): SignedJWT =

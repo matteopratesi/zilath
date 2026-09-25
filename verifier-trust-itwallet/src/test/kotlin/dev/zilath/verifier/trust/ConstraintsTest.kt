@@ -83,6 +83,25 @@ class ConstraintsTest {
     }
 
     @Test
+    fun `a constraint set to null is malformed, not absent`() {
+        // A signed superior directive that does not parse fails the chain, as
+        // allowed_entity_types: null already did. Raw payloads: a builder may drop nulls.
+        val leafKeys =
+            com.nimbusds.jose.util.JSONObjectUtils.toJSONString(
+                FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey),
+            )
+        for (constraint in listOf("max_path_length", "naming_constraints")) {
+            val payload =
+                """{"iss":"${FederationFixtures.ANCHOR_ID}","sub":"${FederationFixtures.LEAF_ID}",""" +
+                    FederationFixtures.rawValidityWindow() + ""","jwks":$leafKeys,"constraints":{"$constraint":null}}"""
+            val statement = FederationFixtures.signedRawStatement(FederationFixtures.anchorKey, payload)
+            assertThat(untrustedReason(decide(listOf(leafConfiguration(), statement))))
+                .describedAs(constraint)
+                .contains("malformed constraints")
+        }
+    }
+
+    @Test
     fun `naming_constraints bind the leaf, excluded winning over permitted`() {
         fun naming(vararg members: Pair<String, List<String>>) = mapOf("naming_constraints" to mapOf(*members))
         // The leaf is https://issuer.example.
@@ -132,31 +151,62 @@ class ConstraintsTest {
             val issuerAllowed = directChain(mapOf(name to listOf("openid_credential_issuer")))
             assertThat(trustedKeyIds(decide(issuerAllowed))).describedAs(name).containsExactly(issuerKid)
         }
-        // Constraints from different superiors intersect.
-        val narrowedBelow =
+    }
+
+    @Test
+    fun `constraints from different superiors intersect, and a dropped type never sees a policy`() {
+        // The intermediate allows {verifier, issuer}, the anchor {issuer, wallet provider}:
+        // exactly the issuer survives. The anchor's policy has essential parameters for the
+        // other two types that this leaf does not satisfy, so either of them surviving — a
+        // single superior's list read instead of the intersection, or the drop happening
+        // after the policy — makes the chain fail.
+        val leafMetadata =
+            mapOf(
+                "openid_credential_issuer" to credentialIssuerSection(),
+                "openid_credential_verifier" to mapOf("client_name" to "not a verifier"),
+                "wallet_provider" to mapOf("aal_values_supported" to listOf("aal1")),
+            )
+        val chain =
             intermediatedChain(
                 configureIntermediateStatement = {
                     claim(
                         "constraints",
                         mapOf(
-                            "allowed_entity_types" to emptyList<String>(),
+                            "allowed_entity_types" to listOf("openid_credential_verifier", "openid_credential_issuer"),
                         ),
                     )
                 },
                 configureAnchorStatement = {
-                    claim("constraints", mapOf("allowed_entity_types" to listOf("openid_credential_issuer")))
+                    claim(
+                        "constraints",
+                        mapOf(
+                            "allowed_entity_types" to listOf("openid_credential_issuer", "wallet_provider"),
+                        ),
+                    )
+                    claim(
+                        "metadata_policy",
+                        mapOf(
+                            "openid_credential_verifier" to mapOf("client_id" to mapOf("essential" to true)),
+                            "wallet_provider" to mapOf("jwks" to mapOf("essential" to true)),
+                        ),
+                    )
                 },
-            )
-        assertThat(untrustedReason(decide(narrowedBelow))).contains("no credential signing keys")
+            ).let { (_, intermediateStatement, anchorStatement) ->
+                listOf(
+                    leafConfiguration(authorityHint = FederationFixtures.INTERMEDIATE_ID, metadata = leafMetadata),
+                    intermediateStatement,
+                    anchorStatement,
+                )
+            }
+        assertThat(trustedKeyIds(decide(chain))).containsExactly(issuerKid)
     }
 
     @Test
-    fun `federation_entity survives any allowed_entity_types, and dropped types never see a policy`() {
+    fun `federation_entity survives any allowed_entity_types, the empty list included`() {
         val metadata =
             mapOf(
                 "federation_entity" to mapOf("organization_name" to "leaf"),
                 "openid_credential_issuer" to credentialIssuerSection(),
-                "wallet_provider" to mapOf("jwks" to mapOf("keys" to emptyList<Any>())),
             )
         val statement =
             parseStatement(
@@ -164,13 +214,12 @@ class ConstraintsTest {
                     claim(
                         "constraints",
                         mapOf(
-                            "allowed_entity_types" to listOf("wallet_provider"),
+                            "allowed_entity_types" to emptyList<String>(),
                         ),
                     )
                 },
             )
-        assertThat(withoutDisallowedEntityTypes(metadata, listOf(statement)).keys)
-            .containsExactlyInAnyOrder("federation_entity", "wallet_provider")
+        assertThat(withoutDisallowedEntityTypes(metadata, listOf(statement)).keys).containsExactly("federation_entity")
     }
 
     @Test

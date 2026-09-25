@@ -42,21 +42,77 @@ internal fun resolveChain(
 ): List<String> {
     val statements = mutableListOf(fetchEntityConfiguration(fetcher, issuer))
     var current = statements.first()
+    // OID-FED §10.1: an authority hint that leads back to an entity already on the path MUST
+    // NOT be used. A provided chain steers this walk, so without it a leaf could lead the
+    // refresh round a loop of its own making.
+    val visited = mutableSetOf(issuer)
     while (current.issuer != rules.anchor.entityId) {
         if (statements.size >= rules.maxChainLength) {
             trustFail("trust chain longer than ${rules.maxChainLength} before reaching the anchor")
         }
-        val hints = current.authorityHints
+        val hints = current.authorityHints.filter { it !in visited }
         val superior =
             preferredSuperiors.getOrNull(statements.size - 1)?.takeIf { it in hints }
                 ?: hints.firstOrNull()
                 ?: trustFail("no authority_hints leading to the trust anchor ${rules.anchor.entityId}")
-        val superiorConfiguration = fetchEntityConfiguration(fetcher, superior)
-        if (superior == rules.anchor.entityId) requireGenuineAnchorConfiguration(superiorConfiguration, rules)
-        statements += fetchSubordinateStatement(fetcher, superiorConfiguration, current.subject)
-        current = superiorConfiguration
+        visited += superior
+        val hop = hop(fetcher, superior, current.subject, rules)
+        statements += hop.statement
+        current = hop.superiorConfiguration
     }
     return statements.map { it.serialized }
+}
+
+/**
+ * The refresh of a provided chain with an offline fallback, one statement at a time and
+ * along the chain's own path: the leaf's configuration and each superior's statement about
+ * the entity below it are fetched fresh, and a document that cannot be fetched at all is
+ * replaced by the copy the chain carries. Any answer that comes back is final.
+ *
+ * Falling back on the chain as a whole whenever any fetch failed let a withdrawn leaf switch
+ * its own revocation off: its well-known URL is its own to make time out, and a fresh
+ * configuration of its own naming an unreachable superior did the same. Now its superiors
+ * are asked regardless, and the anchor's "no such statement" is heard. A withdrawn
+ * statement is missed only while the superior that withdrew it cannot be reached.
+ *
+ * The path is the provided one: a fresh leaf configuration that no longer names the
+ * superior the chain goes through makes the chain untrusted rather than sending the walk
+ * where the leaf now points, which, again, the leaf would choose.
+ */
+internal fun refreshAlongProvidedPath(
+    fetcher: FederationFetcher,
+    issuer: String,
+    provided: ProvidedChain,
+    rules: ChainRules,
+): List<String> {
+    val leaf = freshOr(provided.leaf) { fetchEntityConfiguration(fetcher, issuer) }
+    val statements =
+        provided.subordinates.map { carried ->
+            freshOr(carried) { hop(fetcher, carried.issuer, carried.subject, rules).statement }
+        }
+    return (listOf(leaf) + statements).map { it.serialized }
+}
+
+private fun freshOr(
+    carried: EntityStatement,
+    fetch: () -> EntityStatement,
+): EntityStatement = runCatching(fetch).getOrElse { if (it is FederationUnreachable) carried else throw it }
+
+/** One superior's configuration, the anchor's verified first, and its statement about [subject]. */
+private class Hop(
+    val superiorConfiguration: EntityStatement,
+    val statement: EntityStatement,
+)
+
+private fun hop(
+    fetcher: FederationFetcher,
+    superior: String,
+    subject: String,
+    rules: ChainRules,
+): Hop {
+    val configuration = fetchEntityConfiguration(fetcher, superior)
+    if (superior == rules.anchor.entityId) requireGenuineAnchorConfiguration(configuration, rules)
+    return Hop(configuration, fetchSubordinateStatement(fetcher, configuration, subject))
 }
 
 internal fun fetchEntityConfiguration(

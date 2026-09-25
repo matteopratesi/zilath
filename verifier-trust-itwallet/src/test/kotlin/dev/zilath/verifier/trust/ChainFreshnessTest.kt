@@ -126,7 +126,9 @@ class ChainFreshnessTest {
     fun `with offline fallback the provided chain decides only while the federation cannot be reached`() {
         val offline = evaluator(serving(), offlineFallback = true)
         assertThat(trustedKeyIds(offline.evaluate(withProvided(offlineChain())))).containsExactly(issuerKid)
-        assertThat(fetched).describedAs("the refresh is still attempted").containsExactly(wellKnownLeaf)
+        assertThat(
+            fetched,
+        ).describedAs("the whole refresh is still attempted").containsExactly(wellKnownLeaf, wellKnownAnchor)
         // An answer that comes back is final: here, the anchor's statement no longer verifies.
         val stranger = ECKeyGenerator(Curve.P_256).keyID(anchorKey.keyID).generate()
         val answering =
@@ -139,6 +141,61 @@ class ChainFreshnessTest {
             )
         assertThat(untrustedReason(evaluator(answering, offlineFallback = true).evaluate(withProvided(offlineChain()))))
             .contains("does not verify")
+    }
+
+    @Test
+    fun `with offline fallback a withdrawn leaf cannot hide its revocation behind its own configuration`() {
+        // The leaf controls its own well-known URL: making it time out, or publishing a fresh
+        // configuration whose only superior cannot be reached, used to count as an outage and
+        // revive the header chain as it was. The superiors the header names are still asked,
+        // and the anchor answers that it no longer vouches for the leaf.
+        val withdrawn = { throw FederationDocumentNotFoundException() }
+        val hiding =
+            serving(
+                wellKnownAnchor to { anchorConfiguration() },
+                anchorFetchAboutLeaf to withdrawn,
+            )
+        val misdirecting =
+            serving(
+                wellKnownLeaf to { leafConfiguration(authorityHint = "https://unreachable.example") },
+                wellKnownAnchor to { anchorConfiguration() },
+                anchorFetchAboutLeaf to withdrawn,
+            )
+        for ((name, fetcher) in listOf("hiding" to hiding, "misdirecting" to misdirecting)) {
+            val decision = evaluator(fetcher, offlineFallback = true).evaluate(withProvided(offlineChain()))
+            assertThat(untrustedReason(decision)).describedAs(name).contains("does not publish")
+        }
+    }
+
+    @Test
+    fun `with offline fallback only an unreachable superior's statement is taken from the header`() {
+        val (leaf, intermediateStatement, anchorStatement) = intermediatedChain()
+        val wellKnownIntermediate = "$INTERMEDIATE_ID/.well-known/openid-federation"
+        val intermediateFetchAboutLeaf = "$INTERMEDIATE_ID/fetch?sub=${encode(LEAF_ID)}"
+        val anchorFetchAboutIntermediate = "$ANCHOR_ID/fetch?sub=${encode(INTERMEDIATE_ID)}"
+        val provided = listOf(leaf, intermediateStatement, anchorStatement)
+        // The intermediate is down, the anchor is not: the anchor's answer about the
+        // intermediate still decides, here that it was withdrawn.
+        val intermediateDown =
+            serving(
+                wellKnownLeaf to { leaf },
+                wellKnownAnchor to { anchorConfiguration() },
+                anchorFetchAboutIntermediate to { throw FederationDocumentNotFoundException() },
+            )
+        assertThat(
+            untrustedReason(evaluator(intermediateDown, offlineFallback = true).evaluate(withProvided(provided))),
+        ).contains("does not publish")
+        // The anchor is down, the intermediate answers: its fresh statement is used, the
+        // anchor's comes from the header.
+        val anchorDown =
+            serving(
+                wellKnownLeaf to { leaf },
+                wellKnownIntermediate to { intermediateConfiguration() },
+                intermediateFetchAboutLeaf to { intermediateStatement },
+            )
+        assertThat(trustedKeyIds(evaluator(anchorDown, offlineFallback = true).evaluate(withProvided(provided))))
+            .containsExactly(issuerKid)
+        assertThat(fetched).contains(intermediateFetchAboutLeaf, wellKnownAnchor)
     }
 
     @Test

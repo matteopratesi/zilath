@@ -80,7 +80,11 @@ internal object MetadataPolicy {
             val typeResult = result[type.toString()].orEmpty().toMutableMap()
             for ((parameter, operators) in parameters) {
                 if (operators !is Map<*, *>) trustFail("a metadata_policy parameter's operators are not a JSON object")
-                val cleaned = understoodOperators(operators.entries.associate { (op, v) -> op.toString() to v })
+                val cleaned =
+                    withScopeOperandsAsArrays(
+                        parameter.toString(),
+                        understoodOperators(operators.entries.associate { (op, v) -> op.toString() to v }),
+                    )
                 validateOperators(cleaned)
                 val merged = typeResult[parameter.toString()]?.let { mergeOperators(it, cleaned) } ?: cleaned
                 // Cross-operator restrictions must hold for the COMBINED policy too.
@@ -158,6 +162,7 @@ internal object MetadataPolicy {
             if (forced == null) result.remove(parameter) else result[parameter] = forced
         }
         operators["add"]?.let {
+            result.computeIfPresent(parameter) { _, current -> asScopeArray(parameter, current) }
             requireArrayIfPresent(result, parameter)
             result[parameter] = unionOf(result[parameter], it)
         }
@@ -170,6 +175,7 @@ internal object MetadataPolicy {
             }
         }
         operators["subset_of"]?.let { allowed ->
+            result.computeIfPresent(parameter) { _, current -> asScopeArray(parameter, current) }
             requireArrayIfPresent(result, parameter)
             if (result.containsKey(parameter)) {
                 // An empty intersection is a legal resolved value: keep [] (it still
@@ -178,15 +184,17 @@ internal object MetadataPolicy {
             }
         }
         checkAfterShaping(parameter, operators, result)
+        result.computeIfPresent(parameter) { _, resolved -> asScopeString(parameter, resolved) }
         return result
     }
 
     private fun checkAfterShaping(
         parameter: String,
         operators: Map<String, Any?>,
-        result: Map<String, Any?>,
+        result: MutableMap<String, Any?>,
     ) {
         operators["superset_of"]?.let { required ->
+            result.computeIfPresent(parameter) { _, current -> asScopeArray(parameter, current) }
             requireArrayIfPresent(result, parameter)
             result[parameter]?.let { current ->
                 if (!asList(current).containsAll(asList(required))) {

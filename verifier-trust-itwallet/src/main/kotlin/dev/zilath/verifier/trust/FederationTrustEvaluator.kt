@@ -42,10 +42,14 @@ import java.time.Duration
  *    statements expired, however long ago its superior withdrew it; IT-Wallet 1.4.6 §6.9 and
  *    §6.12.1 require the chain to be verifiable online and refreshed when a connection is
  *    available. A statement the superior no longer serves is a revocation.
- * 3. Only with [offlineFallback], and only when the federation cannot be reached at all
- *    (the fetcher throws anything but [FederationDocumentNotFoundException]), is the
- *    provided chain validated and used as it is — an expired one is then untrusted. Every
- *    answer that comes back is final, including "no such statement".
+ * 3. With [offlineFallback] the provided chain is refreshed along its own path, one
+ *    statement at a time: the leaf's configuration and each superior's statement about the
+ *    entity below it are fetched fresh, and only a document that cannot be fetched at all
+ *    (the fetcher throws anything but [FederationDocumentNotFoundException]) is replaced by
+ *    the copy the chain carries — an expired copy is then untrusted. Every answer that
+ *    comes back is final, including "no such statement". The superiors are asked even when
+ *    the leaf's own configuration cannot be fetched, which the leaf controls: a withdrawn
+ *    statement is missed only while the superior that withdrew it cannot be reached.
  *
  * Every subordinate statement must be valid for at most [maxStatementLifetime], 24 hours by
  * default: IT-Wallet 1.4.6 §6.11.1 wants a revocation propagated within 24 hours, so a
@@ -65,8 +69,9 @@ import java.time.Duration
  *
  * @param offlineFallback false (the default) for a relying party that is online — every
  *   decision reflects the federation as it is now. True for deployments that must keep
- *   working through an outage: an unreachable federation then falls back to the chain the
- *   credential carries, at the cost of not seeing a revocation until it is reachable again.
+ *   working through an outage: a superior that cannot be reached is then answered for by
+ *   its statement in the chain the credential carries, at the cost of not seeing that
+ *   superior's revocations until it is reachable again.
  */
 class FederationTrustEvaluator(
     anchor: TrustAnchorConfig,
@@ -110,13 +115,14 @@ class FederationTrustEvaluator(
         provided: List<String>,
         issuer: String,
     ): TrustDecision.Trusted {
-        val superiors = superiorsNamedBy(provided, issuer, rules)
-        val refreshed = runCatching { validateChain(resolveChain(fetcher, issuer, rules, superiors), issuer, rules) }
-        return if (offlineFallback && refreshed.exceptionOrNull() is FederationUnreachable) {
-            validateChain(provided, issuer, rules)
-        } else {
-            refreshed.getOrThrow()
-        }
+        val checked = providedChainOf(provided, issuer, rules)
+        val refreshed =
+            if (offlineFallback) {
+                refreshAlongProvidedPath(fetcher, issuer, checked, rules)
+            } else {
+                resolveChain(fetcher, issuer, rules, checked.superiors)
+            }
+        return validateChain(refreshed, issuer, rules)
     }
 }
 

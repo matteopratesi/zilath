@@ -55,84 +55,6 @@ internal fun validateChain(
 }
 
 /**
- * The superiors a provided chain names, the leaf's first, after checking its shape and
- * that it ends at the configured anchor — no signature, no fetch. A chain that fails here
- * is refused before it can send the evaluator anywhere.
- */
-internal fun superiorsNamedBy(
-    chain: List<String>,
-    expectedIssuer: String,
-    rules: ChainRules,
-): List<String> = subordinateStatementsOf(parseChain(chain, rules), expectedIssuer, rules.anchor).map { it.issuer }
-
-private fun parseChain(
-    chain: List<String>,
-    rules: ChainRules,
-): List<EntityStatement> {
-    if (chain.size < 2) trustFail("a trust chain needs at least the leaf and an anchor statement")
-    // The offline chain comes from an attacker-controlled header: bound it before any parsing.
-    if (chain.size > rules.maxChainLength) trustFail("trust chain longer than ${rules.maxChainLength} statements")
-    return chain.map(::parseStatement)
-}
-
-/**
- * The shape OID-FED 1.0 §4 gives a trust chain, and the chain's subordinate statements,
- * the leaf's immediate superior first.
- *
- * ES[0] is the leaf's entity configuration; every statement after it is a subordinate
- * statement (`iss` != `sub`) about the entity before it; the chain closes with the
- * configured anchor's statement, optionally followed by the anchor's own entity
- * configuration. The fourth internal review found the middle rule missing: the chain
- * `[leaf, leaf, anchor's statement]` linked and verified, and made the leaf its own
- * "immediate superior" — the metadata the anchor imposed on it in its statement was
- * overlaid by the leaf's own and vanished, and a `metadata_policy` the leaf wrote into its
- * own configuration was applied as if a superior had.
- */
-private fun subordinateStatementsOf(
-    statements: List<EntityStatement>,
-    expectedIssuer: String,
-    anchor: TrustAnchorConfig,
-): List<EntityStatement> {
-    val leaf = statements.first()
-    if (leaf.issuer != leaf.subject) trustFail("the leaf entity configuration is not self-issued")
-    if (leaf.subject != expectedIssuer) {
-        trustFail("credential iss does not match the trust chain leaf")
-    }
-    val last = statements.last()
-    if (last.issuer != anchor.entityId) trustFail("the chain does not end at the configured trust anchor")
-    for (index in 1 until statements.size) {
-        val expectedSubject = if (index == 1) leaf.subject else statements[index - 1].issuer
-        if (statements[index].subject != expectedSubject) {
-            trustFail("broken iss/sub linking at chain position $index")
-        }
-    }
-    val endsWithAnchorConfiguration = statements.size > 2 && last.issuer == last.subject
-    val subordinates = statements.subList(1, if (endsWithAnchorConfiguration) statements.size - 1 else statements.size)
-    if (subordinates.any { it.issuer == it.subject }) {
-        trustFail("a statement after the leaf is not a subordinate statement")
-    }
-    // §3.2: a subordinate statement's iss MUST be one of the authority_hints in its
-    // subject's entity configuration, "otherwise, the Federation graph is not well-formed".
-    // The chain carries only the leaf's configuration, so that is the one checked here;
-    // online resolution follows the hints at every level by construction.
-    if (subordinates.first().issuer !in leaf.authorityHints) {
-        trustFail("the leaf's superior in the chain is not among its authority_hints")
-    }
-    // OID-FED §3.2: metadata_policy, metadata_policy_crit and constraints belong to
-    // subordinate statements only. In an entity configuration they are not ignored — which
-    // is how the leaf's was treated — nor applied — which is how a trailing anchor
-    // configuration's was: the statement is malformed.
-    listOfNotNull(leaf, last.takeIf { endsWithAnchorConfiguration }).forEach { configuration ->
-        if (SUPERIOR_DIRECTIVES.any(configuration::hasClaim)) {
-            trustFail("an entity configuration carries claims only a subordinate statement may")
-        }
-    }
-    return subordinates
-}
-
-private val SUPERIOR_DIRECTIVES = listOf("metadata_policy", "metadata_policy_crit", "constraints")
-
-/**
  * Checks every statement's validity window and signature from the anchor down. Each
  * statement attests the federation keys of the entity below it, which verify the next.
  *
@@ -163,6 +85,11 @@ private fun verifyTopDown(
             statement.federationJwks.ifEmpty {
                 trustFail("the statement at chain position $index carries no federation keys")
             }
+        // §10.2: the leaf's configuration must also validate with a key of its OWN jwks — the
+        // one its kid names — not only with the key its superior attests.
+        if (index == 0 && !verifiesWithAny(statement.jwt, listOf(keyNamedBy(statement, attested)))) {
+            trustFail("the signature of the statement at chain position 0 does not verify")
+        }
         if (index == 0 || statement.issuer != statement.subject) trustedKeys = attested
     }
 }
@@ -196,7 +123,7 @@ internal fun requireGenuineAnchorConfiguration(
  * rollover or historical-keys mechanism indexed by `kid` would have inherited the
  * ambiguity; now the statement is verified with the one key its `kid` names.
  */
-private fun keyNamedBy(
+internal fun keyNamedBy(
     statement: EntityStatement,
     trustedKeys: List<JWK>,
 ): JWK {
@@ -242,7 +169,7 @@ private fun checkLifetime(
 }
 
 @OptIn(InternalZilathApi::class)
-private fun verifiesWithAny(
+internal fun verifiesWithAny(
     jwt: SignedJWT,
     keys: List<JWK>,
 ): Boolean = verifiesWithAnyAcceptableKey(jwt, keys)
