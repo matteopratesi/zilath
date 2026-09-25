@@ -1,13 +1,10 @@
 # Update proposals only: nothing is merged without review. Pinned action SHAs are kept
-# pinned (Dependabot rewrites the SHA and the version comment together).
+# pinned (Dependabot rewrites the SHA and the version comment together). Gradle is not
+# listed: Dependabot does not regenerate gradle/verification-metadata.xml, so each of its
+# version bumps would fail dependency verification; bumps are made by hand (docs/releasing.md).
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-  - package-ecosystem: gradle
-    directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
