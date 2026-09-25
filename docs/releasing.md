@@ -190,6 +190,13 @@ available everywhere and `GPG_TTY` is what this file assumes.
    git status --porcelain     # must be empty
    ```
 
+   Then look up the pinned versions in `gradle/libs.versions.toml` against the advisory
+   databases (<https://osv.dev>, <https://github.com/advisories>), at least for the
+   libraries that parse what a wallet or a federation sends: Nimbus JOSE+JWT, the EUDI
+   SD-JWT library, kotlinx-serialization, and Spring Boot for the starter. The pins are
+   frozen on purpose, so nothing else will tell you that one of them has an advisory. A
+   version bump belongs in its own pull request, before the release one.
+
 3. **Export the signing key for this shell only.**
 
    ```sh

@@ -13,9 +13,14 @@ kotlin {
 dependencies {
     api(libs.nimbus.jose.jwt)
     api(libs.kotlinx.serialization.json)
-    implementation(libs.eudi.sdjwt)
+    // The EUDI SD-JWT library declares a whole ktor HTTP client stack (27 io.ktor modules)
+    // in compile scope, for network helpers Zilath never calls: no engine is on the
+    // classpath and no Zilath code references it. Excluded so that integrators do not ship,
+    // patch and answer scanners for code that never runs; the exclusion is written into the
+    // published POM, and `checkPublishedRuntimeClasspath` fails the build if it ever comes back.
+    implementation(libs.eudi.sdjwt) { exclude(group = "io.ktor") }
     implementation(libs.kotlinx.coroutines.core)
-    testFixturesImplementation(libs.eudi.sdjwt)
+    testFixturesImplementation(libs.eudi.sdjwt) { exclude(group = "io.ktor") }
     testFixturesImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
