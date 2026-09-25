@@ -49,6 +49,17 @@ internal fun tombstoneOf(outcome: FlowOutcome?): FlowOutcome? =
     }
 
 /**
+ * Whether [this] has expired at [now], or a store has already redacted it as expired: an
+ * open transaction holds its own response key until a response consumes it, so an open one
+ * without it was redacted — by a store whose clock read a later instant than [now] did, the
+ * in-memory store's sweep among them. Taken for unexpired, it had a request object built
+ * without its key — the static key in its place, or a failure when there is none — and a
+ * response consumed it as if it were open.
+ */
+internal fun Transaction.isExpiredOrRedacted(now: Instant): Boolean =
+    isExpired(now) || (state == TransactionState.CREATED && responseEncryptionKey == null)
+
+/**
  * Redacts the transaction [txId] in place if it has expired at [now], and returns what the
  * store holds afterwards. Kept, not removed, so that later reads answer Expired rather than
  * Unknown until the store drops the entry; redacted, so that nothing in it outlives its

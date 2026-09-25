@@ -86,12 +86,13 @@ class OpenId4VpVerificationFlow(
         require(walletNonce == null || walletNonce.length <= VerificationFlow.MAX_WALLET_NONCE_LENGTH) {
             "wallet_nonce exceeds ${VerificationFlow.MAX_WALLET_NONCE_LENGTH} characters"
         }
-        val now = clock.instant()
         val transaction = store.get(txId)
+        // After the read, so that a store sweeping at its own later instant is not behind it.
+        val now = clock.instant()
         return when {
             transaction == null -> null
             // Every call that finds the transaction expired redacts it: see Transaction.
-            transaction.isExpired(now) -> null.also { store.redactIfExpired(txId, now) }
+            transaction.isExpiredOrRedacted(now) -> null.also { store.redactIfExpired(txId, now) }
             transaction.state != TransactionState.CREATED -> null
             else -> buildRequestJwt(config, transaction, now, walletNonce)
         }
@@ -105,7 +106,7 @@ class OpenId4VpVerificationFlow(
         // An expired transaction's nonce is not consumed: nothing may complete it any more.
         val before =
             store.compareAndUpdate(txId) { current ->
-                if (current.state == TransactionState.CREATED && !current.isExpired(now)) {
+                if (current.state == TransactionState.CREATED && !current.isExpiredOrRedacted(now)) {
                     // The decryption key leaves the store with the nonce: this call decrypts
                     // with the copy it holds, and no later response could be accepted anyway.
                     current.copy(state = TransactionState.PRESENTED, responseEncryptionKey = null)
@@ -120,7 +121,7 @@ class OpenId4VpVerificationFlow(
             // internal review found an error on an expired, not yet swept transaction
             // recorded as terminal, so that the checkout read "wallet error" where a valid
             // presentation next to it read "unknown". Both now read Expired.
-            before.isExpired(now) -> {
+            before.isExpiredOrRedacted(now) -> {
                 store.redactIfExpired(txId, now)
                 HandledResponse(walletError ?: FlowOutcome.Expired)
             }

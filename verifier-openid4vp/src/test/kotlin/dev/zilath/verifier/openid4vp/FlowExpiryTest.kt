@@ -117,6 +117,23 @@ class FlowExpiryTest : FlowTestSupport() {
     }
 
     @Test
+    fun `a transaction a store redacted at a later instant than the flow's reads expired`() {
+        // A store sweeps by its own clock, read a moment after the flow's: it may have
+        // redacted an entry the flow still takes for unexpired. That entry has lost its own
+        // response key; a request object used to be built without it, and a response
+        // consumed the entry as if it were open.
+        val retaining = RetainingTransactionStore()
+        val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
+        val started = retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
+        val body = walletBody(started, source = retainingFlow)
+        retaining.compareAndUpdate(started.id) { it.redactedForExpiry() }
+
+        assertThat(retainingFlow.requestJwtFor(started.id)).isNull()
+        assertThat(retainingFlow.handleWalletResponse(started.id, body).outcome).isEqualTo(FlowOutcome.Expired)
+        assertThat(retaining.get(started.id)?.state).isEqualTo(TransactionState.CREATED)
+    }
+
+    @Test
     fun `an error posted to an expired same-device transaction gets no return ticket`() {
         // Nothing was recorded within the time to live: the error is acknowledged to the
         // wallet, but it does not become the outcome, and no code sends the user back to a
