@@ -187,6 +187,7 @@ class ChainFreshnessTest {
         ).contains("does not publish")
         // The anchor is down, the intermediate answers: its fresh statement is used, the
         // anchor's comes from the header.
+        fetched.clear()
         val anchorDown =
             serving(
                 wellKnownLeaf to { leaf },
