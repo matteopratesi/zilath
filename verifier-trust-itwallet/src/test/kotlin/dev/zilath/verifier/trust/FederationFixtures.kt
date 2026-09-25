@@ -157,36 +157,51 @@ object FederationFixtures {
     fun fetcherOf(entries: Map<String, String>): FederationFetcher =
         FederationFetcher { url -> entries[url] ?: error("unmapped url: $url") }
 
-    /** Direct federation: leaf directly under the anchor. */
-    fun directFederation(): FederationFetcher =
+    /** Direct federation: leaf directly under the anchor, whose statement gets [configureAnchorStatement]. */
+    fun directFederation(configureAnchorStatement: JWTClaimsSet.Builder.() -> Unit = {}): FederationFetcher =
         fetcherOf(
             mapOf(
                 "$LEAF_ID/.well-known/openid-federation" to leafConfiguration(),
                 "$ANCHOR_ID/.well-known/openid-federation" to anchorConfiguration(),
-                "$ANCHOR_ID/fetch?sub=${encode(LEAF_ID)}" to
-                    signedStatement(anchorKey, ANCHOR_ID, LEAF_ID) {
-                        claim("jwks", jwksClaim(leafFederationKey))
-                    },
+                "$ANCHOR_ID/fetch?sub=${encode(LEAF_ID)}" to anchorStatementAboutLeaf(configureAnchorStatement),
             ),
         )
 
-    /** Federation with an intermediate between leaf and anchor. */
-    fun intermediatedFederation(): FederationFetcher =
-        fetcherOf(
+    /**
+     * Leaf -> intermediate -> anchor, as a `trust_chain` would carry it: the leaf's
+     * configuration, the intermediate's statement about it, the anchor's about the
+     * intermediate, each open to extra claims.
+     */
+    fun intermediatedChain(
+        configureIntermediateStatement: JWTClaimsSet.Builder.() -> Unit = {},
+        configureAnchorStatement: JWTClaimsSet.Builder.() -> Unit = {},
+    ): List<String> =
+        listOf(
+            leafConfiguration(authorityHint = INTERMEDIATE_ID),
+            signedStatement(intermediateKey, INTERMEDIATE_ID, LEAF_ID) {
+                claim("jwks", jwksClaim(leafFederationKey))
+                configureIntermediateStatement()
+            },
+            signedStatement(anchorKey, ANCHOR_ID, INTERMEDIATE_ID) {
+                claim("jwks", jwksClaim(intermediateKey))
+                configureAnchorStatement()
+            },
+        )
+
+    /** Federation with an intermediate between leaf and anchor, serving [intermediatedChain]. */
+    fun intermediatedFederation(configureAnchorStatement: JWTClaimsSet.Builder.() -> Unit = {}): FederationFetcher {
+        val (leaf, intermediateStatement, anchorStatement) =
+            intermediatedChain(configureAnchorStatement = configureAnchorStatement)
+        return fetcherOf(
             mapOf(
-                "$LEAF_ID/.well-known/openid-federation" to leafConfiguration(authorityHint = INTERMEDIATE_ID),
+                "$LEAF_ID/.well-known/openid-federation" to leaf,
                 "$INTERMEDIATE_ID/.well-known/openid-federation" to intermediateConfiguration(),
                 "$ANCHOR_ID/.well-known/openid-federation" to anchorConfiguration(),
-                "$INTERMEDIATE_ID/fetch?sub=${encode(LEAF_ID)}" to
-                    signedStatement(intermediateKey, INTERMEDIATE_ID, LEAF_ID) {
-                        claim("jwks", jwksClaim(leafFederationKey))
-                    },
-                "$ANCHOR_ID/fetch?sub=${encode(INTERMEDIATE_ID)}" to
-                    signedStatement(anchorKey, ANCHOR_ID, INTERMEDIATE_ID) {
-                        claim("jwks", jwksClaim(intermediateKey))
-                    },
+                "$INTERMEDIATE_ID/fetch?sub=${encode(LEAF_ID)}" to intermediateStatement,
+                "$ANCHOR_ID/fetch?sub=${encode(INTERMEDIATE_ID)}" to anchorStatement,
             ),
         )
+    }
 
     /** A valid offline trust chain (leaf EC + anchor statement about the leaf). */
     fun offlineChain(): List<String> =

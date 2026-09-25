@@ -43,11 +43,14 @@ internal fun validateChain(
     val leaf = statements.first()
     val subordinates = subordinateStatementsOf(statements, expectedIssuer, anchor)
     verifyTopDown(statements, anchor, clock.instant())
+    checkPathAndNamingConstraints(subordinates)
     // metadata_policy: superiors constrain the leaf metadata. The immediate
-    // superior's statement metadata overrides the leaf's first; then the policies,
-    // merged anchor-first, are applied. The credential keys come from the RESOLVED
-    // metadata, so a superior can restrict or replace what the leaf advertises.
-    val effectiveMetadata = MetadataPolicy.overlay(leaf.metadata, subordinates.first().metadata)
+    // superior's statement metadata overrides the leaf's first, the entity types the
+    // constraints do not allow are dropped, then the policies, merged anchor-first, are
+    // applied. The credential keys come from the RESOLVED metadata, so a superior can
+    // restrict or replace what the leaf advertises.
+    val effectiveMetadata =
+        withoutDisallowedEntityTypes(MetadataPolicy.overlay(leaf.metadata, subordinates.first().metadata), subordinates)
     val policies = subordinates.asReversed().mapNotNull { it.metadataPolicy }
     val criticalOperators = subordinates.flatMap { it.metadataPolicyCrit }.toSet()
     val resolvedMetadata = MetadataPolicy.resolve(effectiveMetadata, policies, criticalOperators)

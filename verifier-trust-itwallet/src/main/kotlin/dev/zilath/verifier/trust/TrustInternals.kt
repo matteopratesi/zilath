@@ -66,6 +66,10 @@ internal class EntityStatement(
     val metadataPolicy: Map<*, *>?
         get() = objectClaimOrFail("metadata_policy")
 
+    /** The `constraints` of a subordinate statement (OID-FED §6.2), if any; malformed fails. */
+    val constraints: Map<*, *>?
+        get() = objectClaimOrFail("constraints")
+
     /**
      * The operator names in `metadata_policy_crit` (OID-FED §3.1.3), empty when absent. When
      * present it must be a non-empty array of strings: an empty or malformed list of what
