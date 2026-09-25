@@ -35,7 +35,8 @@ import com.nimbusds.jwt.JWTClaimsSet
  * the `vct` the issuer actually signed. A decision that names no types
  * ([TrustDecision.Trusted.credentialTypes] null) restricts nothing, which is what a
  * pinned-key evaluator means; an evaluator for a federation, where any member can publish
- * signing keys, has to name them.
+ * signing keys, has to name them. `FederationTrustEvaluator` in `verifier-trust-itwallet`
+ * does, from the issuer's resolved `credential_configurations_supported`.
  */
 internal fun checkIssuerAuthorisedForType(
     issuerClaims: JWTClaimsSet,

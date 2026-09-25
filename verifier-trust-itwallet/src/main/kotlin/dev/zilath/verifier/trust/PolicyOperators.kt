@@ -1,0 +1,175 @@
+/*
+ * Copyright (C) 2026 Matteo Pratesi
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package dev.zilath.verifier.trust
+
+/*
+ * The operators of OpenID Federation 1.0 §6.1.3 as [MetadataPolicy] understands them:
+ * which ones exist, what their operands must be, which combinations are legal. Kept apart
+ * from the merge and the application so each file reads as one of the three steps.
+ */
+
+private val SUPPORTED_OPERATORS =
+    setOf("value", "add", "default", "one_of", "subset_of", "superset_of", "essential")
+
+/**
+ * The operators of one parameter's policy that this library applies: every other one is
+ * dropped. OID-FED §6.1.3.2 says implementations "MUST ignore additional operators that
+ * are not understood" unless they are critical, and [requireCriticalOperatorsUnderstood]
+ * has already refused the chain in that case. Failing on every unknown operator instead
+ * made one benign extension anywhere in a superior's policy — for any entity type, even
+ * one the leaf does not have — deny every credential under that superior. The IT-Wallet
+ * 1.4.6 §6.9 example statement has exactly that shape: `vp_formats` carries a nested
+ * `{"dc+sd-jwt": {...}}` where an operator would be.
+ */
+internal fun understoodOperators(operators: Map<String, Any?>): Map<String, Any?> =
+    operators.filterKeys { it in SUPPORTED_OPERATORS }
+
+/**
+ * OID-FED §6.1.3.2: an operator named in `metadata_policy_crit` MUST be understood and
+ * processed, and the chain is invalid when it is not. Checked on the names themselves,
+ * whether or not a policy in the chain uses them: a superior that declares an operator
+ * critical says that a verifier unable to apply it must not trust what it vouches for.
+ */
+internal fun requireCriticalOperatorsUnderstood(criticalOperators: Set<String>) {
+    if (criticalOperators.any { it !in SUPPORTED_OPERATORS }) {
+        trustFail("a critical metadata_policy operator is not supported")
+    }
+}
+
+/** Operators whose operand must be a JSON array. */
+private val ARRAY_OPERATORS = setOf("add", "one_of", "subset_of", "superset_of")
+
+/** Operators that work on an array-valued PARAMETER; `one_of` picks a single value. */
+private val ARRAY_PARAMETER_OPERATORS = setOf("add", "subset_of", "superset_of")
+
+/**
+ * Fails the chain unless [operators], one parameter's policy, is legal on its own. Called
+ * on each superior's policy AND on the merged one: a combination that no single superior
+ * wrote can still arise from two of them, and it must fail the same way (§6.1.4.1).
+ */
+internal fun validateOperators(operators: Map<String, Any?>) {
+    validateOperands(operators)
+    validateCombinations(operators)
+    if (operators.containsKey("value")) {
+        validateValueShape(operators)
+        validateValueRelationships(operators)
+    }
+}
+
+private fun validateOperands(operators: Map<String, Any?>) {
+    ARRAY_OPERATORS
+        .firstOrNull { operators.containsKey(it) && operators[it] !is List<*> }
+        ?.let { trustFail("metadata_policy $it must be an array") }
+    if (operators.containsKey("essential") && operators["essential"] !is Boolean) {
+        trustFail("metadata_policy essential must be a boolean")
+    }
+    if (operators.containsKey("default") && operators["default"] == null) {
+        trustFail("metadata_policy default must not be null")
+    }
+}
+
+private fun validateCombinations(operators: Map<String, Any?>) {
+    // OID-FED §6.1.3.1: one_of combines only with value, default and essential.
+    if (operators.containsKey("one_of") && operators.keys.any { it in ARRAY_PARAMETER_OPERATORS }) {
+        trustFail("metadata_policy one_of cannot combine with array operators")
+    }
+    // subset_of MAY combine with superset_of only when subset_of ⊇ superset_of.
+    if (operators.containsKey("subset_of") &&
+        operators.containsKey("superset_of") &&
+        !asList(operators["subset_of"]).containsAll(asList(operators["superset_of"]))
+    ) {
+        trustFail("metadata_policy subset_of must be a superset of superset_of")
+    }
+    // §6.1.3.1.2: add MAY combine with subset_of only when add ⊆ subset_of. Because this
+    // runs on the MERGED operators too, an anchor's subset_of [ES256] followed by an
+    // intermediate's add [RS256] is the policy error the spec says it is, not a chain
+    // that quietly resolves to [ES256].
+    if (operators.containsKey("add") &&
+        operators.containsKey("subset_of") &&
+        !asList(operators["subset_of"]).containsAll(asList(operators["add"]))
+    ) {
+        trustFail("metadata_policy add must be a subset of subset_of")
+    }
+}
+
+/** OID-FED §6.1.3.1.1: what a forced `value` may look like next to the other operators. */
+private fun validateValueShape(operators: Map<String, Any?>) {
+    val value = operators["value"]
+    // add, subset_of and superset_of are array operators (§6.1.3.1.2/.5/.6): a value
+    // they combine with must be an array too, or removal (null).
+    if (value != null && value !is List<*> && operators.keys.any { it in ARRAY_PARAMETER_OPERATORS }) {
+        trustFail("metadata_policy value combined with an array operator must be an array")
+    }
+    if (value == null && operators["essential"] == true) {
+        trustFail("metadata_policy value null cannot be essential")
+    }
+    if (value == null && operators.containsKey("default")) {
+        trustFail("metadata_policy value null cannot combine with default")
+    }
+}
+
+/** OID-FED §6.1.3.1.1: a forced `value` must satisfy every operator it is combined with. */
+private fun validateValueRelationships(operators: Map<String, Any?>) {
+    val value = operators["value"]
+    operators["one_of"]?.let {
+        if (value !in asList(it)) trustFail("metadata_policy value is not among one_of")
+    }
+    operators["subset_of"]?.let {
+        if (!asList(it).containsAll(asList(value))) {
+            trustFail("metadata_policy value must be a subset of subset_of")
+        }
+    }
+    operators["superset_of"]?.let {
+        if (!asList(value).containsAll(asList(it))) {
+            trustFail("metadata_policy value must be a superset of superset_of")
+        }
+    }
+    operators["add"]?.let {
+        if (!asList(value).containsAll(asList(it))) {
+            trustFail("metadata_policy add must be a subset of value")
+        }
+    }
+}
+
+/**
+ * OID-FED §6.1.3: an operator applied to a parameter of a JSON type it does not support
+ * MUST produce a policy error. The array operators used to wrap a string or an object
+ * into a one-element list and carry on, silently changing its type — `subset_of` on
+ * `jwks` turned the key set into a list, and the chain then failed with a misleading
+ * "no credential signing keys".
+ */
+internal fun requireArrayIfPresent(
+    section: Map<String, Any?>,
+    parameter: String,
+) {
+    val current = section[parameter]
+    if (current != null && current !is List<*>) {
+        trustFail("a metadata_policy array operator applies to a parameter that is not an array")
+    }
+}
+
+internal fun unionOf(
+    superior: Any?,
+    subordinate: Any?,
+): List<Any?> = (asList(superior) + asList(subordinate)).distinct()
+
+internal fun asList(value: Any?): List<Any?> =
+    when (value) {
+        null -> emptyList()
+        is List<*> -> value
+        else -> listOf(value)
+    }
