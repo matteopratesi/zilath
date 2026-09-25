@@ -126,7 +126,8 @@ internal fun buildRequestJwt(
             .claim("dcql_query", jsonToMap(transaction.request.dcqlQuery))
             .claim(
                 "client_metadata",
-                config.profile.clientMetadataFor(config, responseEncryptionKeyOf(config, transaction)),
+                // Public half only: a profile publishes what it is given.
+                config.profile.clientMetadataFor(config, responseEncryptionKeyOf(config, transaction).toPublicJWK()),
             ).issueTime(Date.from(now))
             // The JAR must not advertise a validity window outliving the transaction itself.
             .expirationTime(Date.from(transaction.expiresAt))

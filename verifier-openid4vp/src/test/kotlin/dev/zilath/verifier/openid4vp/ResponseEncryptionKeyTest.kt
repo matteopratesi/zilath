@@ -19,6 +19,7 @@ package dev.zilath.verifier.openid4vp
 import com.nimbusds.jose.EncryptionMethod
 import com.nimbusds.jose.JWEAlgorithm
 import com.nimbusds.jose.JWEHeader
+import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.RejectionReason
@@ -129,6 +130,33 @@ class ResponseEncryptionKeyTest : FlowTestSupport() {
         val bare = startForPid()
         assertThat(flow.handleWalletResponse(bare.id, walletBody(bare)).outcome)
             .isInstanceOf(FlowOutcome.Verified::class.java)
+    }
+
+    @Test
+    fun `a profile is handed only the public half of the key it publishes`() {
+        // A third-party profile puts in client_metadata what it is given: it must never be
+        // given the private half.
+        val handed = mutableListOf<ECKey>()
+        val recording =
+            object : WalletProfile by ItWalletProfile {
+                override fun clientMetadataFor(
+                    config: RelyingPartyConfiguration,
+                    responseEncryptionJwk: ECKey,
+                ): Map<String, Any> =
+                    ItWalletProfile.clientMetadataFor(config, responseEncryptionJwk).also {
+                        handed +=
+                            responseEncryptionJwk
+                    }
+            }
+        val recordingFlow =
+            OpenId4VpVerificationFlow.withInMemoryStore(
+                config.copy(profile = recording),
+                SdJwtVcCredentialVerifier(),
+                clock,
+            )
+        val started = recordingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
+        checkNotNull(recordingFlow.requestJwtFor(started.id))
+        assertThat(handed).singleElement().satisfies({ assertThat(it.isPrivate).isFalse() })
     }
 
     private fun headerWithKid(kid: String): JWEHeader =

@@ -139,7 +139,7 @@ data class RelyingPartyConfiguration(
     /**
      * The largest wallet response body, in characters, the flow will decode. Above it the
      * response is rejected as malformed before any decoding or decryption. The default,
-     * [DEFAULT_MAX_WALLET_RESPONSE_LENGTH], is four times a realistic worst case; a servlet
+     * [DEFAULT_MAX_WALLET_RESPONSE_LENGTH], is several times a realistic worst case; a servlet
      * container may cut the body earlier (Tomcat's form limit is 2 MiB, Jetty's 200 000
      * bytes), and that limit must stay above this one or holders are refused there.
      */
@@ -159,14 +159,14 @@ data class RelyingPartyConfiguration(
             "transactionTimeToLive must not exceed $MAX_TIME_TO_LIVE: the request object expiry, the " +
                 "window in which a transaction id is usable and the retention of the disclosed claims all follow it"
         }
-        // Under the openid_federation scheme the wallet resolves us through the trust
-        // chain and checks client_id against our entity configuration `sub` (WP_086):
-        // a config without federation identity, or with a mismatched one, can never work.
         // The federation key signs entity statements and nothing else: sharing it with the
         // request signer would leave only `typ` telling a request object from a statement.
         federation?.let {
             requireDistinctKeys(listOfNotNull(keys.requestSigningKey, keys.responseEncryptionKey, it.federationKey))
         }
+        // Under the openid_federation scheme the wallet resolves us through the trust
+        // chain and checks client_id against our entity configuration `sub` (WP_086):
+        // a config without federation identity, or with a mismatched one, can never work.
         if (clientId.startsWith(OPENID_FEDERATION_PREFIX)) {
             requireNotNull(federation) {
                 "the openid_federation client id scheme requires a federation configuration"
