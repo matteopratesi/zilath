@@ -25,6 +25,8 @@ import dev.zilath.verifier.core.TrustEvaluator
 import dev.zilath.verifier.openid4vp.DirectPostBody
 import dev.zilath.verifier.openid4vp.FlowMode
 import dev.zilath.verifier.openid4vp.FlowOutcome
+import dev.zilath.verifier.openid4vp.HandledResponse
+import dev.zilath.verifier.openid4vp.PollToken
 import dev.zilath.verifier.openid4vp.PresentationRequest
 import dev.zilath.verifier.openid4vp.RelyingPartyConfiguration
 import dev.zilath.verifier.openid4vp.RpEndpoints
@@ -56,29 +58,26 @@ class SameDeviceCallbackTest {
         override fun start(
             request: PresentationRequest,
             mode: FlowMode,
-        ): StartedTransaction = error("not used")
+        ): StartedTransaction = StartedTransaction(knownId, "https://rp/req", "openid4vp://x", PollToken("poll"))
 
         override fun requestJwtFor(txId: TransactionId): String? = null
 
         override fun handleWalletResponse(
             txId: TransactionId,
             body: DirectPostBody,
-        ): FlowOutcome = FlowOutcome.Unknown
+        ): HandledResponse = HandledResponse(FlowOutcome.Unknown)
 
-        override fun awaitOutcome(txId: TransactionId): FlowOutcome =
-            if (txId == knownId) FlowOutcome.Pending else FlowOutcome.Unknown
-
-        override fun sameDeviceRedirectFor(
+        override fun awaitOutcome(
             txId: TransactionId,
-            outcome: FlowOutcome,
-        ): String? = null
+            pollToken: PollToken,
+        ): FlowOutcome = if (txId == knownId) FlowOutcome.Pending else FlowOutcome.Unknown
 
         override fun consumeResponseCode(
             txId: TransactionId,
             code: String,
-        ): Boolean {
+        ): PollToken? {
             consumeCalls++
-            return consumes && txId == knownId
+            return PollToken("reader").takeIf { consumes && txId == knownId }
         }
     }
 
@@ -95,13 +94,17 @@ class SameDeviceCallbackTest {
                 trustEvaluator = TrustEvaluator { TrustDecision.Untrusted("test") },
                 statusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
             )
-        return DemoCheckoutController(
-            flow = flow,
-            receipts = VerificationReceipts(config, Clock.systemUTC()),
-            clock = Clock.systemUTC(),
-            pidVct = "urn:eudi:pid:it:1",
-            credentialMode = "pid",
-        )
+        val controller =
+            DemoCheckoutController(
+                flow = flow,
+                receipts = VerificationReceipts(config, Clock.systemUTC()),
+                clock = Clock.systemUTC(),
+                pidVct = "urn:eudi:pid:it:1",
+                credentialMode = "pid",
+            )
+        // The known session exists because this controller started it.
+        controller.startEntitledPurchase("same-device")
+        return controller
     }
 
     @Test

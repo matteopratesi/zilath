@@ -17,6 +17,7 @@
 package dev.zilath.demo
 
 import dev.zilath.verifier.openid4vp.FlowOutcome
+import dev.zilath.verifier.openid4vp.PollToken
 import dev.zilath.verifier.openid4vp.PresentationRequest
 import dev.zilath.verifier.openid4vp.RelyingPartyConfiguration
 import dev.zilath.verifier.openid4vp.RpEntityConfiguration
@@ -69,6 +70,8 @@ class ConformanceController(
             "transactionId" to started.id.value,
             "authorizeUrl" to started.qrPayload,
             "requestUri" to started.requestUri,
+            // What reads the outcome below: the transaction id alone no longer does.
+            "pollToken" to started.pollToken.value,
         )
     }
 
@@ -84,8 +87,9 @@ class ConformanceController(
     @GetMapping("/conformance/outcome/{txId}")
     fun outcome(
         @PathVariable txId: String,
+        @org.springframework.web.bind.annotation.RequestParam pollToken: String,
     ): Map<String, String> =
-        when (val outcome = flow.awaitOutcome(TransactionId(txId))) {
+        when (val outcome = flow.awaitOutcome(TransactionId(txId), PollToken(pollToken))) {
             is FlowOutcome.Verified -> mapOf("outcome" to "verified")
             is FlowOutcome.Rejected -> mapOf("outcome" to "rejected", "reason" to outcome.reason.name)
             is FlowOutcome.WalletErrorAcknowledged -> mapOf("outcome" to "wallet_error")

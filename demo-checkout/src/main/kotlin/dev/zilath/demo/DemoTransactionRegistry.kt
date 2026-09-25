@@ -16,6 +16,7 @@
  */
 package dev.zilath.demo
 
+import dev.zilath.verifier.openid4vp.PollToken
 import dev.zilath.verifier.openid4vp.PresentationRequest
 import dev.zilath.verifier.openid4vp.StartedTransaction
 import java.time.Clock
@@ -39,6 +40,12 @@ internal class DemoTransactionRegistry(
         val createdAt: Instant,
     ) {
         val receipt: AtomicReference<String?> = AtomicReference(null)
+
+        /**
+         * The token that reads the outcome: the start token, replaced by the one the flow
+         * issues when a same-device user-agent comes back with its response code.
+         */
+        val readToken: AtomicReference<PollToken> = AtomicReference(transaction.pollToken)
     }
 
     private val entries = ConcurrentHashMap<String, Entry>()

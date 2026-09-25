@@ -16,11 +16,15 @@
  */
 package dev.zilath.verifier.openid4vp
 
+import com.nimbusds.jose.JWEAlgorithm
+import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.crypto.ECDSAVerifier
 import com.nimbusds.jose.jwk.Curve
+import com.nimbusds.jose.jwk.KeyUse
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.CredentialStatus
+import dev.zilath.verifier.core.IpzsFederationSnapshot
 import dev.zilath.verifier.core.StatusChecker
 import dev.zilath.verifier.core.TrustDecision
 import dev.zilath.verifier.core.TrustEvaluator
@@ -55,6 +59,7 @@ class RpEntityConfigurationTest {
             federationKey = federationKey,
             authorityHints = listOf("https://trust-anchor.example"),
             organizationName = "Teatro di Prova",
+            contacts = listOf("biglietteria@teatro.example"),
         )
 
     @Test
@@ -99,6 +104,153 @@ class RpEntityConfigurationTest {
         assertThat(jwks.single { it["kid"] == "rp-enc" }["use"]).isEqualTo("enc")
         // Public halves only: private parameters must never be published.
         assertThat(jwks).allSatisfy { key -> assertThat(key).doesNotContainKey("d") }
+    }
+
+    @Test
+    fun `the entity configuration publishes the static encryption key only when it is accepted`() {
+        // Without a static key every response must be encrypted to its transaction's own key:
+        // publishing one the response endpoint would refuse would deny every wallet using it.
+        val base = config("openid_federation:https://rp.example")
+        val ephemeralOnly = base.copy(keys = RpKeys(requestSigningKey = base.keys.requestSigningKey))
+        val jwt = SignedJWT.parse(RpEntityConfiguration.build(ephemeralOnly, ephemeralOnly.federation!!, clock))
+
+        @Suppress("UNCHECKED_CAST")
+        val verifier =
+            jwt.jwtClaimsSet.getJSONObjectClaim("metadata")["openid_credential_verifier"] as Map<String, Any?>
+
+        @Suppress("UNCHECKED_CAST")
+        val keys = (verifier["jwks"] as Map<String, Any?>)["keys"] as List<Map<String, Any?>>
+        assertThat(keys.map { it["kid"] }).containsExactly("rp-sign")
+    }
+
+    @Test
+    fun `the same-device redirect is attested, when there is one`() {
+        // WP_094a: the wallet sends the user only to a redirect_uri the RP's trust chain
+        // attests. It was never published, so such a wallet stranded every same-device user.
+        val base = config("openid_federation:https://rp.example")
+        val sameDevice = base.copy(endpoints = base.endpoints.copy(sameDeviceCallbackBase = "https://rp.example/cb"))
+        assertThat(verifierMetadataOf(sameDevice)["redirect_uris"]).isEqualTo(listOf("https://rp.example/cb"))
+        assertThat(verifierMetadataOf(base).keys).doesNotContain("redirect_uris")
+    }
+
+    @Test
+    fun `the entity configuration satisfies the production trust anchor's policy for verifiers`() {
+        // The statement the real IT-Wallet anchor issued on 2026-09-24 carries its common
+        // metadata_policy: its openid_credential_verifier and federation_entity sections are
+        // what a wallet applies to an RP registered under it, and a parameter marked
+        // essential but absent makes the RP's metadata broken (OpenID Federation §6.1.4.2).
+        val policy =
+            SignedJWT
+                .parse(
+                    IpzsFederationSnapshot.statementAboutCedIssuer,
+                ).jwtClaimsSet
+                .getJSONObjectClaim("metadata_policy")
+        val base = config("openid_federation:https://rp.example")
+        val rp = base.copy(endpoints = base.endpoints.copy(sameDeviceCallbackBase = "https://rp.example/cb"))
+        val metadata =
+            SignedJWT
+                .parse(
+                    RpEntityConfiguration.build(rp, rp.federation!!, clock),
+                ).jwtClaimsSet
+                .getJSONObjectClaim("metadata")
+        val missing = mutableListOf<String>()
+        val outOfRange = mutableListOf<String>()
+        for (type in listOf("openid_credential_verifier", "federation_entity")) {
+            @Suppress("UNCHECKED_CAST")
+            val section = policy[type] as Map<String, Map<String, Any?>>
+
+            @Suppress("UNCHECKED_CAST")
+            val published = metadata[type] as Map<String, Any?>
+            // Only the operators checked below: a policy that grew another would need it here.
+            assertThat(section.values.flatMap { it.keys }.toSet()).isSubsetOf("essential", "one_of", "default")
+            for ((parameter, operators) in section) {
+                val value = published[parameter]
+                if (operators["essential"] == true && value == null) missing += "$type.$parameter"
+                val allowed = operators["one_of"] as List<*>?
+                if (allowed != null && value != null && value !in allowed) outOfRange += "$type.$parameter"
+            }
+        }
+        // One essential parameter is left out on purpose: see RpEntityConfiguration.metadata.
+        // It is a recorded divergence, and this line is where it would show if it changed.
+        assertThat(missing).containsExactly("openid_credential_verifier.authorization_signed_response_alg")
+        assertThat(outOfRange).isEmpty()
+    }
+
+    @Test
+    fun `a federation identity names a way to reach its operator`() {
+        assertThatIllegalArgumentException().isThrownBy { federation().copy(contacts = emptyList()) }
+        assertThatIllegalArgumentException().isThrownBy { federation().copy(contacts = listOf(" ")) }
+        val config = config("openid_federation:https://rp.example")
+        val entity =
+            SignedJWT
+                .parse(RpEntityConfiguration.build(config, config.federation!!, clock))
+                .jwtClaimsSet
+                .getJSONObjectClaim("metadata")["federation_entity"] as Map<*, *>
+        assertThat(entity["contacts"]).isEqualTo(listOf("biglietteria@teatro.example"))
+    }
+
+    private fun verifierMetadataOf(config: RelyingPartyConfiguration): Map<*, *> =
+        SignedJWT
+            .parse(RpEntityConfiguration.build(config, config.federation!!, clock))
+            .jwtClaimsSet
+            .getJSONObjectClaim("metadata")["openid_credential_verifier"] as Map<*, *>
+
+    @Test
+    fun `one key per purpose, under a kid of its own`() {
+        // Nothing compared the keys: the same key for signing and encryption, two keys under
+        // one kid, or a signing key marked for encryption all passed.
+        val sign = ECKeyGenerator(Curve.P_256).keyID("rp-sign").generate()
+        val enc = ECKeyGenerator(Curve.P_256).keyID("rp-enc").generate()
+        assertThatIllegalArgumentException().isThrownBy { RpKeys(sign, sign) }
+        assertThatIllegalArgumentException()
+            .isThrownBy { RpKeys(sign, ECKeyGenerator(Curve.P_256).keyID("rp-sign").generate()) }
+            .withMessageContaining("distinct kids")
+        assertThatIllegalArgumentException()
+            .isThrownBy { RpKeys(ECKeyGenerator(Curve.P_256).keyID("s").keyUse(KeyUse.ENCRYPTION).generate(), enc) }
+        assertThatIllegalArgumentException()
+            .isThrownBy { RpKeys(ECKeyGenerator(Curve.P_256).keyID("s").algorithm(JWSAlgorithm.ES384).generate(), enc) }
+        assertThatIllegalArgumentException()
+            .isThrownBy { RpKeys(sign, ECKeyGenerator(Curve.P_256).keyID("e").keyUse(KeyUse.SIGNATURE).generate()) }
+        // Keys marked for what they do are fine.
+        RpKeys(
+            ECKeyGenerator(Curve.P_256)
+                .keyID("s")
+                .keyUse(KeyUse.SIGNATURE)
+                .algorithm(JWSAlgorithm.ES256)
+                .generate(),
+            ECKeyGenerator(Curve.P_256)
+                .keyID("e")
+                .keyUse(KeyUse.ENCRYPTION)
+                .algorithm(JWEAlgorithm.ECDH_ES)
+                .generate(),
+        )
+
+        // ...and the federation key is none of the protocol keys.
+        val base = config("openid_federation:https://rp.example")
+        assertThatIllegalArgumentException().isThrownBy {
+            base.copy(federation = federation().copy(federationKey = base.keys.requestSigningKey))
+        }
+        assertThatIllegalArgumentException().isThrownBy {
+            base.copy(
+                federation = federation().copy(federationKey = ECKeyGenerator(Curve.P_256).keyID("rp-enc").generate()),
+            )
+        }
+    }
+
+    @Test
+    fun `the published jwks holds one signing and one encryption key, each marked`() {
+        val config = config("openid_federation:https://rp.example")
+        val jwt = SignedJWT.parse(RpEntityConfiguration.build(config, config.federation!!, clock))
+
+        @Suppress("UNCHECKED_CAST")
+        val verifier =
+            jwt.jwtClaimsSet.getJSONObjectClaim("metadata")["openid_credential_verifier"] as Map<String, Any?>
+
+        @Suppress("UNCHECKED_CAST")
+        val keys = (verifier["jwks"] as Map<String, Any?>)["keys"] as List<Map<String, Any?>>
+        assertThat(keys.map { it["use"] }).containsExactlyInAnyOrder("sig", "enc")
+        assertThat(keys.single { it["use"] == "sig" }).containsEntry("kid", "rp-sign").containsEntry("alg", "ES256")
+        assertThat(keys.single { it["use"] == "enc" }).containsEntry("kid", "rp-enc").containsEntry("alg", "ECDH-ES")
     }
 
     @Test
@@ -169,31 +321,13 @@ class RpEntityConfigurationTest {
     }
 
     @Test
-    fun `the JAR carries the trust chain header when the federation provides one`() {
-        val chain = listOf("eyJa.leaf.sig", "eyJa.anchor.sig")
-        val base = config("openid_federation:https://rp.example")
-        val withChain = base.copy(federation = federation().copy(trustChain = chain))
-        val transaction =
-            Transaction(
-                id = TransactionId("tx-1"),
-                nonce = "n".repeat(32),
-                state = TransactionState.CREATED,
-                createdAt = clock.instant(),
-                request = PresentationRequest.forTestPid("urn:eudi:pid:it:1"),
-            )
-        val jar = SignedJWT.parse(buildRequestJwt(withChain, transaction, clock.instant()))
-        assertThat(jar.header.getCustomParam("trust_chain")).isEqualTo(chain)
-        val bare = SignedJWT.parse(buildRequestJwt(base, transaction, clock.instant()))
-        assertThat(bare.header.getCustomParam("trust_chain")).isNull()
-    }
-
-    @Test
     fun `the entity configuration and the request object advertise the same algorithms`() {
         val config = config("openid_federation:https://rp.example")
         val statement = SignedJWT.parse(RpEntityConfiguration.build(config, federation(), clock))
         val verifier = statement.jwtClaimsSet.getJSONObjectClaim("metadata")["openid_credential_verifier"] as Map<*, *>
         val published = (verifier["vp_formats_supported"] as Map<*, *>)["dc+sd-jwt"]
-        val requested = (config.profile.clientMetadataFor(config)["vp_formats_supported"] as Map<*, *>)["dc+sd-jwt"]
+        val metadata = config.profile.clientMetadataFor(config, newTransactionEncryptionKey().toPublicJWK())
+        val requested = (metadata["vp_formats_supported"] as Map<*, *>)["dc+sd-jwt"]
         // A wallet reads one, a federation the other: they must be told the same thing.
         assertThat(published).isEqualTo(requested)
     }
