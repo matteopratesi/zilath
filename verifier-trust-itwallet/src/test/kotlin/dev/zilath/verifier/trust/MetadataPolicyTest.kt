@@ -299,6 +299,119 @@ class MetadataPolicyTest {
     }
 
     @Test
+    fun `a null metadata parameter is malformed, not present for essential nor absent for one_of`() {
+        // Parsed the way entity statements are, so the explicit null survives as it would.
+        val section =
+            com.nimbusds.jose.util.JSONObjectUtils
+                .parse("""{"mode": null, "n": 1}""")
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    mapOf("openid_credential_issuer" to section),
+                    listOf(policy("mode" to mapOf("one_of" to listOf("direct_post.jwt"), "essential" to true))),
+                )
+            }.withMessageContaining("is null")
+        // Even with no policy on it: the document itself is malformed (OID-FED §5).
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy { MetadataPolicy.resolve(mapOf("openid_credential_issuer" to section), emptyList()) }
+            .withMessageContaining("is null")
+    }
+
+    @Test
+    fun `a metadata section that is not an object is malformed`() {
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy { MetadataPolicy.resolve(mapOf("openid_credential_issuer" to "keys"), emptyList()) }
+            .withMessageContaining("not a JSON object")
+    }
+
+    @Test
+    fun `array operators on a parameter that is not an array are a policy error`() {
+        val notAnArray = "a metadata_policy array operator applies to a parameter that is not an array"
+        for (operator in listOf("add", "subset_of", "superset_of")) {
+            assertThatExceptionOfType(TrustFailure::class.java)
+                .describedAs(operator)
+                .isThrownBy {
+                    MetadataPolicy.resolve(
+                        metadata("mode" to "direct_post"),
+                        listOf(policy("mode" to mapOf(operator to listOf("direct_post")))),
+                    )
+                }.withMessageContaining(notAnArray)
+        }
+        // An object is not an array either: subset_of on jwks used to turn the key set
+        // into a one-element list.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata("jwks" to mapOf("keys" to emptyList<Any>())),
+                    listOf(policy("jwks" to mapOf("subset_of" to listOf(mapOf("keys" to emptyList<Any>()))))),
+                )
+            }.withMessageContaining(notAnArray)
+        // A value forced alongside an array operator must be an array too.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata(),
+                    listOf(policy("mode" to mapOf("value" to "x", "add" to listOf("x")))),
+                )
+            }.withMessageContaining("must be an array")
+    }
+
+    @Test
+    fun `add outside subset_of is a policy error, directly and after merging`() {
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata("algs" to listOf("ES256")),
+                    listOf(policy("algs" to mapOf("add" to listOf("RS256"), "subset_of" to listOf("ES256")))),
+                )
+            }.withMessageContaining("subset of subset_of")
+        // The anchor restricts, the intermediate tries to add.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata("algs" to listOf("ES256")),
+                    listOf(
+                        policy("algs" to mapOf("subset_of" to listOf("ES256"))),
+                        policy("algs" to mapOf("add" to listOf("RS256"))),
+                    ),
+                )
+            }.withMessageContaining("subset of subset_of")
+        // Three single policies, each legal on its own: the merged subset_of narrows below add.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata("algs" to listOf("ES256")),
+                    listOf(
+                        policy("algs" to mapOf("subset_of" to listOf("ES256", "RS256"))),
+                        policy("algs" to mapOf("add" to listOf("RS256"))),
+                        policy("algs" to mapOf("subset_of" to listOf("ES256"))),
+                    ),
+                )
+            }.withMessageContaining("subset of subset_of")
+    }
+
+    @Test
+    fun `a subordinate cannot widen a value its superior forced`() {
+        // The anchor forces [ES256]; an intermediate adds RS256. Without the check on the
+        // MERGED operators this resolves to [ES256, RS256]: the test asserts the refusal
+        // itself, not only its wording, so dropping that check cannot pass on a message.
+        val outcome =
+            runCatching {
+                MetadataPolicy.resolve(
+                    metadata("algs" to listOf("ES256")),
+                    listOf(
+                        policy("algs" to mapOf("value" to listOf("ES256"))),
+                        policy("algs" to mapOf("add" to listOf("RS256"))),
+                    ),
+                )
+            }
+        assertThat(outcome.getOrNull()).describedAs("resolved to %s", outcome.getOrNull()).isNull()
+        assertThat(outcome.exceptionOrNull())
+            .isInstanceOf(TrustFailure::class.java)
+            .hasMessageContaining("subset of value")
+    }
+
+    @Test
     fun `an unsupported operator fails closed`() {
         assertThatExceptionOfType(TrustFailure::class.java)
             .isThrownBy {

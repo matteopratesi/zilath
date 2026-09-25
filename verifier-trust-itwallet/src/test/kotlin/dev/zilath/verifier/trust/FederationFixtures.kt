@@ -76,6 +76,33 @@ object FederationFixtures {
         return jwt.serialize()
     }
 
+    /**
+     * Signs [payload] as it is, for documents the claims-set builder cannot express: an
+     * explicit JSON `null` member, which the builder may drop.
+     */
+    fun signedRawStatement(
+        signer: ECKey,
+        payload: String,
+    ): String {
+        val jws =
+            com.nimbusds.jose.JWSObject(
+                JWSHeader
+                    .Builder(JWSAlgorithm.ES256)
+                    .keyID(signer.keyID)
+                    .type(JOSEObjectType("entity-statement+jwt"))
+                    .build(),
+                com.nimbusds.jose.Payload(payload),
+            )
+        jws.sign(ECDSASigner(signer))
+        return jws.serialize()
+    }
+
+    /** `"iat":…,"exp":…` for a raw payload, with the same window [signedStatement] uses. */
+    fun rawValidityWindow(): String =
+        """"iat":${TestVectors.NOW.minusSeconds(
+            600,
+        ).epochSecond},"exp":${TestVectors.NOW.plusSeconds(3600).epochSecond}"""
+
     fun jwksClaim(vararg keys: JWK): Map<String, Any> = mapOf("keys" to keys.map { it.toPublicJWK().toJSONObject() })
 
     /** The leaf's `openid_credential_issuer` section: its credential keys plus [extra] parameters. */

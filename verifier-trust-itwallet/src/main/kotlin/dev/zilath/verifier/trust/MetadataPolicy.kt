@@ -42,10 +42,24 @@ internal object MetadataPolicy {
     ): Map<String, Any?> {
         val merged = policies.fold(emptyMap<String, Map<String, Map<String, Any?>>>(), ::mergePolicy)
         val resolved = metadata.orEmpty().entries.associate { (type, section) -> type.toString() to section }
+        resolved.values.forEach(::requireWellFormedSection)
         return merged.entries.fold(resolved) { current, (type, typePolicy) ->
             val section = current[type] as? Map<*, *> ?: return@fold current
             current + (type to applyTypePolicy(type, section, typePolicy))
         }
+    }
+
+    /**
+     * OID-FED §5: an entity type's metadata is a JSON object whose parameters may take any
+     * JSON value except null. Nimbus keeps an explicit `null` member in nested objects, and
+     * the policy operators used to read it two ways at once: present for `essential`
+     * (containsKey), absent for `one_of` and `superset_of` (a null never compared) — so a
+     * leaf could satisfy an essential parameter and dodge the check on its value by
+     * publishing `"parameter": null`. It is a malformed document, and fails the chain.
+     */
+    private fun requireWellFormedSection(section: Any?) {
+        if (section !is Map<*, *>) trustFail("a metadata section is not a JSON object")
+        if (section.values.any { it == null }) trustFail("a metadata parameter is null")
     }
 
     /** Merges one superior's policy into the accumulated one (OID-FED §6.1.4). */
@@ -105,70 +119,6 @@ internal object MetadataPolicy {
         return merged
     }
 
-    private fun validateOperators(
-        parameter: String,
-        operators: Map<String, Any?>,
-    ) {
-        operators.keys
-            .firstOrNull { it !in SUPPORTED_OPERATORS }
-            ?.let { trustFail("unsupported metadata_policy operator $it on $parameter") }
-        ARRAY_OPERATORS
-            .firstOrNull { operators.containsKey(it) && operators[it] !is List<*> }
-            ?.let { trustFail("metadata_policy $it for $parameter must be an array") }
-        if (operators.containsKey("essential") && operators["essential"] !is Boolean) {
-            trustFail("metadata_policy essential for $parameter must be a boolean")
-        }
-        if (operators.containsKey("default") && operators["default"] == null) {
-            trustFail("metadata_policy default for $parameter must not be null")
-        }
-        // OID-FED §6.1.3.1: one_of combines only with value, default and essential.
-        if (operators.containsKey("one_of") &&
-            operators.keys.any { it in setOf("add", "subset_of", "superset_of") }
-        ) {
-            trustFail("metadata_policy one_of for $parameter cannot combine with array operators")
-        }
-        // subset_of MAY combine with superset_of only when subset_of ⊇ superset_of.
-        if (operators.containsKey("subset_of") &&
-            operators.containsKey("superset_of") &&
-            !asList(operators["subset_of"]).containsAll(asList(operators["superset_of"]))
-        ) {
-            trustFail("metadata_policy subset_of for $parameter must be a superset of superset_of")
-        }
-        if (operators.containsKey("value")) validateValueCombinations(parameter, operators)
-    }
-
-    /** OID-FED §6.1.3.1.1: `value` combines with the others under relationship checks. */
-    private fun validateValueCombinations(
-        parameter: String,
-        operators: Map<String, Any?>,
-    ) {
-        val value = operators["value"]
-        if (value == null && operators["essential"] == true) {
-            trustFail("metadata_policy value null for $parameter cannot be essential")
-        }
-        if (value == null && operators.containsKey("default")) {
-            trustFail("metadata_policy value null for $parameter cannot combine with default")
-        }
-        operators["one_of"]?.let {
-            if (value !in asList(it)) trustFail("metadata_policy value for $parameter is not among one_of")
-        }
-        operators["subset_of"]?.let {
-            if (!asList(it).containsAll(asList(value))) {
-                trustFail("metadata_policy value for $parameter must be a subset of subset_of")
-            }
-        }
-        operators["superset_of"]?.let {
-            if (!asList(value).containsAll(asList(it))) {
-                trustFail("metadata_policy value for $parameter must be a superset of superset_of")
-            }
-        }
-        operators["add"]?.let {
-            if (!asList(value).containsAll(asList(it))) {
-                trustFail("metadata_policy add for $parameter must be a subset of value")
-            }
-        }
-    }
-
     private fun intersectionOrFail(
         parameter: String,
         operator: String,
@@ -206,7 +156,10 @@ internal object MetadataPolicy {
             val forced = operators["value"]
             if (forced == null) result.remove(parameter) else result[parameter] = forced
         }
-        operators["add"]?.let { result[parameter] = unionOf(result[parameter], it) }
+        operators["add"]?.let {
+            requireArrayIfPresent(result, parameter)
+            result[parameter] = unionOf(result[parameter], it)
+        }
         operators["default"]?.let { if (!result.containsKey(parameter)) result[parameter] = it }
         // Application order per OID-FED §6.1.3.1: the one_of check, then the subset_of
         // filter, then the superset_of check runs on the FILTERED value.
@@ -216,6 +169,7 @@ internal object MetadataPolicy {
             }
         }
         operators["subset_of"]?.let { allowed ->
+            requireArrayIfPresent(result, parameter)
             if (result.containsKey(parameter)) {
                 // An empty intersection is a legal resolved value: keep [] (it still
                 // counts as present for `essential`).
@@ -233,6 +187,7 @@ internal object MetadataPolicy {
         result: Map<String, Any?>,
     ) {
         operators["superset_of"]?.let { required ->
+            requireArrayIfPresent(result, parameter)
             result[parameter]?.let { current ->
                 if (!asList(current).containsAll(asList(required))) {
                     trustFail("metadata parameter $qualified violates superset_of")
@@ -274,21 +229,4 @@ internal object MetadataPolicy {
         }
         return result
     }
-
-    private val SUPPORTED_OPERATORS =
-        setOf("value", "add", "default", "one_of", "subset_of", "superset_of", "essential")
-
-    private val ARRAY_OPERATORS = setOf("add", "one_of", "subset_of", "superset_of")
 }
-
-private fun unionOf(
-    superior: Any?,
-    subordinate: Any?,
-): List<Any?> = (asList(superior) + asList(subordinate)).distinct()
-
-private fun asList(value: Any?): List<Any?> =
-    when (value) {
-        null -> emptyList()
-        is List<*> -> value
-        else -> listOf(value)
-    }

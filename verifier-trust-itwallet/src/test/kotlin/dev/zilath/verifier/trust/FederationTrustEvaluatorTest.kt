@@ -145,26 +145,16 @@ class FederationTrustEvaluatorTest {
     fun `an explicit null metadata_policy on a signed statement fails the chain`() {
         // Built from a raw JSON payload: the claims-set builder may drop null members,
         // and the whole point is a PRESENT "metadata_policy": null.
-        val now = dev.zilath.verifier.core.TestVectors.NOW
         val payload =
             """{"iss":"${FederationFixtures.ANCHOR_ID}","sub":"${FederationFixtures.LEAF_ID}",""" +
-                """"iat":${now.minusSeconds(600).epochSecond},"exp":${now.plusSeconds(3600).epochSecond},""" +
+                FederationFixtures.rawValidityWindow() + "," +
                 """"jwks":{"keys":[${FederationFixtures.leafFederationKey.toPublicJWK().toJSONString()}]},""" +
                 """"metadata_policy":null}"""
-        val jws =
-            com.nimbusds.jose.JWSObject(
-                com.nimbusds.jose.JWSHeader
-                    .Builder(com.nimbusds.jose.JWSAlgorithm.ES256)
-                    .keyID(FederationFixtures.anchorKey.keyID)
-                    .type(com.nimbusds.jose.JOSEObjectType("entity-statement+jwt"))
-                    .build(),
-                com.nimbusds.jose.Payload(payload),
+        val chain =
+            listOf(
+                FederationFixtures.leafConfiguration(),
+                FederationFixtures.signedRawStatement(FederationFixtures.anchorKey, payload),
             )
-        jws.sign(
-            com.nimbusds.jose.crypto
-                .ECDSASigner(FederationFixtures.anchorKey),
-        )
-        val chain = listOf(FederationFixtures.leafConfiguration(), jws.serialize())
         val decision =
             evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
@@ -235,6 +225,44 @@ class FederationTrustEvaluatorTest {
             evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
         assertThat((decision as TrustDecision.Untrusted).reason).contains("no credential signing keys")
+    }
+
+    @Test
+    fun `a leaf publishing a null parameter does not slip past its superior's policy`() {
+        // One of the anchor's policy says the endpoint must be one value, and essential; the
+        // leaf publishes an explicit null, which used to count as present for essential and
+        // as absent for one_of.
+        val leafKeys = FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey)
+        val issuerKeys = FederationFixtures.jwksClaim(TestVectors.issuerEcKey)
+        val payload =
+            """{"iss":"${FederationFixtures.LEAF_ID}","sub":"${FederationFixtures.LEAF_ID}",""" +
+                FederationFixtures.rawValidityWindow() + "," +
+                """"jwks":${com.nimbusds.jose.util.JSONObjectUtils.toJSONString(leafKeys)},""" +
+                """"authority_hints":["${FederationFixtures.ANCHOR_ID}"],""" +
+                """"metadata":{"openid_credential_issuer":{"credential_endpoint":null,""" +
+                """"jwks":${com.nimbusds.jose.util.JSONObjectUtils.toJSONString(issuerKeys)}}}}"""
+        val chain =
+            listOf(
+                FederationFixtures.signedRawStatement(FederationFixtures.leafFederationKey, payload),
+                FederationFixtures.anchorStatementAboutLeaf {
+                    claim(
+                        "metadata_policy",
+                        mapOf(
+                            "openid_credential_issuer" to
+                                mapOf(
+                                    "credential_endpoint" to
+                                        mapOf(
+                                            "one_of" to listOf("https://issuer.example/credential"),
+                                            "essential" to true,
+                                        ),
+                                ),
+                        ),
+                    )
+                },
+            )
+        val decision = evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+        assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+        assertThat((decision as TrustDecision.Untrusted).reason).contains("is null")
     }
 
     @Test
