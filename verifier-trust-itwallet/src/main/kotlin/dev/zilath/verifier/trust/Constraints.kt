@@ -41,12 +41,20 @@ private class Constraints(
 
 private fun constraintsOf(statement: EntityStatement): Constraints? {
     val claim = statement.constraints ?: return null
+    // Membership, not nullness: a member present with the value null is a malformed signed
+    // directive, not an absent one.
     val maxPathLength =
-        claim["max_path_length"]?.let { value ->
-            (value as? Long)?.takeIf { it >= 0 } ?: malformedConstraints()
+        if (claim.containsKey("max_path_length")) {
+            (claim["max_path_length"] as? Long)?.takeIf { it >= 0 } ?: malformedConstraints()
+        } else {
+            null
         }
     val naming =
-        claim["naming_constraints"]?.let { it as? Map<*, *> ?: malformedConstraints() }
+        if (claim.containsKey("naming_constraints")) {
+            claim["naming_constraints"] as? Map<*, *> ?: malformedConstraints()
+        } else {
+            null
+        }
     val allowedTypes =
         listOf("allowed_entity_types", "allowed_leaf_entity_types")
             .mapNotNull { name -> if (claim.containsKey(name)) stringsOrFail(claim[name]).toSet() else null }

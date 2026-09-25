@@ -83,6 +83,25 @@ class ConstraintsTest {
     }
 
     @Test
+    fun `a constraint set to null is malformed, not absent`() {
+        // A signed superior directive that does not parse fails the chain, as
+        // allowed_entity_types: null already did. Raw payloads: a builder may drop nulls.
+        val leafKeys =
+            com.nimbusds.jose.util.JSONObjectUtils.toJSONString(
+                FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey),
+            )
+        for (constraint in listOf("max_path_length", "naming_constraints")) {
+            val payload =
+                """{"iss":"${FederationFixtures.ANCHOR_ID}","sub":"${FederationFixtures.LEAF_ID}",""" +
+                    FederationFixtures.rawValidityWindow() + ""","jwks":$leafKeys,"constraints":{"$constraint":null}}"""
+            val statement = FederationFixtures.signedRawStatement(FederationFixtures.anchorKey, payload)
+            assertThat(untrustedReason(decide(listOf(leafConfiguration(), statement))))
+                .describedAs(constraint)
+                .contains("malformed constraints")
+        }
+    }
+
+    @Test
     fun `naming_constraints bind the leaf, excluded winning over permitted`() {
         fun naming(vararg members: Pair<String, List<String>>) = mapOf("naming_constraints" to mapOf(*members))
         // The leaf is https://issuer.example.
