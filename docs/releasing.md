@@ -197,6 +197,20 @@ available everywhere and `GPG_TTY` is what this file assumes.
    frozen on purpose, so nothing else will tell you that one of them has an advisory. A
    version bump belongs in its own pull request, before the release one.
 
+   Every dependency and plugin is checked against the SHA-256 recorded in
+   `gradle/verification-metadata.xml`, and the build fails on anything missing or different.
+   A pull request that changes a version, adds a dependency or a plugin regenerates the file
+   in the same pull request, with every task run so that every configuration is resolved:
+
+   ```sh
+   ./gradlew --write-verification-metadata sha256 clean build dokkaGeneratePublicationHtml \
+       javadocJar sourcesJar --rerun-tasks --no-build-cache
+   ./gradlew clean build --offline   # must pass from the cache alone
+   ```
+
+   Read the diff of the file before committing it: every new line is an artifact the
+   release will be built from.
+
 3. **Export the signing key for this shell only.**
 
    ```sh
