@@ -148,13 +148,14 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
   survived expiry. The in-memory store redacts an entry at its expiry and removes it a minute later,
   sweeping itself in the background by due time; it holds at most 10,000 transactions
   (`TooManyTransactionsException` beyond) and is closed with the flow.
-- **A `vp_token` carries exactly one presentation**, as a JSON string; the bare string of
-  pre-1.0 wallets only under `ArfBaselineProfile`. A request is read at construction: a DCQL
-  query the library cannot evaluate is refused when the request is built instead of failing
-  every response — one asking for more than one credential, one without `meta.vct_values`
-  (which used to switch the credential type check off), a format other than `dc+sd-jwt` or the
-  pre-1.0 `vc+sd-jwt`, `trusted_authorities`, or `require_cryptographic_holder_binding:
-  false`. Its `claims` reach the verifier as `requestedClaims`.
+- **A `vp_token` carries exactly one presentation**, under the query's id and no other key,
+  as a JSON string; the bare string of pre-1.0 wallets only under `ArfBaselineProfile`. A
+  request is read at construction: a DCQL query the library cannot evaluate is refused when
+  the request is built instead of failing every response — one asking for more than one
+  credential, one without `meta.vct_values` (which used to switch the credential type check
+  off), a format other than `dc+sd-jwt` or the pre-1.0 `vc+sd-jwt`, `trusted_authorities`,
+  or `require_cryptographic_holder_binding: false`. Its `claims` reach the verifier as
+  `requestedClaims`.
 - **What a wallet sends is bounded before it is kept or decoded**: the response (1 MiB,
   `maxWalletResponseLength`), its `error` (a token of 64 characters at most) and
   `error_description` (256 characters, printable ASCII). A `Transaction`, and a

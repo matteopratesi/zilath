@@ -174,6 +174,22 @@ class WalletResponseInputTest : FlowTestSupport() {
                 ).outcome
         assertThat((none as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
 
+        // A second key is a second presentation too, for a query the request never made.
+        val keyed = startForPid()
+        val stray =
+            flow
+                .handleWalletResponse(
+                    keyed.id,
+                    walletBody(keyed, vpToken = { compact ->
+                        buildJsonObject {
+                            put("pid", buildJsonArray { add(compact) })
+                            put("other", buildJsonArray { add("not-a-presentation") })
+                        }
+                    }),
+                ).outcome
+        assertThat((stray as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
+        assertThat(stray.detail).isEqualTo("vp_token carries a presentation for a query not requested")
+
         // IT-Wallet WP_093: the single presentation may also come without the array.
         val single = startForPid()
         val unwrapped =

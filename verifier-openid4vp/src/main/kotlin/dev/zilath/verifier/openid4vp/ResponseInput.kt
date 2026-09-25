@@ -51,7 +51,8 @@ internal fun checkWalletResponseSize(
  * presentations, which "MUST contain only one Presentation" unless the query set
  * `multiple` — and a [PresentationRequest] never does. So the array must hold exactly
  * one: before the fourth internal review the first element was verified and the rest
- * dropped unseen, while §14.1.2 wants every presentation in the response validated.
+ * dropped unseen, while §14.1.2 wants every presentation in the response validated. For the
+ * same reason the object holds no key but the query's.
  * IT-Wallet (WP_093) also allows the single presentation without the array. A bare string
  * instead of the object is the legacy, pre-1.0 shape, accepted only where the profile
  * says so ([WalletProfile.acceptsBareVpToken]).
@@ -63,7 +64,14 @@ internal fun extractPresentation(
 ): String {
     val entry =
         when (val vpToken = payload["vp_token"]) {
-            is JsonObject -> vpToken[credentialQueryId]
+            is JsonObject -> {
+                // The request has one credential query: a presentation under any other key
+                // would go unvalidated, as a second element of the array did.
+                if (vpToken.keys.any { it != credentialQueryId }) {
+                    flowReject(RejectionReason.MALFORMED, "vp_token carries a presentation for a query not requested")
+                }
+                vpToken[credentialQueryId]
+            }
             is JsonPrimitive -> vpToken.takeIf { acceptsBareVpToken }
             else -> null
         }
