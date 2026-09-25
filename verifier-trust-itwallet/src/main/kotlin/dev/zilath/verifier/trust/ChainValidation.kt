@@ -111,6 +111,12 @@ private fun subordinateStatementsOf(
     if (subordinates.any { it.issuer == it.subject }) {
         trustFail("a statement after the leaf is not a subordinate statement")
     }
+    // OID-FED §17.1: a trust chain MUST NOT contain loops. [L, F about L, L about F, anchor
+    // about L] links and verifies once L and an entity of its own vouch for each other, and
+    // puts F's statement in the position whose metadata overrides the leaf's: whatever the
+    // anchor imposed on L in its own statement was gone. Every entity appears once.
+    val entities = listOf(leaf.subject) + subordinates.map { it.issuer }
+    if (entities.toSet().size != entities.size) trustFail("a trust chain loops back to an entity it has passed")
     // §3.2: a subordinate statement's iss MUST be one of the authority_hints in its
     // subject's entity configuration, "otherwise, the Federation graph is not well-formed".
     // The chain carries only the leaf's configuration, so that is the one checked here;

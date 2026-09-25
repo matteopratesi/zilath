@@ -42,15 +42,20 @@ internal fun resolveChain(
 ): List<String> {
     val statements = mutableListOf(fetchEntityConfiguration(fetcher, issuer))
     var current = statements.first()
+    // OID-FED §10.1: an authority hint that leads back to an entity already on the path MUST
+    // NOT be used. A provided chain steers this walk, so without it a leaf could lead the
+    // refresh round a loop of its own making.
+    val visited = mutableSetOf(issuer)
     while (current.issuer != rules.anchor.entityId) {
         if (statements.size >= rules.maxChainLength) {
             trustFail("trust chain longer than ${rules.maxChainLength} before reaching the anchor")
         }
-        val hints = current.authorityHints
+        val hints = current.authorityHints.filter { it !in visited }
         val superior =
             preferredSuperiors.getOrNull(statements.size - 1)?.takeIf { it in hints }
                 ?: hints.firstOrNull()
                 ?: trustFail("no authority_hints leading to the trust anchor ${rules.anchor.entityId}")
+        visited += superior
         val superiorConfiguration = fetchEntityConfiguration(fetcher, superior)
         if (superior == rules.anchor.entityId) requireGenuineAnchorConfiguration(superiorConfiguration, rules)
         statements += fetchSubordinateStatement(fetcher, superiorConfiguration, current.subject)
