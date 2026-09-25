@@ -67,6 +67,10 @@ import java.time.Duration
  * same resolved metadata's `credential_configurations_supported` — none, and so no type at
  * all, when the section is absent. Trust marks are not checked.
  *
+ * @param maxChainLength the most statements a trust chain may hold: the leaf's
+ *   configuration and the subordinate statements up to the anchor's. The anchor's own
+ *   configuration, which may close a provided chain, is not counted. Four by default: a
+ *   leaf under two intermediates.
  * @param offlineFallback false (the default) for a relying party that is online — every
  *   decision reflects the federation as it is now. True for deployments that must keep
  *   working through an outage: a superior that cannot be reached is then answered for by
