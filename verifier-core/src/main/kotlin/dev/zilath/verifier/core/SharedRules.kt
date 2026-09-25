@@ -51,7 +51,13 @@ import java.util.Locale
 fun acceptableJwsVerifierFor(key: JWK): JWSVerifier? =
     when (key.keyType) {
         KeyType.EC -> key.toECKey().takeIf { it.curve in ACCEPTED_CURVES }?.let(::ECDSAVerifier)
-        KeyType.RSA -> key.toRSAKey().takeIf { it.size() >= MIN_RSA_KEY_BITS }?.let(::RSASSAVerifier)
+        // The bit length of the modulus itself, not RSAKey.size(): that counts the bytes of `n`
+        // as encoded, so a 1024-bit modulus padded with leading zero bytes reported 2048.
+        KeyType.RSA ->
+            key
+                .toRSAKey()
+                .takeIf { it.modulus.decodeToBigInteger().bitLength() >= MIN_RSA_KEY_BITS }
+                ?.let(::RSASSAVerifier)
         else -> null
     }
 
@@ -124,30 +130,23 @@ fun usableHttpsUriOrNull(value: String): URI? {
  * For text the library does not write itself: a [TrustEvaluator]'s reason, a wallet's error
  * string. The fourth internal review forged whole log lines through a credential's `iss`
  * that reached a rejection's `detail` with its CRLF intact, and flooded the log with a
- * hundred kilobytes per request. A surrogate pair cut by the limit is dropped whole, so the
- * result is always well-formed text.
+ * hundred kilobytes per request. A surrogate pair cut by the limit is dropped whole, and a
+ * surrogate that was unpaired in [value] already becomes `?` too, so the result is always
+ * well-formed text.
  */
 @InternalZilathApi
 fun boundedPrintable(value: String): String {
     val cut =
         value.take(MAX_PRINTABLE_LENGTH).let {
-            if (it.lastOrNull()?.isHighSurrogate() ==
-                true
-            ) {
-                it.dropLast(1)
-            } else {
-                it
-            }
+            if (it.lastOrNull()?.isHighSurrogate() == true) it.dropLast(1) else it
         }
     return cut
-        .map {
-            if (it.isISOControl() ||
-                it == LINE_SEPARATOR ||
-                it == PARAGRAPH_SEPARATOR
-            ) {
-                '?'
-            } else {
-                it
+        .mapIndexed { index, char ->
+            when {
+                char.isISOControl() || char == LINE_SEPARATOR || char == PARAGRAPH_SEPARATOR -> '?'
+                char.isHighSurrogate() && cut.getOrNull(index + 1)?.isLowSurrogate() != true -> '?'
+                char.isLowSurrogate() && cut.getOrNull(index - 1)?.isHighSurrogate() != true -> '?'
+                else -> char
             }
         }.joinToString("")
 }

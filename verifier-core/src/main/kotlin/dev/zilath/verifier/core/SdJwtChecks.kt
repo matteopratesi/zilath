@@ -34,7 +34,8 @@ import com.nimbusds.jwt.JWTClaimsSet
  * issuance of the Credential of their interest". The check runs after the signature, on
  * the `vct` the issuer actually signed. A decision that names no types
  * ([TrustDecision.Trusted.credentialTypes] null) restricts nothing, which is what a
- * pinned-key evaluator means; the federation evaluator always names them.
+ * pinned-key evaluator means; an evaluator for a federation, where any member can publish
+ * signing keys, has to name them.
  */
 internal fun checkIssuerAuthorisedForType(
     issuerClaims: JWTClaimsSet,
