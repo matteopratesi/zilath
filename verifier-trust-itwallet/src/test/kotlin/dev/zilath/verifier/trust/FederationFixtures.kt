@@ -157,9 +157,19 @@ object FederationFixtures {
 
     fun jwksClaim(vararg keys: JWK): Map<String, Any> = mapOf("keys" to keys.map { it.toPublicJWK().toJSONObject() })
 
-    /** The leaf's `openid_credential_issuer` section: its credential keys plus [extra] parameters. */
+    /**
+     * The leaf's `openid_credential_issuer` section: its credential keys, the one SD-JWT type
+     * the test vectors carry, plus [extra] parameters.
+     */
     fun credentialIssuerSection(vararg extra: Pair<String, Any?>): Map<String, Any?> =
-        mapOf("jwks" to jwksClaim(TestVectors.issuerEcKey)) + extra
+        mapOf(
+            "jwks" to jwksClaim(TestVectors.issuerEcKey),
+            "credential_configurations_supported" to sdJwtConfigurations(TestVectors.VCT),
+        ) + extra
+
+    /** A `credential_configurations_supported` with one `dc+sd-jwt` entry per [vcts]. */
+    fun sdJwtConfigurations(vararg vcts: String): Map<String, Any> =
+        vcts.associate { vct -> "config-$vct" to mapOf("format" to "dc+sd-jwt", "vct" to vct) }
 
     fun leafConfiguration(
         authorityHint: String = ANCHOR_ID,

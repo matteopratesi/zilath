@@ -28,7 +28,7 @@ import java.time.Instant
  * Validates a trust chain ordered leaf-first (OID-FED 1.0 §4 and §10.2, IT-Wallet §6.11):
  * its shape, each statement's signature top-down from the out-of-band anchor keys, their
  * temporal validity, and the superiors' directives on the leaf's metadata. Returns the
- * leaf's credential signing keys.
+ * leaf's credential signing keys and the credential types it may issue.
  */
 internal fun validateChain(
     chain: List<String>,
@@ -51,18 +51,7 @@ internal fun validateChain(
     val criticalOperators = subordinates.flatMap { it.metadataPolicyCrit }.toSet()
     val resolvedMetadata = MetadataPolicy.resolve(effectiveMetadata, policies, criticalOperators)
     val resolvedIssuer = resolvedMetadata["openid_credential_issuer"] as? Map<*, *>
-    // No fallback. Credential-signing keys come from the RESOLVED metadata or from nowhere.
-    //
-    // Falling back to the leaf's federation keys turned a metadata_policy that RESTRICTS
-    // openid_credential_issuer.jwks into one that widens: policy removes the key set, the
-    // fallback hands over a different, unconstrained one. A leaf that published no
-    // openid_credential_issuer at all got the same gift. Federation keys sign entity
-    // statements; credential keys sign credentials. The separation is the point.
-    val credentialKeys = jwksOf(resolvedIssuer?.get("jwks") as? Map<*, *>)
-    if (credentialKeys.isEmpty()) {
-        trustFail("the resolved metadata advertises no credential signing keys")
-    }
-    return TrustDecision.Trusted(credentialKeys)
+    return TrustDecision.Trusted(credentialKeysOf(resolvedIssuer), credentialTypesOf(resolvedIssuer))
 }
 
 /**

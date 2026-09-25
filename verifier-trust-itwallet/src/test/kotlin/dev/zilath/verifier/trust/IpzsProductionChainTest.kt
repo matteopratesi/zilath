@@ -54,6 +54,8 @@ class IpzsProductionChainTest {
         assertThat(decision).isInstanceOf(TrustDecision.Trusted::class.java)
         val trusted = decision as TrustDecision.Trusted
         assertThat(trusted.issuerKeys.map { it.keyID }).containsExactly(IpzsFederationSnapshot.CED_ISSUER_SIGNING_KID)
+        // The issuer is authorised for the disability card, as its configuration lists it.
+        assertThat(trusted.credentialTypes).contains(IpzsFederationSnapshot.CED_VCT)
     }
 
     @Test
