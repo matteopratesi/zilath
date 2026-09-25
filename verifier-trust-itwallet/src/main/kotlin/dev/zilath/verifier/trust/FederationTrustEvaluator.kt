@@ -74,6 +74,7 @@ class FederationTrustEvaluator(
                 current.authorityHints.firstOrNull()
                     ?: trustFail("no authority_hints leading to the trust anchor ${anchor.entityId}")
             val superiorConfiguration = fetchEntityConfiguration(fetcher, superior)
+            if (superior == anchor.entityId) requireGenuineAnchorConfiguration(superiorConfiguration, anchor, clock)
             statements += fetchSubordinateStatement(fetcher, superiorConfiguration, current.subject)
             current = superiorConfiguration
         }

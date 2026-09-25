@@ -551,6 +551,71 @@ class FederationTrustEvaluatorTest {
     }
 
     @Test
+    fun `the anchor's entity configuration is verified before its fetch endpoint is used`() {
+        // Whoever answers for the anchor's well-known URL used to choose where the library
+        // fetched the anchor's statement from: the configuration was never verified, and
+        // the forgery surfaced only after the request to the attacker's host was made.
+        val attacker = ECKeyGenerator(Curve.P_256).keyID(FederationFixtures.anchorKey.keyID).generate()
+        val forgedEndpoint =
+            FederationFixtures.signedStatement(attacker, FederationFixtures.ANCHOR_ID, FederationFixtures.ANCHOR_ID) {
+                claim("jwks", FederationFixtures.jwksClaim(attacker))
+                claim(
+                    "metadata",
+                    mapOf(
+                        "federation_entity" to mapOf("federation_fetch_endpoint" to "https://attacker.example/fetch"),
+                    ),
+                )
+            }
+        // Forged even with the genuine endpoint: nothing in it is used unverified.
+        val forgedGenuineEndpoint =
+            FederationFixtures.signedStatement(attacker, FederationFixtures.ANCHOR_ID, FederationFixtures.ANCHOR_ID) {
+                claim("jwks", FederationFixtures.jwksClaim(attacker))
+                claim(
+                    "metadata",
+                    mapOf(
+                        "federation_entity" to
+                            mapOf("federation_fetch_endpoint" to "${FederationFixtures.ANCHOR_ID}/fetch"),
+                    ),
+                )
+            }
+        val expired =
+            FederationFixtures.signedStatement(
+                FederationFixtures.anchorKey,
+                FederationFixtures.ANCHOR_ID,
+                FederationFixtures.ANCHOR_ID,
+                expiresInSeconds = -120,
+            ) { claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.anchorKey)) }
+        for (anchorConfiguration in listOf(forgedEndpoint, forgedGenuineEndpoint)) {
+            val fetched = mutableListOf<String>()
+            val fetcher =
+                FederationFetcher { url ->
+                    fetched += url
+                    when (url) {
+                        "${FederationFixtures.LEAF_ID}/.well-known/openid-federation" ->
+                            FederationFixtures
+                                .leafConfiguration()
+                        "${FederationFixtures.ANCHOR_ID}/.well-known/openid-federation" -> anchorConfiguration
+                        else -> FederationFixtures.anchorStatementAboutLeaf()
+                    }
+                }
+            val decision = evaluator(fetcher).evaluate(inputFor())
+            assertThat(FederationFixtures.untrustedReason(decision)).contains("anchor's entity configuration")
+            assertThat(fetched).hasSize(2).noneMatch { it.contains("attacker") || it.contains("sub=") }
+        }
+        val expiredFetcher =
+            FederationFixtures.fetcherOf(
+                mapOf(
+                    "${FederationFixtures.LEAF_ID}/.well-known/openid-federation" to
+                        FederationFixtures.leafConfiguration(),
+                    "${FederationFixtures.ANCHOR_ID}/.well-known/openid-federation" to expired,
+                ),
+            )
+        assertThat(
+            FederationFixtures.untrustedReason(evaluator(expiredFetcher).evaluate(inputFor())),
+        ).contains("expired")
+    }
+
+    @Test
     fun `a fetch endpoint with its own query gets sub appended, not a second question mark`() {
         val endpoint = "${FederationFixtures.ANCHOR_ID}/fetch?profile=itwallet"
         val fetcher =

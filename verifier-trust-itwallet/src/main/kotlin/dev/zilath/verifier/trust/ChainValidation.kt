@@ -152,6 +152,29 @@ private fun verifyTopDown(
 }
 
 /**
+ * The anchor's entity configuration, fetched while resolving a chain online, checked with
+ * the configured keys BEFORE its `federation_fetch_endpoint` is used.
+ *
+ * An intermediate's configuration cannot be verified at that point — its keys come from
+ * the statement about it, fetched next — but the anchor's keys are known out-of-band. It
+ * used to be taken as served: whoever could answer for the anchor's well-known URL (a
+ * proxying fetcher, an interposed name or certificate) pointed the library at a fetch
+ * endpoint of their choosing, and the forgery surfaced only when the statement from there
+ * failed to verify, after the request had been made.
+ */
+internal fun requireGenuineAnchorConfiguration(
+    configuration: EntityStatement,
+    anchor: TrustAnchorConfig,
+    clock: Clock,
+) {
+    checkValidityWindow(configuration, clock.instant())
+    val key = anchor.federationKeys.singleOrNull { it.keyID == configuration.jwt.header.keyID }
+    if (key == null || !verifiesWithAny(configuration.jwt, listOf(key))) {
+        trustFail("the trust anchor's entity configuration does not verify with the configured keys")
+    }
+}
+
+/**
  * OID-FED 1.0 §3: an entity statement "MUST include the kid (Key ID) header parameter",
  * and it MUST exactly match the `kid` of a key in the set that verifies it. Every trusted
  * key used to be tried in turn, with no `kid` at all or with one naming a key the set does
