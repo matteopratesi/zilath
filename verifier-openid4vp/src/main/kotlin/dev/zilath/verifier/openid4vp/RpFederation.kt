@@ -89,6 +89,9 @@ data class RpFederationConfig(
         require(federationKey.isPrivate) { "federationKey must contain private key material" }
         require(federationKey.curve == Curve.P_256) { "federationKey must be a P-256 key (IT-Wallet profile)" }
         require(!federationKey.keyID.isNullOrBlank()) { "federationKey must carry a kid" }
+        // One key, one purpose, as for the protocol keys (RFC 7517 §4.2, §4.4).
+        require(federationKey.keyUse in setOf(null, KeyUse.SIGNATURE)) { "federationKey must not be marked use=enc" }
+        require(federationKey.algorithm in setOf(null, JWSAlgorithm.ES256)) { "federationKey must be for ES256" }
         require(authorityHints.isNotEmpty()) { "authorityHints must name at least one superior" }
         require(contacts.isNotEmpty() && contacts.none { it.isBlank() }) {
             "contacts must name at least one way to reach the operator (federation_entity.contacts is essential)"

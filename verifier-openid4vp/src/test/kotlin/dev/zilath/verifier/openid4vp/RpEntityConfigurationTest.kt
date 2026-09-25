@@ -255,6 +255,27 @@ class RpEntityConfigurationTest {
                 federation = federation().copy(federationKey = ECKeyGenerator(Curve.P_256).keyID("rp-enc").generate()),
             )
         }
+        // ...and is held to one purpose as they are.
+        assertThatIllegalArgumentException()
+            .isThrownBy {
+                federation().copy(
+                    federationKey = ECKeyGenerator(Curve.P_256).keyID("f").keyUse(KeyUse.ENCRYPTION).generate(),
+                )
+            }.withMessageContaining("use=enc")
+        assertThatIllegalArgumentException()
+            .isThrownBy {
+                federation().copy(
+                    federationKey = ECKeyGenerator(Curve.P_256).keyID("f").algorithm(JWEAlgorithm.ECDH_ES).generate(),
+                )
+            }.withMessageContaining("ES256")
+        federation().copy(
+            federationKey =
+                ECKeyGenerator(Curve.P_256)
+                    .keyID("f")
+                    .keyUse(KeyUse.SIGNATURE)
+                    .algorithm(JWSAlgorithm.ES256)
+                    .generate(),
+        )
     }
 
     @Test
