@@ -76,15 +76,17 @@ class SdJwtVcCredentialVerifierTest {
     }
 
     @Test
-    fun `an issuer plaintext claim survives the blocklist, which is the documented limit`() {
-        // Not a bug being pinned as correct: the documented boundary of a blocklist. The
-        // issuer can name a plaintext claim anything, and nothing here tells `serial_no`
-        // apart from a legitimate always-visible attribute. If this ever starts failing,
-        // an allowlist has landed and docs/privacy-by-design.md limit 8 must go with it.
-        val result = verify(TestVectors.vector())
-        val claims = (result as VerificationResult.Verified).claims.claims
-        assertThat(claims.keys).contains("iss", "vct")
-        assertThat(claims.keys).doesNotContainAnyElementsOf(listOf("iat", "exp", "cnf", "status"))
+    fun `an issuer plaintext claim no longer reaches the application`() {
+        // This test used to pin the documented limit of a blocklist: an issuer can name a
+        // plaintext claim anything, and `serial_no` survived. The outcome is now an
+        // allowlist of what the holder disclosed, plus iss and vct, and the limit is gone.
+        val compact =
+            TestVectors.vectorWith {
+                claim("serial_no", "CED-000123")
+                sdClaim("given_name", "Ada")
+            }
+        val claims = (verify(compact) as VerificationResult.Verified).claims.claims
+        assertThat(claims.keys).containsExactlyInAnyOrder("given_name", "iss", "vct")
     }
 
     @Test

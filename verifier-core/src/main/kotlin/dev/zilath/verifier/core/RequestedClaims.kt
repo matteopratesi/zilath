@@ -51,7 +51,13 @@ data class RequestedClaim(
     /** The claims path pointer (OpenID4VP 1.0 §7): from the top-level claim inward. */
     val path: List<ClaimPathSegment>,
     val id: String? = null,
-    /** The values the claim may take; null means any value. */
+    /**
+     * The values the claim may take; null means any value. Compared in type and value with
+     * each element [path] selects, and satisfied when one of them matches: a path ending in
+     * [ClaimPathSegment.AllElements] asks whether any element of the array is one of these,
+     * while a path that selects the array itself never matches, since an array is not a
+     * string, number or boolean.
+     */
     val values: List<JsonPrimitive>? = null,
 ) {
     init {

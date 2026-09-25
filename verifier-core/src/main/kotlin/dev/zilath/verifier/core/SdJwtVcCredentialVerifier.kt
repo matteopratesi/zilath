@@ -23,7 +23,6 @@ import com.nimbusds.jwt.SignedJWT
 import eu.europa.ec.eudi.sdjwt.NimbusSdJwtOps
 import eu.europa.ec.eudi.sdjwt.SdJwtAndKbJwt
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.JsonObject
 import java.time.Duration
 
 /**
@@ -53,7 +52,9 @@ private fun checkTypIfPresent(
  * [TrustEvaluator], disclosure integrity, disclosure names and the envelope claims kept in
  * plaintext, the issuer's authorisation and the requested type, temporal validity against
  * the injected clock, key binding (signature with the `cnf` key, `typ`, audience, nonce,
- * freshness, `sd_hash`), and revocation via [StatusChecker].
+ * freshness, `sd_hash`), the claims the request asked for
+ * ([VerificationContext.requestedClaims]), and revocation via [StatusChecker]. What a
+ * verified presentation hands over is an allowlist: see [VerificationResult.Verified].
  *
  * Cryptography and SD-JWT processing are delegated to Nimbus JOSE+JWT and the
  * EUDI `eudi-lib-jvm-sdjwt-kt` library; this class only orchestrates and maps
@@ -94,8 +95,11 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         checkTemporalValidity(verified.sdJwt.jwt, ctx)
         checkTypIfPresent(verified.keyBindingJwt.header, KEY_BINDING_TYPS, RejectionReason.INVALID_KEY_BINDING)
         checkKeyBinding(verified.keyBindingJwt, ctx)
+        // Before the status check: a presentation that does not answer the request is
+        // refused without a fetch on its behalf.
+        val claims = outcomeClaims(recreated, ctx.requestedClaims)
         checkStatus(issuerClaims, issuerKeys, ctx)
-        return VerificationResult.Verified(DisclosedClaims(withoutInternalClaims(recreated.claims)))
+        return VerificationResult.Verified(DisclosedClaims(claims))
     }
 
     private fun trustedIssuer(
@@ -235,38 +239,6 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         }
     }
 
-    /**
-     * Strips the issuer envelope, keeping what the holder disclosed plus the two envelope
-     * claims that say WHAT was verified without saying WHICH copy.
-     *
-     * `recreateClaims` returns the whole issuer-signed payload, not only what the holder chose
-     * to disclose. Most of that envelope is stable per credential: `cnf` (the holder key),
-     * `status` (the index in the issuer's revocation list), and just as much `iat`, `exp`,
-     * `nbf`, `jti`, `sub` — an issuance instant at second granularity, together with `iss` and
-     * `vct`, singles out one credential almost as surely as a serial number would. Handing any
-     * of them over would let an integrator, or anything downstream, link two verifications of
-     * the same person across venues and across months. The third internal review found that
-     * only `cnf` and `status` were being removed.
-     *
-     * `iss` and `vct` stay: they name the issuer and the credential type, are identical for
-     * every holder of that type, and are what an application needs to know what it verified.
-     *
-     * **This is a blocklist, and a blocklist is not a guarantee.** It removes the envelope
-     * this specification defines; a claim the ISSUER chose to put in the credential
-     * unprotected — outside selective disclosure, under a name of its own invention — is
-     * neither disclosed by the holder nor listed here, and it survives. Nothing in the
-     * verifier can tell such a claim from a legitimate always-visible attribute. The
-     * airtight form is an allowlist of the names the holder actually disclosed, which means
-     * telling disclosed claims apart from the issuer's plaintext ones: computable as the
-     * difference between the recreated claims and the issuer JWT payload, except that a
-     * plaintext object with selectively disclosed members inside it would then lose them.
-     * Getting that right needs the nested case covered by tests against a real issuer, so
-     * it is recorded as a known limit (docs/privacy-by-design.md) rather than guessed at
-     * here. Raised by automated review on this pull request.
-     */
-    private fun withoutInternalClaims(claims: JsonObject): JsonObject =
-        JsonObject(claims.filterKeys { it !in ENVELOPE_CLAIMS })
-
     private fun checkStatus(
         issuerClaims: JWTClaimsSet,
         issuerKeys: List<JWK>,
@@ -286,14 +258,6 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
     }
 
     private companion object {
-        /**
-         * The issuer envelope: every RFC 7519 registered claim that dates or identifies the
-         * credential, plus the SD-JWT VC machinery. Never part of an outcome — see
-         * [withoutInternalClaims] for why, and for why `iss` and `vct` are not listed.
-         */
-        private val ENVELOPE_CLAIMS =
-            setOf("cnf", "status", "sub", "aud", "exp", "nbf", "iat", "jti", "_sd_alg")
-
         /** `dc+sd-jwt` is the current media type; `vc+sd-jwt` is the earlier draft, still in the wild. */
         private val ISSUER_JWT_TYPS = setOf("dc+sd-jwt", "vc+sd-jwt")
 
