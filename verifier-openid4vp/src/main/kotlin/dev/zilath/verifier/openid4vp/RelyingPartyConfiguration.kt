@@ -33,7 +33,10 @@ data class RpEndpoints(
     val responseUriBase: String,
     /**
      * Where the same-device flow brings the user back (`?response_code=...` is
-     * appended). Null when the RP offers the cross-device flow only.
+     * appended), and the `redirect_uris` the federation entity configuration attests. Null
+     * when the RP offers the cross-device flow only — and then the entity configuration has
+     * no `redirect_uris`, which the production IT-Wallet anchor's policy marks essential: a
+     * cross-device-only RP cannot satisfy that policy, and none is invented for it.
      */
     val sameDeviceCallbackBase: String? = null,
     /**
