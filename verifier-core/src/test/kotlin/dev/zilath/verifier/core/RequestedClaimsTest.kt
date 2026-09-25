@@ -54,4 +54,15 @@ class RequestedClaimsTest {
             .isInstanceOf(IllegalArgumentException::class.java)
         assertThatThrownBy { ClaimPathSegment.Index(-1) }.isInstanceOf(IllegalArgumentException::class.java)
     }
+
+    @Test
+    fun `two claims sharing an id are refused, with or without claim sets`() {
+        val twin = RequestedClaim(listOf(ClaimPathSegment.Key("family_name")), id = "a")
+        assertThatThrownBy { RequestedClaims(listOf(name, twin)) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("claim ids must be unique")
+        assertThatThrownBy { RequestedClaims(listOf(name, twin), claimSets = listOf(listOf("a"))) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("claim ids must be unique")
+    }
 }
