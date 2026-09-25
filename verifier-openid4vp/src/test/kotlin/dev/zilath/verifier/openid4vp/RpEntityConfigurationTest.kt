@@ -20,6 +20,7 @@ import com.nimbusds.jose.JWEAlgorithm
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.crypto.ECDSAVerifier
 import com.nimbusds.jose.jwk.Curve
+import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.KeyUse
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import com.nimbusds.jwt.SignedJWT
@@ -39,19 +40,21 @@ class RpEntityConfigurationTest {
     private val clock = Clock.fixed(Instant.parse("2026-08-27T21:00:00Z"), ZoneOffset.UTC)
     private val federationKey = ECKeyGenerator(Curve.P_256).keyID("rp-fed").generate()
 
-    private fun config(clientId: String) =
-        RelyingPartyConfiguration(
-            clientId = clientId,
-            endpoints = RpEndpoints("https://rp.example/openid4vp/request", "https://rp.example/openid4vp/response"),
-            keys =
-                RpKeys(
-                    requestSigningKey = ECKeyGenerator(Curve.P_256).keyID("rp-sign").generate(),
-                    responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("rp-enc").generate(),
-                ),
-            trustEvaluator = TrustEvaluator { _ -> TrustDecision.Untrusted("static test evaluator") },
-            statusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
-            federation = federation(),
-        )
+    private fun config(
+        clientId: String,
+        signingKey: ECKey = ECKeyGenerator(Curve.P_256).keyID("rp-sign").generate(),
+    ) = RelyingPartyConfiguration(
+        clientId = clientId,
+        endpoints = RpEndpoints("https://rp.example/openid4vp/request", "https://rp.example/openid4vp/response"),
+        keys =
+            RpKeys(
+                requestSigningKey = signingKey,
+                responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("rp-enc").generate(),
+            ),
+        trustEvaluator = TrustEvaluator { _ -> TrustDecision.Untrusted("static test evaluator") },
+        statusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
+        federation = federation(),
+    )
 
     private fun federation(entityId: String = "https://rp.example") =
         RpFederationConfig(
@@ -315,7 +318,8 @@ class RpEntityConfigurationTest {
 
     @Test
     fun `an x509_hash client id can still publish an entity configuration`() {
-        val config = config("x509_hash:AbC123")
+        val signingKey = withSelfSignedCertificate(ECKeyGenerator(Curve.P_256).keyID("rp-sign").generate())
+        val config = config(x509HashClientIdOf(signingKey), signingKey)
         val jwt = SignedJWT.parse(RpEntityConfiguration.build(config, config.federation!!, clock))
         assertThat(jwt.jwtClaimsSet.subject).isEqualTo("https://rp.example")
     }
@@ -334,8 +338,9 @@ class RpEntityConfigurationTest {
 
     @Test
     fun `a non-positive transaction time to live is refused at construction`() {
-        assertThatIllegalArgumentException().isThrownBy {
-            config("x509_hash:abc").copy(transactionTimeToLive = java.time.Duration.ZERO)
-        }
+        assertThatIllegalArgumentException()
+            .isThrownBy {
+                config("openid_federation:https://rp.example").copy(transactionTimeToLive = java.time.Duration.ZERO)
+            }.withMessageContaining("transactionTimeToLive")
     }
 }

@@ -21,6 +21,7 @@ import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSASigner
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.util.Base64
 import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
@@ -61,6 +62,19 @@ internal fun acceptedAudiencesFor(clientId: String): Set<String> {
 }
 
 private val CLIENT_ID_PREFIXES = listOf(OPENID_FEDERATION_PREFIX, X509_HASH_PREFIX)
+
+/**
+ * The `x509_hash` client identifier of a certificate: the base64url-encoded SHA-256 hash of
+ * its DER encoding (OpenID4VP 1.0 §5.9.3). [certificate] is an `x5c` element, which is
+ * standard base64 of the DER.
+ */
+internal fun x509HashOf(certificate: Base64): String =
+    Base64URL
+        .encode(
+            java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest(certificate.decode()),
+        ).toString()
 
 /** Internal short-circuit carrying a rejection out of the response pipeline. */
 internal class FlowRejection(

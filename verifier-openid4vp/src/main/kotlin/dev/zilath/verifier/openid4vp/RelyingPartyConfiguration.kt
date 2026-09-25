@@ -175,6 +175,22 @@ data class RelyingPartyConfiguration(
                 "client_id and federation entityId must agree under the openid_federation scheme"
             }
         }
+        // Under the x509_hash scheme the wallet takes the client id for the hash of the leaf
+        // certificate in the request object's x5c header, and verifies the request with that
+        // certificate's key (OpenID4VP 1.0 §5.9.3; IT-Wallet 1.4.6 makes x5c mandatory with
+        // this prefix). A signing key without a chain, or a client id hashing another
+        // certificate, can never work, and the fourth internal review found nothing saying
+        // so before the first wallet did. That the leaf certifies the signing key itself,
+        // Nimbus checks when the key is built or parsed.
+        if (clientId.startsWith(X509_HASH_PREFIX)) {
+            val leaf =
+                requireNotNull(keys.requestSigningKey.x509CertChain?.firstOrNull()) {
+                    "the x509_hash client id scheme requires an x5c certificate chain on the request signing key"
+                }
+            require(clientId.removePrefix(X509_HASH_PREFIX) == x509HashOf(leaf)) {
+                "the x509_hash client id must be the hash of the request signing key's leaf certificate"
+            }
+        }
     }
 
     companion object {

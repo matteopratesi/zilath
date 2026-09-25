@@ -19,6 +19,8 @@ dependencies {
     testImplementation(testFixtures(project(":verifier-core")))
     // For the issuance DSL of the core test vectors, which the flow tests choose disclosures with.
     testImplementation(libs.eudi.sdjwt) { exclude(group = "io.ktor") }
+    // Writes the certificates an x509_hash relying party signs with.
+    testImplementation(libs.bcpkix)
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
     testRuntimeOnly(libs.junit.platform.launcher)
