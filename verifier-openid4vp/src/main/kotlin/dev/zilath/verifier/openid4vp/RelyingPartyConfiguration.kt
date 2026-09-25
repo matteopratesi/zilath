@@ -104,6 +104,15 @@ data class RelyingPartyConfiguration(
         require(transactionTimeToLive > Duration.ZERO) {
             "transactionTimeToLive must be positive: zero or less expires every transaction as it is created"
         }
+        // The fourth internal review found no upper bound: Duration.ofSeconds(Long.MAX_VALUE)
+        // passed here and overflowed in createdAt + ttl at the first request object, as a
+        // runtime failure instead of a startup one. A merely large value is no better: the
+        // request object's exp, the window in which a leaked QR or transaction id stays
+        // usable and the time the disclosed claims are kept all follow this one number.
+        require(transactionTimeToLive <= MAX_TIME_TO_LIVE) {
+            "transactionTimeToLive must not exceed $MAX_TIME_TO_LIVE: the request object expiry, the " +
+                "window in which a transaction id is usable and the retention of the disclosed claims all follow it"
+        }
         // Under the openid_federation scheme the wallet resolves us through the trust
         // chain and checks client_id against our entity configuration `sub` (WP_086):
         // a config without federation identity, or with a mismatched one, can never work.
@@ -120,5 +129,12 @@ data class RelyingPartyConfiguration(
     companion object {
         const val DEFAULT_SCHEME = "openid4vp://"
         val DEFAULT_TIME_TO_LIVE: Duration = Duration.ofMinutes(5)
+
+        /**
+         * The longest accepted [transactionTimeToLive]. A presentation takes the holder
+         * minutes, not hours; an hour leaves room for a slow checkout without letting a
+         * transaction outlive the visit it belongs to.
+         */
+        val MAX_TIME_TO_LIVE: Duration = Duration.ofHours(1)
     }
 }

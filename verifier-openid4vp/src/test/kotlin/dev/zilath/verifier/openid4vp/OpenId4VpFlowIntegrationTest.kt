@@ -248,6 +248,24 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
+    fun `a time to live beyond the cap is refused at construction, and the cap itself works`() {
+        // Long.MAX_VALUE seconds used to pass construction and overflow in createdAt + ttl
+        // at the first request object: a configuration error found by the first wallet.
+        assertThatThrownBy { config.copy(transactionTimeToLive = Duration.ofSeconds(Long.MAX_VALUE)) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy {
+            config.copy(transactionTimeToLive = RelyingPartyConfiguration.MAX_TIME_TO_LIVE.plusSeconds(1))
+        }.isInstanceOf(IllegalArgumentException::class.java)
+        val atCap = config.copy(transactionTimeToLive = RelyingPartyConfiguration.MAX_TIME_TO_LIVE)
+        val atCapFlow = OpenId4VpVerificationFlow.withInMemoryStore(atCap, SdJwtVcCredentialVerifier(), clock)
+        val first = atCapFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
+        val jar = SignedJWT.parse(checkNotNull(atCapFlow.requestJwtFor(first.id)))
+        assertThat(jar.jwtClaimsSet.expirationTime.toInstant())
+            .isEqualTo(TestVectors.NOW.plus(RelyingPartyConfiguration.MAX_TIME_TO_LIVE))
+        atCapFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
+    }
+
+    @Test
     fun `configuration toString never contains private key material`() {
         assertThat(config.toString()).doesNotContain(signingKey.d.toString())
         assertThat(config.toString()).doesNotContain(encryptionKey.d.toString())
