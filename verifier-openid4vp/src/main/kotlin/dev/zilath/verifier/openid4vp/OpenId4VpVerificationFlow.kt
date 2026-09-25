@@ -164,6 +164,7 @@ class OpenId4VpVerificationFlow(
         // set: a store may run that function and then not commit its result — an optimistic
         // store whose entry was removed in between returns null — and a side effect of the
         // function would then report a consumption that never happened.
+        //
         // The read right moves to the user-agent that came back with the code: the token
         // issued at start — held by whoever STARTED the transaction, who in a session
         // fixation is not the person whose wallet answered — stops reading anything.

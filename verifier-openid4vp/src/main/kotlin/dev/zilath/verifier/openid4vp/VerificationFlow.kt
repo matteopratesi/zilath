@@ -337,6 +337,6 @@ sealed interface FlowOutcome {
     /** The transaction exceeded its time to live before completing. */
     data object Expired : FlowOutcome
 
-    /** No transaction with the given id exists. */
+    /** No transaction with the given id exists, or none the given [PollToken] may read: the two answer alike. */
     data object Unknown : FlowOutcome
 }
