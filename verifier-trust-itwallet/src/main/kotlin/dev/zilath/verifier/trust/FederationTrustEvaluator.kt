@@ -49,13 +49,13 @@ class FederationTrustEvaluator(
 ) : TrustEvaluator {
     override fun evaluate(issuerChain: IssuerTrustInput): TrustDecision =
         runCatching {
-            val chain =
-                if (issuerChain.trustChain.isNotEmpty()) {
-                    issuerChain.trustChain
-                } else {
-                    resolveChain(issuerChain.issuer ?: trustFail("credential has no iss claim"))
-                }
-            TrustDecision.Trusted(validateChain(chain, issuerChain.issuer, anchor, clock, maxChainLength))
+            // Before choosing a path: a credential without iss used to be refused online and
+            // trusted offline, because the leaf of a provided chain was compared with the
+            // issuer only when there was one. IT-Wallet 1.4.6 makes iss REQUIRED in the
+            // credential, and the leaf must be the entity that issued it.
+            val issuer = issuerChain.issuer ?: trustFail("credential has no iss claim")
+            val chain = issuerChain.trustChain.ifEmpty { resolveChain(issuer) }
+            TrustDecision.Trusted(validateChain(chain, issuer, anchor, clock, maxChainLength))
         }.getOrElse { failure ->
             when (failure) {
                 is TrustFailure -> TrustDecision.Untrusted(failure.message)

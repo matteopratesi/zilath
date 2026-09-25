@@ -31,7 +31,7 @@ import java.time.Instant
  */
 internal fun validateChain(
     chain: List<String>,
-    expectedIssuer: String?,
+    expectedIssuer: String,
     anchor: TrustAnchorConfig,
     clock: Clock,
     maxChainLength: Int = DEFAULT_MAX_CHAIN_LENGTH,
@@ -84,12 +84,12 @@ internal fun validateChain(
  */
 private fun subordinateStatementsOf(
     statements: List<EntityStatement>,
-    expectedIssuer: String?,
+    expectedIssuer: String,
     anchor: TrustAnchorConfig,
 ): List<EntityStatement> {
     val leaf = statements.first()
     if (leaf.issuer != leaf.subject) trustFail("the leaf entity configuration is not self-issued")
-    if (expectedIssuer != null && leaf.subject != expectedIssuer) {
+    if (leaf.subject != expectedIssuer) {
         trustFail("credential iss does not match the trust chain leaf")
     }
     val last = statements.last()

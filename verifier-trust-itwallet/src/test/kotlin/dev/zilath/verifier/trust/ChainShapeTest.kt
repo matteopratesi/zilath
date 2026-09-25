@@ -39,6 +39,15 @@ class ChainShapeTest {
     private fun decide(chain: List<String>) = chainEvaluator().evaluate(inputFor(trustChain = chain))
 
     @Test
+    fun `a trust_chain header does not excuse a credential without iss`() {
+        // The online path always refused it; the offline path compared the leaf with the
+        // issuer only when there was one, and trusted any leaf of the federation.
+        val withoutIss = inputFor(issuer = null, trustChain = FederationFixtures.offlineChain())
+        val decision = chainEvaluator().evaluate(withoutIss)
+        assertThat(untrustedReason(decision)).contains("no iss")
+    }
+
+    @Test
     fun `a duplicated leaf cannot stand in for its own immediate superior`() {
         // [leaf, leaf, anchor's statement] links and verifies: the anchor's statement
         // attests the leaf's key, which signs both copies. It used to make the leaf its
