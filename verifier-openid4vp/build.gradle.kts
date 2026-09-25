@@ -17,6 +17,8 @@ dependencies {
     testFixturesApi(libs.junit.jupiter)
     testFixturesImplementation(libs.assertj.core)
     testImplementation(testFixtures(project(":verifier-core")))
+    // For the issuance DSL of the core test vectors, which the flow tests choose disclosures with.
+    testImplementation(libs.eudi.sdjwt) { exclude(group = "io.ktor") }
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
     testRuntimeOnly(libs.junit.platform.launcher)

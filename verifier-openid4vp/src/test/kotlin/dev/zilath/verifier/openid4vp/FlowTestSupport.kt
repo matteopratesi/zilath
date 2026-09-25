@@ -66,7 +66,8 @@ abstract class FlowTestSupport {
     /**
      * Simulated wallet: fetches the request object exactly like a wallet would, verifies
      * its signature, then answers with an SD-JWT VC presentation encrypted to the RP key
-     * advertised in `client_metadata` (IT-Wallet `direct_post.jwt` profile).
+     * advertised in `client_metadata` (IT-Wallet `direct_post.jwt` profile). [presentation],
+     * given the nonce the key binding must carry, replaces the default presentation.
      */
     @Suppress("LongParameterList") // test factory: independent, defaulted axes
     protected fun walletBody(
@@ -80,18 +81,17 @@ abstract class FlowTestSupport {
         vct: String = TestVectors.VCT,
         echoedNonce: String? = null,
         source: VerificationFlow = flow,
+        presentation: ((nonce: String) -> String)? = null,
     ): DirectPostBody {
         val jar = checkNotNull(source.requestJwtFor(started.id)) { "request JWT not available" }
         val jwt = SignedJWT.parse(jar)
         assertThat(jwt.verify(ECDSAVerifier(signingKey.toPublicJWK()))).isTrue()
         val claims = jwt.jwtClaimsSet
         val advertisedKey = advertisedEncryptionKey(claims.getJSONObjectClaim("client_metadata"))
+        val nonce = nonceOverride ?: claims.getStringClaim("nonce")
         val compact =
-            TestVectors.vector(
-                nonce = nonceOverride ?: claims.getStringClaim("nonce"),
-                audience = audienceOverride ?: config.clientId,
-                vct = vct,
-            )
+            presentation?.invoke(nonce)
+                ?: TestVectors.vector(nonce = nonce, audience = audienceOverride ?: config.clientId, vct = vct)
         val payload =
             buildJsonObject {
                 put("vp_token", vpToken(compact))
