@@ -12,7 +12,9 @@ that can silently let something through.
 
 The fixes of the fourth internal review (2026-09-04 to 2026-09-24), landing in parts. Headed
 for 0.4.0, not a patch: many items change what a verifier accepts or rejects, and the API
-moves with them. So far: `verifier-core` and the build, then `verifier-trust-itwallet`.
+moves with them. In three parts: `verifier-core` and the build; `verifier-trust-itwallet`;
+`verifier-openid4vp` and the Spring starter. The demo application's own findings, the
+receipt's `entitled` field and a guide for Spring Security are not part of this release.
 
 ### Security — what the verifier now accepts that it refused
 
@@ -100,6 +102,78 @@ moves with them. So far: `verifier-core` and the build, then `verifier-trust-itw
 - An operator of `metadata_policy` the library does not implement is ignored unless it is
   critical (§6.1.3.2): the IT-Wallet 1.4.6 §6.9 example statement used to fail the chain.
 - An entity statement `typ` in the long form, `application/entity-statement+jwt`.
+
+### Security — the flow and the starter (`verifier-openid4vp`, `verifier-spring-boot-starter`)
+
+- **An outcome is read with a poll token, never with the transaction id.** The id is public
+  by construction: it is in the QR code, in `state` and in the response URI. Anyone who saw
+  a venue's screen could read the verified claims, and whoever started a same-device
+  transaction and sent its link to someone else read that person's outcome once they came
+  back (OpenID4VP 1.0 §14.2). `start()` returns a `PollToken` that travels nowhere a wallet
+  or a bystander sees, the store keeps only its hash, and a wrong token reads `Unknown`, as a
+  transaction that does not exist would. In same-device mode `consumeResponseCode` hands a
+  fresh token to the user agent that came back with the code, and only that one reads.
+- **Each response is encrypted to a key of its own transaction.** One long-lived key served
+  every request object, so a response captured past a TLS terminator became readable the day
+  that key leaked. Each transaction now publishes a P-256 key of its own, whose private half
+  leaves the store with the response or at expiry; a JWE `kid` must name it. A static key
+  is only a fallback, and only when configured.
+- **The same-device return ticket goes only to the call that recorded the outcome.** A second
+  post of the same `access_denied` a cancelling wallet sends used to receive the same
+  `response_code`, and anyone holding the id could burn it before the user's browser came
+  back. It no longer depends on the store keeping the outcome bit for bit, nor on reading
+  back through a replica.
+- **Expiry is the flow's.** A transaction carries one `expiresAt`; every read path checks it
+  first and redacts an expired entry in place, so no outcome with claims is read past the
+  time to live, whatever the store keeps. The in-memory store sweeps itself in the
+  background, by due time, holds at most 10,000 transactions (`TooManyTransactionsException`
+  beyond) and is closed with the flow.
+- **A `vp_token` carries exactly one presentation**, as a JSON string; the bare string of
+  pre-1.0 wallets only under `ArfBaselineProfile`. A request is read at construction: a DCQL
+  query the library cannot evaluate, or one asking for more than one credential, is refused
+  when the request is built instead of failing every response. Its `claims` reach the
+  verifier as `requestedClaims`.
+- **What a wallet sends is bounded before it is kept or decoded**: the response (1 MiB,
+  `maxWalletResponseLength`), its `error` (a token of 64 characters at most) and
+  `error_description` (256 characters, printable ASCII). A `Transaction` prints neither its
+  secrets nor the claims. A rejection's detail reaches the starter's log bounded, on one
+  line. The time to live is capped at one hour.
+- **The relying party's keys serve one purpose each**, under a `kid` of their own.
+- **The entity configuration meets the production anchor's policy for verifiers**: it
+  publishes `redirect_uris`, `vp_formats` and `authorization_encrypted_response_enc`
+  alongside their current names, and `contacts`, now required. One parameter the policy marks
+  essential, `authorization_signed_response_alg`, is left out on purpose: it would ask
+  wallets to sign the response inside the JWE, a form the flow does not read. The
+  `trust_chain` of a request object is never sent expired, and can come from a
+  `TrustChainSource`.
+- **The starter** answers the wallet with the statuses IT-Wallet 1.4.6 §12.2.1.6.1
+  tabulates, 403, 400 or 500, with a fixed description instead of the rejection reason; serves
+  both endpoints with `Cache-Control: no-store` and whatever the wallet puts in `Accept`;
+  serves the request object by POST too, with the wallet's `wallet_nonce` in it; configures an
+  `openid_federation:` relying party (`zilath.openid4vp.federation.*`, and the entity
+  configuration at `/.well-known/openid-federation`) and checks an `x509_hash:` client id
+  against its certificate at startup; and uses the application's `TransactionStore`,
+  `WalletProfile` and `TrustChainSource` beans when there are any.
+
+### Breaking — the flow and starter API
+
+- `awaitOutcome(txId)` is `awaitOutcome(txId, pollToken)`; `StartedTransaction` carries the
+  `PollToken`; `consumeResponseCode` returns the reading token (`PollToken?`) instead of a
+  `Boolean`.
+- `handleWalletResponse` returns `HandledResponse(outcome, redirectUri)`;
+  `sameDeviceRedirectFor` is gone.
+- `Transaction` gains `expiresAt`, `pollTokenHash` and the transaction's key;
+  `isExpired(now, ttl)` is `isExpired(now)`. `InMemoryTransactionStore(clock, ttl)` is
+  `InMemoryTransactionStore(clock, maxTransactions)`; the store and the flow are
+  `AutoCloseable`. Custom stores: the six properties the flow relies on are in the
+  `TransactionStore` KDoc, and `TransactionStoreContractTest` (test fixtures of
+  `verifier-openid4vp`) checks them.
+- `RpKeys.responseEncryptionKey` is optional; `RpFederationConfig.contacts` is required;
+  `WalletProfile`'s methods take the transaction's key. An `x509_hash:` client id without a
+  matching `x5c` fails at construction.
+- `PresentationRequest` throws for a DCQL query it cannot evaluate.
+- The starter's HTTP answers change as described above, and its
+  `response-encryption-key-jwk` property is optional (best left empty).
 
 ### Changed
 
