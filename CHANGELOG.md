@@ -143,7 +143,9 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
 - **Expiry is the flow's.** A transaction carries one `expiresAt`; every call checks it
   first and redacts an expired entry in place, and a verification that finishes after it is
   not recorded, so no outcome with claims is read past the time to live, whatever the store
-  keeps. The in-memory store redacts an entry at its expiry and removes it a minute later,
+  keeps: a verified outcome reads `Expired` from then on, a rejection keeps its reason without
+  its detail, a wallet error its code without its description. In 0.3.0 a recorded outcome
+  survived expiry. The in-memory store redacts an entry at its expiry and removes it a minute later,
   sweeping itself in the background by due time; it holds at most 10,000 transactions
   (`TooManyTransactionsException` beyond) and is closed with the flow.
 - **A `vp_token` carries exactly one presentation**, as a JSON string; the bare string of

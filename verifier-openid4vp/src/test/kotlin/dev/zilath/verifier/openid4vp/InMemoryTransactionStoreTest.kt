@@ -17,7 +17,6 @@
 package dev.zilath.verifier.openid4vp
 
 import dev.zilath.verifier.core.DisclosedClaims
-import dev.zilath.verifier.core.RejectionReason
 import dev.zilath.verifier.core.TestVectors
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -85,7 +84,7 @@ class InMemoryTransactionStoreTest {
         scheduler.runAll()
         assertThat(idle.size).isEqualTo(2)
         val redacted = checkNotNull(idle.get(verified.id))
-        assertThat(redacted.outcome).isEqualTo(FlowOutcome.Rejected(RejectionReason.EXPIRED))
+        assertThat(redacted.outcome).isEqualTo(FlowOutcome.Expired)
         assertThat(redacted.responseCode).isNull()
         assertThat(checkNotNull(idle.get(unanswered.id)).responseEncryptionKey).isNull()
     }

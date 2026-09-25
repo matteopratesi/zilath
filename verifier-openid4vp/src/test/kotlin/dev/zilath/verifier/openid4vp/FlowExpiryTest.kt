@@ -19,7 +19,6 @@ package dev.zilath.verifier.openid4vp
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.CredentialVerifier
 import dev.zilath.verifier.core.RawPresentation
-import dev.zilath.verifier.core.RejectionReason
 import dev.zilath.verifier.core.SdJwtVcCredentialVerifier
 import dev.zilath.verifier.core.TestVectors
 import dev.zilath.verifier.core.VerificationContext
@@ -108,12 +107,25 @@ class FlowExpiryTest : FlowTestSupport() {
         val code = checkNotNull(handled.redirectUri).substringAfter("response_code=")
         // The user never comes back within the transaction TTL.
         clock.advance(config.transactionTimeToLive.plusSeconds(1))
-        // No code is handed out for an expired transaction, not even to a later error.
+        // A later error is answered for itself, without a code: the outcome is already recorded.
         assertThat(flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied"))).redirectUri)
             .isNull()
         // The stale code is not consumable, and the wallet outcome is never exposed.
         assertThat(flow.awaitOutcome(started.id, started.pollToken)).isEqualTo(FlowOutcome.Expired)
         assertThat(flow.consumeResponseCode(started.id, code)).isNull()
+        assertThat(flow.awaitOutcome(started.id, started.pollToken)).isEqualTo(FlowOutcome.Expired)
+    }
+
+    @Test
+    fun `an error posted to an expired same-device transaction gets no return ticket`() {
+        // Nothing was recorded within the time to live: the error is acknowledged to the
+        // wallet, but it does not become the outcome, and no code sends the user back to a
+        // checkout that reads Expired.
+        val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        clock.advance(config.transactionTimeToLive.plusSeconds(1))
+        val handled = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
+        assertThat(handled.outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
+        assertThat(handled.redirectUri).isNull()
         assertThat(flow.awaitOutcome(started.id, started.pollToken)).isEqualTo(FlowOutcome.Expired)
     }
 
@@ -138,9 +150,9 @@ class FlowExpiryTest : FlowTestSupport() {
         clock.advance(config.transactionTimeToLive.plusSeconds(1))
         for ((id, token) in listOf(crossDevice.id to crossDevice.pollToken, sameDevice.id to reader)) {
             val late = retainingFlow.awaitOutcome(id, token)
-            assertThat(late).isEqualTo(FlowOutcome.Rejected(RejectionReason.EXPIRED))
+            assertThat(late).isEqualTo(FlowOutcome.Expired)
             // ...and redacted where it is kept, not only in the answer.
-            assertThat(retaining.get(id)?.outcome).isEqualTo(FlowOutcome.Rejected(RejectionReason.EXPIRED))
+            assertThat(retaining.get(id)?.outcome).isEqualTo(FlowOutcome.Expired)
             assertThat(retaining.get(id)?.responseCode).isNull()
             assertThat(retainingFlow.awaitOutcome(id, token)).isEqualTo(late)
         }
@@ -260,7 +272,7 @@ class FlowExpiryTest : FlowTestSupport() {
         for (id in listOf(fetched.id, coded.id, guessed.id)) {
             assertThat(
                 retaining.get(id)?.outcome,
-            ).describedAs(id.value).isEqualTo(FlowOutcome.Rejected(RejectionReason.EXPIRED))
+            ).describedAs(id.value).isEqualTo(FlowOutcome.Expired)
         }
         assertThat(retaining.get(unanswered.id)?.responseEncryptionKey).isNull()
     }

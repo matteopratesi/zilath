@@ -16,7 +16,6 @@
  */
 package dev.zilath.verifier.openid4vp
 
-import dev.zilath.verifier.core.RejectionReason
 import java.time.Instant
 
 /*
@@ -25,16 +24,22 @@ import java.time.Instant
  */
 
 /**
- * What is left of [this] once it has expired: its kind and state, nothing a person could be
- * found in — no claims, no wallet text, no response code — and no decryption key.
+ * What is left of [this] once it has expired: its state, what [tombstoneOf] keeps of its
+ * outcome, nothing a person could be found in — no claims, no wallet text, no response
+ * code — and no decryption key.
  */
 internal fun Transaction.redactedForExpiry(): Transaction =
     copy(outcome = tombstoneOf(outcome), responseCode = null, responseEncryptionKey = null)
 
-/** An expired outcome keeps its kind and loses everything a person could be found in. Idempotent. */
+/**
+ * An expired outcome loses everything a person could be found in. A rejection keeps its
+ * reason and a wallet error its code; a verification is nothing but its claims, so it
+ * becomes [FlowOutcome.Expired] — never a rejection, whose reason would say the credential
+ * failed. Idempotent.
+ */
 internal fun tombstoneOf(outcome: FlowOutcome?): FlowOutcome? =
     when (outcome) {
-        is FlowOutcome.Verified -> FlowOutcome.Rejected(RejectionReason.EXPIRED)
+        is FlowOutcome.Verified -> FlowOutcome.Expired
         // The detail may come from an integrator's TrustEvaluator, and from there from the
         // presentation: it has no business outliving the transaction either.
         is FlowOutcome.Rejected -> outcome.copy(detail = null)

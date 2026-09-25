@@ -87,8 +87,9 @@ interface VerificationFlow {
      * [awaitOutcome] then reports only for the first response to an open transaction, and
      * only cross-device or after the same-device return: a replay or a later error is
      * answered for itself while the checkout keeps reading the first outcome; an error
-     * posted after expiry is acknowledged while the checkout reads [FlowOutcome.Expired];
-     * and a same-device outcome reads [FlowOutcome.Pending] until the user-agent returns.
+     * posted after expiry is acknowledged while the checkout reads what expiry left (see
+     * [FlowOutcome]); and a same-device outcome reads [FlowOutcome.Pending] until the
+     * user-agent returns.
      *
      * The result also carries what the acknowledgement to the wallet needs: for a
      * same-device transaction, the `redirect_uri` with its single-use `response_code` —
@@ -342,8 +343,10 @@ data class DirectPostBody(
 }
 
 /**
- * Where a transaction stands. Everything except [Pending] is terminal, and the terminal
- * value never changes afterwards.
+ * Where a transaction stands. Everything except [Pending] is terminal, and a terminal value
+ * changes only when the transaction expires, to lose what a person could be found in: a
+ * [Verified] reads [Expired] from then on, a [Rejected] loses its detail and a
+ * [WalletErrorAcknowledged] its description.
  */
 sealed interface FlowOutcome {
     /** The wallet has not answered yet. */
@@ -389,7 +392,10 @@ sealed interface FlowOutcome {
         val detail: String? = null,
     ) : FlowOutcome
 
-    /** The transaction exceeded its time to live before completing. */
+    /**
+     * The transaction exceeded its time to live: before completing, or after a verification,
+     * whose claims are not handed out past it.
+     */
     data object Expired : FlowOutcome
 
     /** No transaction with the given id exists, or none the given [PollToken] may read: the two answer alike. */

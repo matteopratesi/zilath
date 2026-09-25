@@ -215,6 +215,8 @@ abstract class TransactionStoreContractTest {
             ),
             FlowOutcome.Rejected(RejectionReason.NONCE_MISMATCH, "key binding nonce does not match"),
             FlowOutcome.Rejected(RejectionReason.EXPIRED),
+            // What expiry leaves of a verification.
+            FlowOutcome.Expired,
             FlowOutcome.WalletErrorAcknowledged("access_denied", "the holder declined"),
             FlowOutcome.WalletErrorAcknowledged("access_denied"),
         )
