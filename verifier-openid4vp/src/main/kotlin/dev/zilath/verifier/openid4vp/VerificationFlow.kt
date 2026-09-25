@@ -81,8 +81,14 @@ interface VerificationFlow {
      * Handles the wallet's `direct_post` submission for [txId] and records the outcome.
      *
      * Terminal and single-use: the transaction's nonce is consumed here, so a replayed body
-     * yields [RejectionReason.REPLAY] rather than a second success. The returned outcome is
-     * also what [awaitOutcome] will report from now on.
+     * yields [RejectionReason.REPLAY] rather than a second success.
+     *
+     * The returned outcome is what THIS response met, addressed to the wallet. It is what
+     * [awaitOutcome] then reports only for the first response to an open transaction, and
+     * only cross-device or after the same-device return: a replay or a later error is
+     * answered for itself while the checkout keeps reading the first outcome; an error
+     * posted after expiry is acknowledged while the checkout reads [FlowOutcome.Expired];
+     * and a same-device outcome reads [FlowOutcome.Pending] until the user-agent returns.
      *
      * The result also carries what the acknowledgement to the wallet needs: for a
      * same-device transaction, the `redirect_uri` with its single-use `response_code` —
@@ -168,8 +174,14 @@ data class HandledResponse(
      * for a [FlowOutcome.Rejected] presentation — which the endpoint answers with an error,
      * a response that carries no redirect, so the user-agent does not come back through the
      * callback and the start token reads [FlowOutcome.Pending] and then
-     * [FlowOutcome.Expired] (see [VerificationFlow.awaitOutcome]). Anyone knowing the transaction
-     * id may post an `error`; that request is owed an acknowledgement, never a return ticket.
+     * [FlowOutcome.Expired] (see [VerificationFlow.awaitOutcome]).
+     *
+     * The FIRST response to an open transaction records its outcome, whoever posts it: the
+     * transaction id authorises posting, and an `error` from someone who knows only the id,
+     * posted before the wallet answers, records a [FlowOutcome.WalletErrorAcknowledged] and
+     * is handed its ticket — the wallet's own response then meets a replay, the terminal
+     * denial the unauthenticated endpoint allows by design. Every response after the first
+     * is owed an acknowledgement, never a return ticket.
      * The fourth internal review found the ticket handed to whichever later caller presented
      * an outcome EQUAL to the recorded one — `access_denied`, the only error a cancelling
      * wallet sends, is easy to guess — and lost for the legitimate user whenever a store did

@@ -120,8 +120,10 @@ data class RpFederationConfig(
 /**
  * Builds the RP's signed Entity Configuration (IT-Wallet v1.4.6 §10.3.4): the JWS served
  * at `/.well-known/openid-federation`. Carries the `federation_entity` and
- * `openid_credential_verifier` metadata types; the protocol `jwks` publishes ONLY the
- * public halves of the request-signing and response-encryption keys.
+ * `openid_credential_verifier` metadata types; the protocol `jwks` publishes public halves
+ * only: the request-signing key's, and the static response-encryption key's when one is
+ * configured ([RpKeys.responseEncryptionKey]) — each transaction's own key travels in its
+ * request object instead.
  */
 object RpEntityConfiguration {
     /**
