@@ -16,8 +16,10 @@
  */
 package dev.zilath.verifier.core
 
+import com.nimbusds.jose.Header
 import com.nimbusds.jose.JWSVerifier
 import com.nimbusds.jose.jwk.JWK
+import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import eu.europa.ec.eudi.sdjwt.JwtSignatureVerifier
@@ -40,10 +42,29 @@ internal fun reject(
     detail: String? = null,
 ): Nothing = throw SdJwtRejection(reason, detail)
 
-/** Parses the issuer-signed JWT part of a compact SD-JWT without verifying it. */
-internal fun parseIssuerJwt(compact: String): SignedJWT =
-    runCatching { SignedJWT.parse(compact.substringBefore(TILDE)) }
+/**
+ * Parses the issuer-signed JWT part of a compact SD-JWT without verifying it.
+ *
+ * Nimbus refuses a JOSE header longer than [Header.MAX_HEADER_STRING_LENGTH] decoded
+ * characters, and so does the EUDI library, which parses the same JWT with Nimbus again. The
+ * limit is not configurable, and a legitimate header can exceed it: IT-Wallet 1.4.6 lets an
+ * issuer embed its federation `trust_chain` in the header, and the production disability
+ * card issuer's entity configuration alone is 39,668 characters. The signature covers the
+ * header, so nothing can be dropped before parsing either. Such a credential cannot be
+ * verified with this library today; what the fourth internal review found wrong is that
+ * it was reported as unparseable, indistinguishable from garbage. It now has its own phrase.
+ */
+internal fun parseIssuerJwt(compact: String): SignedJWT {
+    val issuerJwt = compact.substringBefore(TILDE)
+    val header =
+        runCatching { Base64URL(issuerJwt.substringBefore('.')).decodeToString() }
+            .getOrElse { reject(RejectionReason.MALFORMED, "issuer JWT does not parse") }
+    if (header.length > Header.MAX_HEADER_STRING_LENGTH) {
+        reject(RejectionReason.MALFORMED, "issuer JWT header exceeds the parser limit")
+    }
+    return runCatching { SignedJWT.parse(issuerJwt) }
         .getOrElse { reject(RejectionReason.MALFORMED, "issuer JWT does not parse") }
+}
 
 internal fun trustInputOf(issuerJwt: SignedJWT): IssuerTrustInput =
     IssuerTrustInput(

@@ -98,6 +98,8 @@ data class VerificationContext(
      * but "verified" has to mean the answer satisfies the question.
      */
     val requestedClaims: RequestedClaims? = null,
+    /** Size limits checked before anything is parsed; see [PresentationLimits] for the defaults' reasoning. */
+    val presentationLimits: PresentationLimits = PresentationLimits(),
 ) {
     init {
         require(expectedAudiences.isNotEmpty()) { "at least one expected audience is required" }

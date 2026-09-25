@@ -48,10 +48,12 @@ private fun checkTypIfPresent(
 
 /**
  * Verifies SD-JWT VC presentations (issuer JWT + selective disclosures + key binding JWT)
- * against the full set of checks required for a presentation to be accepted:
- * issuer signature via [TrustEvaluator], disclosure integrity, key binding
- * (signature with the `cnf` key, audience, nonce, freshness, `sd_hash`),
- * temporal validity against the injected clock, and revocation via [StatusChecker].
+ * against the full set of checks required for a presentation to be accepted, in this
+ * order: size limits before anything is parsed ([PresentationLimits]), issuer signature via
+ * [TrustEvaluator], disclosure integrity, disclosure names and the envelope claims kept in
+ * plaintext, the issuer's authorisation and the requested type, temporal validity against
+ * the injected clock, key binding (signature with the `cnf` key, `typ`, audience, nonce,
+ * freshness, `sd_hash`), and revocation via [StatusChecker].
  *
  * Cryptography and SD-JWT processing are delegated to Nimbus JOSE+JWT and the
  * EUDI `eudi-lib-jvm-sdjwt-kt` library; this class only orchestrates and maps
@@ -77,11 +79,15 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         compact: String,
         ctx: VerificationContext,
     ): VerificationResult.Verified {
+        checkPresentationLimits(compact, ctx.presentationLimits)
         val issuerJwt = parseIssuerJwt(compact)
         checkTypIfPresent(issuerJwt.header, ISSUER_JWT_TYPS, RejectionReason.UNSUPPORTED_FORMAT)
         val trusted = trustedIssuer(issuerJwt, ctx)
         val issuerKeys = trusted.issuerKeys
         val verified = verifyWithEudiLibrary(compact, issuerKeys)
+        checkDisclosureNames(verified.sdJwt.disclosures)
+        val recreated = recreateClaimsOf(verified.sdJwt)
+        checkEnvelopeIsPlaintext(recreated)
         val issuerClaims = verified.sdJwt.jwt.jwtClaimsSet
         checkIssuerAuthorisedForType(issuerClaims, trusted)
         checkCredentialType(issuerClaims, ctx)
@@ -89,8 +95,7 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         checkTypIfPresent(verified.keyBindingJwt.header, KEY_BINDING_TYPS, RejectionReason.INVALID_KEY_BINDING)
         checkKeyBinding(verified.keyBindingJwt, ctx)
         checkStatus(issuerClaims, issuerKeys, ctx)
-        val claims = with(NimbusSdJwtOps) { verified.sdJwt.recreateClaims(null) }
-        return VerificationResult.Verified(DisclosedClaims(withoutInternalClaims(claims)))
+        return VerificationResult.Verified(DisclosedClaims(withoutInternalClaims(recreated.claims)))
     }
 
     private fun trustedIssuer(
