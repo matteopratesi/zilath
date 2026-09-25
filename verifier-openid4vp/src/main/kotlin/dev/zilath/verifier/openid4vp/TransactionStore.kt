@@ -51,9 +51,9 @@ import java.time.Instant
  *
  * `TransactionStoreContractTest`, in this module's test fixtures, checks the first five:
  * extend it with a factory for your store and run it. The fourth internal review found the
- * list implicit and unchecked, and every one of these properties missing from some
- * plausible store (an eventually consistent read, a minimising codec, the new value in
- * place of the old) with nothing in the library to notice.
+ * list implicit and unchecked, and plausible stores breaking it — an eventually consistent
+ * read, a minimising codec, the new value in place of the old — with nothing in the
+ * library to notice.
  *
  * What a transaction holds is not only nonces: once verified, its [Transaction.outcome]
  * carries the DISCLOSED CLAIMS. Treat any store, and its logs, accordingly.

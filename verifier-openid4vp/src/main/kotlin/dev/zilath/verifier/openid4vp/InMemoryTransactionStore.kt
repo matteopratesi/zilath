@@ -46,8 +46,8 @@ import java.util.concurrent.locks.ReentrantLock
  * Each [VerificationFlow.start] allocates an entry here, on behalf of whoever reaches the
  * page that calls it: at most [maxTransactions] are held (expired ones included, until
  * removed), and beyond that [put] throws [TooManyTransactionsException]. The footprint is
- * the rate of starts times the time to live; limit or bind to a session what may call
- * `start()`.
+ * the rate of starts times the time to live, plus the minute of retention; limit or bind to
+ * a session what may call `start()`.
  */
 class InMemoryTransactionStore internal constructor(
     private val clock: Clock,

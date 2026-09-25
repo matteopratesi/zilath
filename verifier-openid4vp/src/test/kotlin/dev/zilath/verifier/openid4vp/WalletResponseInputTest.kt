@@ -99,9 +99,9 @@ class WalletResponseInputTest : FlowTestSupport() {
     @Test
     fun `a signed-then-encrypted response is not read, which is why the RP never asks for one`() {
         // authorization_signed_response_alg, which the production anchor's policy still lists,
-        // makes a JARM wallet sign its response and nest the JWS inside the JWE. OpenID4VP 1.0
-        // §8.3 defines the JWE payload as the response object itself, and this is what the flow
-        // does with the nested form: the entity configuration therefore does not publish it.
+        // makes a JARM wallet sign its response and nest the JWS inside the JWE. The flow takes
+        // the JWE payload as the response object itself, and this is what it does with the
+        // nested form: the entity configuration therefore does not publish the parameter.
         val started = startForPid()
         val claims = SignedJWT.parse(checkNotNull(flow.requestJwtFor(started.id))).jwtClaimsSet
         val compact = TestVectors.vector(nonce = claims.getStringClaim("nonce"), audience = config.clientId)

@@ -197,17 +197,17 @@ object RpEntityConfiguration {
                     "request_uris" to listOf(config.endpoints.requestUriBase),
                     "response_uris" to listOf(config.endpoints.responseUriBase),
                     "vp_formats_supported" to verifierFormats(),
-                    // The pre-1.4.6 name, which the production trust anchor's policy still
-                    // marks essential: both, until the policy catches up.
+                    // The older name, which the production trust anchor's policy still marks
+                    // essential: both, until the policy catches up.
                     "vp_formats" to verifierFormats(),
                     "authorization_encrypted_response_alg" to RESPONSE_ENCRYPTION_ALG,
                     "authorization_encrypted_response_enc" to RESPONSE_ENCRYPTION_ENC,
                     "encrypted_response_enc_values_supported" to ACCEPTED_RESPONSE_ENCS,
                     // Not `authorization_signed_response_alg`, although the same policy marks
                     // it essential: under JARM it asks the wallet to SIGN the response and
-                    // nest the JWS in the JWE, which OpenID4VP 1.0 does not define and this
-                    // flow does not read — publishing it would turn every such wallet's
-                    // answer into a rejection. A recorded divergence.
+                    // nest the JWS in the JWE, a form this flow does not read (it takes the
+                    // JWE payload as the response object) — publishing it would turn every
+                    // wallet that honours it into a denied holder. A recorded divergence.
                     //
                     // The static encryption key only when the RP accepts it: publishing a key the
                     // response endpoint then refuses would deny every wallet that used it. The
