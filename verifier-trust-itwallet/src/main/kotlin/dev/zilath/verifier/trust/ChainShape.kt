@@ -80,7 +80,7 @@ internal fun subordinateStatementsOf(
     if (subordinates.first().issuer !in leaf.authorityHints) {
         trustFail("the leaf's superior in the chain is not among its authority_hints")
     }
-    checkClaimsBelongToTheirKind(listOfNotNull(leaf, last.takeIf { endsWithAnchorConfiguration }))
+    checkClaimsBelongToTheirKind(listOfNotNull(leaf, last.takeIf { endsWithAnchorConfiguration }), subordinates)
     if (endsWithAnchorConfiguration) checkClosingAnchorConfiguration(last, statements.size - 1, anchor)
     return subordinates
 }
@@ -109,15 +109,25 @@ private fun checkEndsAndLinks(
 }
 
 /**
- * OID-FED §3.2: metadata_policy, metadata_policy_crit and constraints belong to
- * subordinate statements only. In an entity configuration they are not ignored — which is
- * how the leaf's was treated — nor applied — which is how a trailing anchor configuration's
- * was: the statement is malformed.
+ * OID-FED §3.2: metadata_policy, metadata_policy_crit, constraints and source_endpoint
+ * belong to subordinate statements only. In an entity configuration they are not ignored —
+ * which is how the leaf's was treated — nor applied — which is how a trailing anchor
+ * configuration's was: the statement is malformed.
  */
-private fun checkClaimsBelongToTheirKind(configurations: List<EntityStatement>) {
+private fun checkClaimsBelongToTheirKind(
+    configurations: List<EntityStatement>,
+    subordinates: List<EntityStatement>,
+) {
     configurations.forEach { configuration ->
-        if (SUPERIOR_DIRECTIVES.any(configuration::hasClaim)) {
+        if (SUBORDINATE_ONLY_CLAIMS.any(configuration::hasClaim)) {
             trustFail("an entity configuration carries claims only a subordinate statement may")
+        }
+    }
+    // And the other way round: authority hints and trust marks are an entity's own claims
+    // about itself, which a superior's statement about it has no business carrying.
+    subordinates.forEach { statement ->
+        if (CONFIGURATION_ONLY_CLAIMS.any(statement::hasClaim)) {
+            trustFail("a subordinate statement carries claims only an entity configuration may")
         }
     }
 }
@@ -141,4 +151,10 @@ private fun checkClosingAnchorConfiguration(
     }
 }
 
-private val SUPERIOR_DIRECTIVES = listOf("metadata_policy", "metadata_policy_crit", "constraints")
+/** OID-FED §3.2: "the Entity Statement MUST be a Subordinate Statement" when present. */
+private val SUBORDINATE_ONLY_CLAIMS =
+    listOf("metadata_policy", "metadata_policy_crit", "constraints", "source_endpoint")
+
+/** OID-FED §3.2: "the Entity Statement MUST be an Entity Configuration" when present. */
+private val CONFIGURATION_ONLY_CLAIMS =
+    listOf("authority_hints", "trust_anchor_hints", "trust_marks", "trust_mark_issuers", "trust_mark_owners")

@@ -85,6 +85,11 @@ private fun verifyTopDown(
             statement.federationJwks.ifEmpty {
                 trustFail("the statement at chain position $index carries no federation keys")
             }
+        // §10.2: the leaf's configuration must also validate with a key of its OWN jwks — the
+        // one its kid names — not only with the key its superior attests.
+        if (index == 0 && !verifiesWithAny(statement.jwt, listOf(keyNamedBy(statement, attested)))) {
+            trustFail("the signature of the statement at chain position 0 does not verify")
+        }
         if (index == 0 || statement.issuer != statement.subject) trustedKeys = attested
     }
 }
