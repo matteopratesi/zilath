@@ -36,13 +36,14 @@ import java.time.Duration
  * cheap version of the attack: presenting some other JWT that the issuer signed with the
  * same key, which will normally carry a `typ` of its own.
  */
+@OptIn(InternalZilathApi::class)
 private fun checkTypIfPresent(
     header: JWSHeader,
     accepted: Set<String>,
     reason: RejectionReason,
 ) {
     val typ = header.type?.toString() ?: return
-    if (typ !in accepted) reject(reason, "unexpected typ header")
+    if (accepted.none { mediaTypeMatches(typ, it) }) reject(reason, "unexpected typ header")
 }
 
 /**
@@ -78,9 +79,11 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
     ): VerificationResult.Verified {
         val issuerJwt = parseIssuerJwt(compact)
         checkTypIfPresent(issuerJwt.header, ISSUER_JWT_TYPS, RejectionReason.UNSUPPORTED_FORMAT)
-        val issuerKeys = trustedIssuerKeys(issuerJwt, ctx)
+        val trusted = trustedIssuer(issuerJwt, ctx)
+        val issuerKeys = trusted.issuerKeys
         val verified = verifyWithEudiLibrary(compact, issuerKeys)
         val issuerClaims = verified.sdJwt.jwt.jwtClaimsSet
+        checkIssuerAuthorisedForType(issuerClaims, trusted)
         checkCredentialType(issuerClaims, ctx)
         checkTemporalValidity(issuerClaims, ctx)
         checkTypIfPresent(verified.keyBindingJwt.header, KEY_BINDING_TYPS, RejectionReason.INVALID_KEY_BINDING)
@@ -90,14 +93,17 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         return VerificationResult.Verified(DisclosedClaims(withoutInternalClaims(claims)))
     }
 
-    private fun trustedIssuerKeys(
+    private fun trustedIssuer(
         issuerJwt: SignedJWT,
         ctx: VerificationContext,
-    ) = when (val decision = ctx.trustEvaluator.evaluate(trustInputOf(issuerJwt))) {
-        is TrustDecision.Trusted ->
-            decision.issuerKeys.ifEmpty { reject(RejectionReason.UNTRUSTED_ISSUER, "no trusted issuer keys") }
-        is TrustDecision.Untrusted -> reject(RejectionReason.UNTRUSTED_ISSUER, decision.reason)
-    }
+    ): TrustDecision.Trusted =
+        when (val decision = ctx.trustEvaluator.evaluate(trustInputOf(issuerJwt))) {
+            is TrustDecision.Trusted ->
+                decision.also {
+                    if (it.issuerKeys.isEmpty()) reject(RejectionReason.UNTRUSTED_ISSUER, "no trusted issuer keys")
+                }
+            is TrustDecision.Untrusted -> reject(RejectionReason.UNTRUSTED_ISSUER, decision.reason)
+        }
 
     private fun verifyWithEudiLibrary(
         compact: String,
@@ -224,6 +230,9 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         when (ctx.statusChecker.check(statusRef, trust)) {
             CredentialStatus.VALID -> Unit
             CredentialStatus.REVOKED -> reject(RejectionReason.REVOKED, "credential is revoked")
+            CredentialStatus.SUSPENDED -> reject(RejectionReason.SUSPENDED, "credential is suspended")
+            CredentialStatus.APPLICATION_SPECIFIC ->
+                reject(RejectionReason.STATUS_NOT_VALID, "credential status is not valid")
             CredentialStatus.UNKNOWN ->
                 reject(RejectionReason.STATUS_CHECK_FAILED, "credential status could not be determined")
         }

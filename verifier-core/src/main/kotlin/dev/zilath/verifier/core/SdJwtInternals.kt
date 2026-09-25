@@ -17,10 +17,7 @@
 package dev.zilath.verifier.core
 
 import com.nimbusds.jose.JWSVerifier
-import com.nimbusds.jose.crypto.ECDSAVerifier
-import com.nimbusds.jose.crypto.RSASSAVerifier
 import com.nimbusds.jose.jwk.JWK
-import com.nimbusds.jose.jwk.KeyType
 import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
@@ -99,12 +96,9 @@ private fun holderKeyOf(issuerClaims: JsonObject): JWK? {
     return runCatching { JWK.parse(jwkJson.toString()) }.getOrNull()
 }
 
-internal fun jwsVerifierFor(key: JWK): JWSVerifier? =
-    when (key.keyType) {
-        KeyType.EC -> ECDSAVerifier(key.toECKey())
-        KeyType.RSA -> RSASSAVerifier(key.toRSAKey())
-        else -> null
-    }
+/** One key-acceptance rule for issuer, holder and status list keys alike: see [acceptableJwsVerifierFor]. */
+@OptIn(InternalZilathApi::class)
+internal fun jwsVerifierFor(key: JWK): JWSVerifier? = acceptableJwsVerifierFor(key)
 
 /**
  * Maps failures raised by the EUDI SD-JWT library onto stable [RejectionReason]s.

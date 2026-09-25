@@ -63,6 +63,18 @@ sealed interface TrustDecision {
      */
     data class Trusted(
         val issuerKeys: List<JWK>,
+        /**
+         * The credential types (`vct` values) this issuer is authorised to issue, as the
+         * trust framework states them — for the IT-Wallet profile, the `vct` of every
+         * SD-JWT entry in the issuer's resolved `credential_configurations_supported`.
+         *
+         * Null means the evaluator does not restrict types: the right answer for a static
+         * evaluator pinning the keys of one known issuer, the wrong one for a federation,
+         * where any member can publish signing keys. The verifier rejects a credential
+         * whose `vct` is not in a non-null set as [RejectionReason.UNTRUSTED_ISSUER]; an
+         * empty set therefore authorises nothing.
+         */
+        val credentialTypes: Set<String>? = null,
     ) : TrustDecision
 
     /**

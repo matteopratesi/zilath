@@ -84,6 +84,20 @@ data class VerificationContext(
      * this issuer signed".
      */
     val expectedVcts: Set<String> = emptySet(),
+    /**
+     * The claims this request asked for, from the DCQL Credential Query the presentation
+     * answers. Null means no requirement.
+     *
+     * When present, a presentation that does not satisfy it is rejected with
+     * [RejectionReason.QUERY_NOT_SATISFIED] — none of the combinations
+     * [RequestedClaims.claimSets] allows is disclosed in full (without `claim_sets`: not
+     * every claim is), or a disclosed value is not among the [RequestedClaim.values]
+     * asked for — and [VerificationResult.Verified.claims] carries only the requested
+     * paths, plus `iss` and `vct`. Before the fourth internal review a presentation that
+     * disclosed nothing at all came back Verified: OpenID4VP puts the duty on the wallet,
+     * but "verified" has to mean the answer satisfies the question.
+     */
+    val requestedClaims: RequestedClaims? = null,
 ) {
     init {
         require(expectedAudiences.isNotEmpty()) { "at least one expected audience is required" }
@@ -144,10 +158,19 @@ enum class RejectionReason {
     EXPIRED,
     NOT_YET_VALID,
     REVOKED,
+
+    /** The credential is suspended (status list value 0x02). */
+    SUSPENDED,
+
+    /** The credential's status is neither valid, revoked nor suspended (an application-specific value). */
+    STATUS_NOT_VALID,
     STATUS_CHECK_FAILED,
     MALFORMED,
     DISCLOSURE_TAMPERED,
     UNSUPPORTED_FORMAT,
+
+    /** The presentation does not disclose what the request asked for (see [VerificationContext.requestedClaims]). */
+    QUERY_NOT_SATISFIED,
 
     /** A wallet response arrived for a transaction whose nonce was already consumed. */
     REPLAY,

@@ -23,18 +23,12 @@ import java.time.Clock
 import java.time.Duration
 import java.util.zip.Inflater
 
-/**
- * True when [jwt] verifies under at least one of [keys]. A key that cannot produce a
- * verifier, or that throws while verifying, simply does not count as a match — so an
- * unusable key can never turn into an accepted signature.
- */
+/** True when [jwt] verifies under at least one of [keys]: see [verifiesWithAnyAcceptableKey]. */
+@OptIn(InternalZilathApi::class)
 private fun verifiesWithAny(
     jwt: SignedJWT,
     keys: List<JWK>,
-): Boolean =
-    keys.any { key ->
-        runCatching { jwsVerifierFor(key)?.let(jwt::verify) == true }.getOrDefault(false)
-    }
+): Boolean = verifiesWithAnyAcceptableKey(jwt, keys)
 
 /** Retrieves a status list token from its URI; injectable so tests stay offline. */
 fun interface StatusListFetcher {
@@ -112,7 +106,7 @@ class OAuthStatusListChecker(
         statusRef: StatusReference,
         trust: StatusIssuerTrust,
     ) {
-        require(jwt.header.type?.toString() == STATUS_LIST_TYP) {
+        require(typIsStatusList(jwt)) {
             "status list token typ is not $STATUS_LIST_TYP"
         }
         val claims = jwt.jwtClaimsSet
@@ -147,6 +141,11 @@ class OAuthStatusListChecker(
         require(!issuedAt.isAfter(now.plus(CLOCK_SKEW))) { "status list token is issued in the future" }
         require(!issuedAt.isBefore(now.minus(maxAge))) { "status list token older than $maxAge" }
     }
+
+    /** RFC 7515 §4.1.9 equivalence, not string equality: see [mediaTypeMatches]. */
+    @OptIn(InternalZilathApi::class)
+    private fun typIsStatusList(jwt: SignedJWT): Boolean =
+        mediaTypeMatches(jwt.header.type?.toString(), STATUS_LIST_TYP)
 
     private fun statusValueAt(
         bytes: ByteArray,
