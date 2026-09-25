@@ -246,6 +246,47 @@ class MetadataPolicyTest {
     }
 
     @Test
+    fun `a policy is applied only to the entity types the leaf publishes`() {
+        val resolved =
+            MetadataPolicy.resolve(
+                metadata("jwks" to mapOf("keys" to emptyList<Any>())),
+                listOf(
+                    mapOf(
+                        "openid_credential_issuer" to mapOf("jwks" to mapOf("essential" to true)),
+                        // Essential parameters of a type the leaf is not: no failure...
+                        "wallet_provider" to mapOf("aal_values_supported" to mapOf("essential" to true)),
+                        // ...and no section fabricated for it either.
+                        "openid_relying_party" to mapOf("redirect_uris" to mapOf("default" to listOf("https://x"))),
+                    ),
+                ),
+            )
+        assertThat(resolved.keys).containsExactly("openid_credential_issuer")
+    }
+
+    @Test
+    fun `a malformed policy for a type the leaf does not publish still invalidates the chain`() {
+        // Validation covers the whole chain's policy (OID-FED §6.1.4.1); only its
+        // application is limited to the types present.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata("a" to "x"),
+                    listOf(mapOf("wallet_provider" to mapOf("grant_types_supported" to mapOf("add" to "not-a-list")))),
+                )
+            }.withMessageContaining("must be an array")
+    }
+
+    @Test
+    fun `superior metadata is not grafted onto an entity type the leaf does not publish`() {
+        val overlaid =
+            MetadataPolicy.overlay(
+                mapOf("federation_entity" to mapOf("organization_name" to "leaf")),
+                mapOf("openid_credential_issuer" to mapOf("jwks" to mapOf("keys" to emptyList<Any>()))),
+            )
+        assertThat(overlaid.keys).containsExactly("federation_entity")
+    }
+
+    @Test
     fun `the immediate superior statement metadata overrides the leaf`() {
         val overlaid =
             MetadataPolicy.overlay(
@@ -258,13 +299,185 @@ class MetadataPolicyTest {
     }
 
     @Test
-    fun `an unsupported operator fails closed`() {
+    fun `a null metadata parameter is malformed, not present for essential nor absent for one_of`() {
+        // Parsed the way entity statements are, so the explicit null survives as it would.
+        val section =
+            com.nimbusds.jose.util.JSONObjectUtils
+                .parse("""{"mode": null, "n": 1}""")
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    mapOf("openid_credential_issuer" to section),
+                    listOf(policy("mode" to mapOf("one_of" to listOf("direct_post.jwt"), "essential" to true))),
+                )
+            }.withMessageContaining("is null")
+        // Even with no policy on it: the document itself is malformed (OID-FED §5).
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy { MetadataPolicy.resolve(mapOf("openid_credential_issuer" to section), emptyList()) }
+            .withMessageContaining("is null")
+    }
+
+    @Test
+    fun `a metadata section that is not an object is malformed`() {
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy { MetadataPolicy.resolve(mapOf("openid_credential_issuer" to "keys"), emptyList()) }
+            .withMessageContaining("not a JSON object")
+    }
+
+    @Test
+    fun `array operators on a parameter that is not an array are a policy error`() {
+        val notAnArray = "a metadata_policy array operator applies to a parameter that is not an array"
+        for (operator in listOf("add", "subset_of", "superset_of")) {
+            assertThatExceptionOfType(TrustFailure::class.java)
+                .describedAs(operator)
+                .isThrownBy {
+                    MetadataPolicy.resolve(
+                        metadata("mode" to "direct_post"),
+                        listOf(policy("mode" to mapOf(operator to listOf("direct_post")))),
+                    )
+                }.withMessageContaining(notAnArray)
+        }
+        // An object is not an array either: subset_of on jwks used to turn the key set
+        // into a one-element list.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata("jwks" to mapOf("keys" to emptyList<Any>())),
+                    listOf(policy("jwks" to mapOf("subset_of" to listOf(mapOf("keys" to emptyList<Any>()))))),
+                )
+            }.withMessageContaining(notAnArray)
+        // A value forced alongside an array operator must be an array too.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata(),
+                    listOf(policy("mode" to mapOf("value" to "x", "add" to listOf("x")))),
+                )
+            }.withMessageContaining("must be an array")
+    }
+
+    @Test
+    fun `add outside subset_of is a policy error, directly and after merging`() {
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata("algs" to listOf("ES256")),
+                    listOf(policy("algs" to mapOf("add" to listOf("RS256"), "subset_of" to listOf("ES256")))),
+                )
+            }.withMessageContaining("subset of subset_of")
+        // The anchor restricts, the intermediate tries to add.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata("algs" to listOf("ES256")),
+                    listOf(
+                        policy("algs" to mapOf("subset_of" to listOf("ES256"))),
+                        policy("algs" to mapOf("add" to listOf("RS256"))),
+                    ),
+                )
+            }.withMessageContaining("subset of subset_of")
+        // Three single policies, each legal on its own: the merged subset_of narrows below add.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(
+                    metadata("algs" to listOf("ES256")),
+                    listOf(
+                        policy("algs" to mapOf("subset_of" to listOf("ES256", "RS256"))),
+                        policy("algs" to mapOf("add" to listOf("RS256"))),
+                        policy("algs" to mapOf("subset_of" to listOf("ES256"))),
+                    ),
+                )
+            }.withMessageContaining("subset of subset_of")
+    }
+
+    @Test
+    fun `a subordinate cannot widen a value its superior forced`() {
+        // The anchor forces [ES256]; an intermediate adds RS256. Without the check on the
+        // MERGED operators this resolves to [ES256, RS256]: the test asserts the refusal
+        // itself, not only its wording, so dropping that check cannot pass on a message.
+        val outcome =
+            runCatching {
+                MetadataPolicy.resolve(
+                    metadata("algs" to listOf("ES256")),
+                    listOf(
+                        policy("algs" to mapOf("value" to listOf("ES256"))),
+                        policy("algs" to mapOf("add" to listOf("RS256"))),
+                    ),
+                )
+            }
+        assertThat(outcome.getOrNull()).describedAs("resolved to %s", outcome.getOrNull()).isNull()
+        assertThat(outcome.exceptionOrNull())
+            .isInstanceOf(TrustFailure::class.java)
+            .hasMessageContaining("subset of value")
+    }
+
+    @Test
+    fun `an operator this library does not understand is ignored unless it is critical`() {
+        // This test used to assert that an unknown operator fails the chain. OID-FED
+        // §6.1.3.2 says the opposite: "MUST ignore additional operators that are not
+        // understood", unless they are named in metadata_policy_crit.
+        val resolved =
+            MetadataPolicy.resolve(
+                metadata("a" to "x", "algs" to listOf("ES256", "RS256")),
+                listOf(
+                    policy(
+                        "a" to mapOf("regexp" to ".*"),
+                        // Known operators next to an unknown one still apply.
+                        "algs" to mapOf("subset_of" to listOf("ES256"), "regexp" to "^ES"),
+                    ),
+                ),
+            )
+        assertThat(issuerSection(resolved)["a"]).isEqualTo("x")
+        assertThat(issuerSection(resolved)["algs"]).isEqualTo(listOf("ES256"))
+    }
+
+    @Test
+    fun `the IT-Wallet example shape of vp_formats does not break resolution`() {
+        // IT-Wallet 1.4.6 §6.9: a nested {"dc+sd-jwt": {...}} where an operator would be.
+        val resolved =
+            MetadataPolicy.resolve(
+                mapOf(
+                    "openid_credential_verifier" to
+                        mapOf(
+                            "vp_formats" to mapOf("dc+sd-jwt" to emptyMap<String, Any>()),
+                        ),
+                ),
+                listOf(
+                    mapOf(
+                        "openid_credential_verifier" to
+                            mapOf(
+                                "vp_formats" to
+                                    mapOf("dc+sd-jwt" to mapOf("sd-jwt_alg_values" to listOf("ES256"))),
+                            ),
+                    ),
+                ),
+            )
+        assertThat(resolved.keys).containsExactly("openid_credential_verifier")
+    }
+
+    @Test
+    fun `an operator the chain declares critical must be understood`() {
         assertThatExceptionOfType(TrustFailure::class.java)
             .isThrownBy {
                 MetadataPolicy.resolve(
                     metadata("a" to "x"),
                     listOf(policy("a" to mapOf("regexp" to ".*"))),
+                    criticalOperators = setOf("regexp"),
                 )
-            }.withMessageContaining("unsupported")
+            }.withMessageContaining("critical")
+        // Declared critical is enough, used or not: the superior said a verifier that
+        // cannot apply it must not trust the chain.
+        assertThatExceptionOfType(TrustFailure::class.java)
+            .isThrownBy {
+                MetadataPolicy.resolve(metadata("a" to "x"), emptyList(), criticalOperators = setOf("regexp"))
+            }.withMessageContaining("critical")
+        // A critical operator this library does implement is simply applied.
+        val resolved =
+            MetadataPolicy.resolve(
+                metadata("a" to "x"),
+                listOf(policy("a" to mapOf("value" to "forced"))),
+                criticalOperators = setOf("value"),
+            )
+        assertThat(issuerSection(resolved)["a"]).isEqualTo("forced")
     }
 }
