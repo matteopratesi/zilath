@@ -24,6 +24,7 @@ import com.nimbusds.jose.jwk.KeyUse
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.CredentialStatus
+import dev.zilath.verifier.core.IpzsFederationSnapshot
 import dev.zilath.verifier.core.StatusChecker
 import dev.zilath.verifier.core.TrustDecision
 import dev.zilath.verifier.core.TrustEvaluator
@@ -58,6 +59,7 @@ class RpEntityConfigurationTest {
             federationKey = federationKey,
             authorityHints = listOf("https://trust-anchor.example"),
             organizationName = "Teatro di Prova",
+            contacts = listOf("biglietteria@teatro.example"),
         )
 
     @Test
@@ -120,6 +122,78 @@ class RpEntityConfigurationTest {
         val keys = (verifier["jwks"] as Map<String, Any?>)["keys"] as List<Map<String, Any?>>
         assertThat(keys.map { it["kid"] }).containsExactly("rp-sign")
     }
+
+    @Test
+    fun `the same-device redirect is attested, when there is one`() {
+        // WP_094a: the wallet sends the user only to a redirect_uri the RP's trust chain
+        // attests. It was never published, so such a wallet stranded every same-device user.
+        val base = config("openid_federation:https://rp.example")
+        val sameDevice = base.copy(endpoints = base.endpoints.copy(sameDeviceCallbackBase = "https://rp.example/cb"))
+        assertThat(verifierMetadataOf(sameDevice)["redirect_uris"]).isEqualTo(listOf("https://rp.example/cb"))
+        assertThat(verifierMetadataOf(base).keys).doesNotContain("redirect_uris")
+    }
+
+    @Test
+    fun `the entity configuration satisfies the production trust anchor's policy for verifiers`() {
+        // The statement the real IT-Wallet anchor issued on 2026-09-24 carries its common
+        // metadata_policy: its openid_credential_verifier and federation_entity sections are
+        // what a wallet applies to an RP registered under it, and a parameter marked
+        // essential but absent makes the RP's metadata broken (OpenID Federation §6.1.4.2).
+        val policy =
+            SignedJWT
+                .parse(
+                    IpzsFederationSnapshot.statementAboutCedIssuer,
+                ).jwtClaimsSet
+                .getJSONObjectClaim("metadata_policy")
+        val base = config("openid_federation:https://rp.example")
+        val rp = base.copy(endpoints = base.endpoints.copy(sameDeviceCallbackBase = "https://rp.example/cb"))
+        val metadata =
+            SignedJWT
+                .parse(
+                    RpEntityConfiguration.build(rp, rp.federation!!, clock),
+                ).jwtClaimsSet
+                .getJSONObjectClaim("metadata")
+        val missing = mutableListOf<String>()
+        val outOfRange = mutableListOf<String>()
+        for (type in listOf("openid_credential_verifier", "federation_entity")) {
+            @Suppress("UNCHECKED_CAST")
+            val section = policy[type] as Map<String, Map<String, Any?>>
+
+            @Suppress("UNCHECKED_CAST")
+            val published = metadata[type] as Map<String, Any?>
+            // Only the operators checked below: a policy that grew another would need it here.
+            assertThat(section.values.flatMap { it.keys }.toSet()).isSubsetOf("essential", "one_of", "default")
+            for ((parameter, operators) in section) {
+                val value = published[parameter]
+                if (operators["essential"] == true && value == null) missing += "$type.$parameter"
+                val allowed = operators["one_of"] as List<*>?
+                if (allowed != null && value != null && value !in allowed) outOfRange += "$type.$parameter"
+            }
+        }
+        // One essential parameter is left out on purpose: see RpEntityConfiguration.metadata.
+        // It is a recorded divergence, and this line is where it would show if it changed.
+        assertThat(missing).containsExactly("openid_credential_verifier.authorization_signed_response_alg")
+        assertThat(outOfRange).isEmpty()
+    }
+
+    @Test
+    fun `a federation identity names a way to reach its operator`() {
+        assertThatIllegalArgumentException().isThrownBy { federation().copy(contacts = emptyList()) }
+        assertThatIllegalArgumentException().isThrownBy { federation().copy(contacts = listOf(" ")) }
+        val config = config("openid_federation:https://rp.example")
+        val entity =
+            SignedJWT
+                .parse(RpEntityConfiguration.build(config, config.federation!!, clock))
+                .jwtClaimsSet
+                .getJSONObjectClaim("metadata")["federation_entity"] as Map<*, *>
+        assertThat(entity["contacts"]).isEqualTo(listOf("biglietteria@teatro.example"))
+    }
+
+    private fun verifierMetadataOf(config: RelyingPartyConfiguration): Map<*, *> =
+        SignedJWT
+            .parse(RpEntityConfiguration.build(config, config.federation!!, clock))
+            .jwtClaimsSet
+            .getJSONObjectClaim("metadata")["openid_credential_verifier"] as Map<*, *>
 
     @Test
     fun `one key per purpose, under a kid of its own`() {

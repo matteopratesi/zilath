@@ -20,11 +20,20 @@ import com.nimbusds.jose.CompressionAlgorithm
 import com.nimbusds.jose.EncryptionMethod
 import com.nimbusds.jose.JWEAlgorithm
 import com.nimbusds.jose.JWEHeader
+import com.nimbusds.jose.JWEObject
+import com.nimbusds.jose.JWSAlgorithm
+import com.nimbusds.jose.JWSHeader
+import com.nimbusds.jose.Payload
+import com.nimbusds.jose.crypto.ECDHEncrypter
+import com.nimbusds.jose.crypto.ECDSASigner
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
+import com.nimbusds.jwt.JWTClaimsSet
+import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.RejectionReason
 import dev.zilath.verifier.core.SdJwtVcCredentialVerifier
+import dev.zilath.verifier.core.TestVectors
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
@@ -85,6 +94,38 @@ class WalletResponseInputTest : FlowTestSupport() {
         val started = startForPid()
         val body = walletBody(started, jweHeader = JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A128GCM))
         assertThat(flow.handleWalletResponse(started.id, body).outcome).isInstanceOf(FlowOutcome.Verified::class.java)
+    }
+
+    @Test
+    fun `a signed-then-encrypted response is not read, which is why the RP never asks for one`() {
+        // authorization_signed_response_alg, which the production anchor's policy still lists,
+        // makes a JARM wallet sign its response and nest the JWS inside the JWE. OpenID4VP 1.0
+        // §8.3 defines the JWE payload as the response object itself, and this is what the flow
+        // does with the nested form: the entity configuration therefore does not publish it.
+        val started = startForPid()
+        val claims = SignedJWT.parse(checkNotNull(flow.requestJwtFor(started.id))).jwtClaimsSet
+        val compact = TestVectors.vector(nonce = claims.getStringClaim("nonce"), audience = config.clientId)
+        val response =
+            buildJsonObject {
+                put("vp_token", onePresentationForPid(compact))
+                put("state", claims.getStringClaim("state"))
+            }
+        val walletKey = ECKeyGenerator(Curve.P_256).generate()
+        val signed = SignedJWT(JWSHeader(JWSAlgorithm.ES256), JWTClaimsSet.parse(response.toString()))
+        signed.sign(ECDSASigner(walletKey))
+        val jwe =
+            JWEObject(
+                JWEHeader.Builder(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM).contentType("JWT").build(),
+                Payload(signed),
+            )
+        jwe.encrypt(ECDHEncrypter(advertisedEncryptionKey(claims.getJSONObjectClaim("client_metadata")).toECKey()))
+        val outcome =
+            flow
+                .handleWalletResponse(
+                    started.id,
+                    DirectPostBody(mapOf("response" to jwe.serialize())),
+                ).outcome
+        assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
     }
 
     @Test

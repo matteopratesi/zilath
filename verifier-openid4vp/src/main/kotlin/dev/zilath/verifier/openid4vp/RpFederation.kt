@@ -52,7 +52,13 @@ data class RpFederationConfig(
     val authorityHints: List<String>,
     /** Shown to the user by the wallet and published as `organization_name`. */
     val organizationName: String,
-    val contacts: List<String> = emptyList(),
+    /**
+     * Where the federation reaches the RP's operator, published as `federation_entity.contacts`.
+     * At least one: the production IT-Wallet trust anchor's policy marks it essential, and a
+     * wallet applying that policy treats metadata without it as broken (OpenID Federation
+     * §6.1.4.2) — every presentation to the RP would fail.
+     */
+    val contacts: List<String>,
     /**
      * The RP's trust chain (its own entity configuration first, up to the anchor
      * statement), obtained from the federation on onboarding. When present it travels in
@@ -79,6 +85,9 @@ data class RpFederationConfig(
         require(federationKey.curve == Curve.P_256) { "federationKey must be a P-256 key (IT-Wallet profile)" }
         require(!federationKey.keyID.isNullOrBlank()) { "federationKey must carry a kid" }
         require(authorityHints.isNotEmpty()) { "authorityHints must name at least one superior" }
+        require(contacts.isNotEmpty() && contacts.none { it.isBlank() }) {
+            "contacts must name at least one way to reach the operator (federation_entity.contacts is essential)"
+        }
         authorityHints.forEach { hint ->
             val hintUri = runCatching { java.net.URI(hint) }.getOrNull()
             require(
@@ -165,7 +174,7 @@ object RpEntityConfiguration {
                 buildMap {
                     put("organization_name", federation.organizationName)
                     put("homepage_uri", entityId)
-                    if (federation.contacts.isNotEmpty()) put("contacts", federation.contacts)
+                    put("contacts", federation.contacts)
                 },
             "openid_credential_verifier" to
                 mapOf(
@@ -173,26 +182,28 @@ object RpEntityConfiguration {
                     "client_id" to entityId,
                     "client_name" to federation.organizationName,
                     // Published as the endpoint BASES while actual URIs append the
-                    // transaction id: whether wallets match these lists exactly or by
-                    // prefix is only observable against a real federation — tracked with
-                    // the onboarding work (docs/note-divergenze.md, gap 2).
+                    // transaction id (and, for the redirect, the response code): whether
+                    // wallets match these lists exactly or by prefix is only observable
+                    // against a real federation — tracked with the onboarding work
+                    // (docs/note-divergenze.md, gap 2).
                     "request_uris" to listOf(config.endpoints.requestUriBase),
                     "response_uris" to listOf(config.endpoints.responseUriBase),
-                    "vp_formats_supported" to
-                        mapOf(
-                            "dc+sd-jwt" to
-                                mapOf(
-                                    "sd-jwt_alg_values" to SUPPORTED_SD_JWT_ALGS,
-                                    "kb-jwt_alg_values" to SUPPORTED_KB_JWT_ALGS,
-                                ),
-                        ),
+                    "vp_formats_supported" to verifierFormats(),
+                    // The pre-1.4.6 name, which the production trust anchor's policy still
+                    // marks essential: both, until the policy catches up.
+                    "vp_formats" to verifierFormats(),
                     "authorization_encrypted_response_alg" to RESPONSE_ENCRYPTION_ALG,
+                    "authorization_encrypted_response_enc" to RESPONSE_ENCRYPTION_ENC,
                     "encrypted_response_enc_values_supported" to ACCEPTED_RESPONSE_ENCS,
-                    // The SAME published JWKs as the request object's client_metadata:
-                    // a wallet resolving us through the federation must find the very key
-                    // it is asked to encrypt to (matching kid, and use "enc").
+                    // Not `authorization_signed_response_alg`, although the same policy marks
+                    // it essential: under JARM it asks the wallet to SIGN the response and
+                    // nest the JWS in the JWE, which OpenID4VP 1.0 does not define and this
+                    // flow does not read — publishing it would turn every such wallet's
+                    // answer into a rejection. A recorded divergence.
+                    //
                     // The static encryption key only when the RP accepts it: publishing a key the
-                    // response endpoint then refuses would deny every wallet that used it.
+                    // response endpoint then refuses would deny every wallet that used it. The
+                    // request object publishes each transaction's own key instead.
                     "jwks" to
                         mapOf(
                             "keys" to
@@ -208,6 +219,24 @@ object RpEntityConfiguration {
                                     config.keys.responseEncryptionKey?.let { publicEncryptionJwk(it).toJSONObject() },
                                 ),
                         ),
+                ) + redirectUrisOf(config),
+        )
+
+    /**
+     * IT-Wallet 1.4.6 WP_094a: a same-device `redirect_uri` MUST be one the RP's trust chain
+     * attests, and the chain's `openid_credential_verifier` metadata is where a wallet looks.
+     * Before the fourth internal review it was never published, so a wallet applying the rule
+     * refused to send the holder back.
+     */
+    private fun redirectUrisOf(config: RelyingPartyConfiguration): Map<String, Any> =
+        config.endpoints.sameDeviceCallbackBase?.let { mapOf("redirect_uris" to listOf(it)) } ?: emptyMap()
+
+    private fun verifierFormats(): Map<String, Any> =
+        mapOf(
+            "dc+sd-jwt" to
+                mapOf(
+                    "sd-jwt_alg_values" to SUPPORTED_SD_JWT_ALGS,
+                    "kb-jwt_alg_values" to SUPPORTED_KB_JWT_ALGS,
                 ),
         )
 

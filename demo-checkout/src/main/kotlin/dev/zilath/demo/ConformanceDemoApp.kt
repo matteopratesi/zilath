@@ -151,6 +151,7 @@ class ConformanceDemoApp {
                         federationKey = ECKeyGenerator(Curve.P_256).keyID("demo-rp-fed").generate(),
                         authorityHints = listOf(anchorId),
                         organizationName = "Zilath demo checkout",
+                        contacts = listOf("demo@zilath.example"),
                     ),
             )
         // The demo is its own federation: it travels with its self-signed entity

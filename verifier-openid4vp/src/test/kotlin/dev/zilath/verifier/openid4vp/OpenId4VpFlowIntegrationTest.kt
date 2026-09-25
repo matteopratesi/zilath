@@ -308,6 +308,7 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
                         federationKey = ECKeyGenerator(Curve.P_256).keyID("fed").generate(),
                         authorityHints = listOf("https://ta.example"),
                         organizationName = "Test RP",
+                        contacts = listOf("rp@verifier.example"),
                     ),
             )
         val prefixedFlow = OpenId4VpVerificationFlow.withInMemoryStore(prefixed, SdJwtVcCredentialVerifier(), clock)
