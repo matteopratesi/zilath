@@ -16,17 +16,17 @@
  */
 package dev.zilath.verifier.spring
 
-import com.nimbusds.jose.jwk.ECKey
 import dev.zilath.verifier.core.CredentialVerifier
 import dev.zilath.verifier.core.SdJwtVcCredentialVerifier
 import dev.zilath.verifier.core.StatusChecker
 import dev.zilath.verifier.core.TrustEvaluator
+import dev.zilath.verifier.openid4vp.ItWalletProfile
 import dev.zilath.verifier.openid4vp.OpenId4VpVerificationFlow
 import dev.zilath.verifier.openid4vp.RelyingPartyConfiguration
-import dev.zilath.verifier.openid4vp.RpEndpoints
-import dev.zilath.verifier.openid4vp.RpKeys
 import dev.zilath.verifier.openid4vp.TransactionStore
+import dev.zilath.verifier.openid4vp.TrustChainSource
 import dev.zilath.verifier.openid4vp.VerificationFlow
+import dev.zilath.verifier.openid4vp.WalletProfile
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
@@ -34,8 +34,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Condition
+import org.springframework.context.annotation.ConditionContext
+import org.springframework.context.annotation.Conditional
+import org.springframework.core.type.AnnotatedTypeMetadata
 import java.time.Clock
-import java.time.Duration
 
 /**
  * Wires a [VerificationFlow] and its HTTP endpoints from `zilath.openid4vp.*` properties.
@@ -59,9 +62,11 @@ class OpenId4VpAutoConfiguration {
     fun verificationClock(): Clock = Clock.systemUTC()
 
     /**
-     * The relying party, assembled from `zilath.openid4vp.*`. Declare a
-     * [RelyingPartyConfiguration] bean of your own to replace it; the flow is then built
-     * from yours.
+     * The relying party, assembled from `zilath.openid4vp.*`, under the application's
+     * [WalletProfile] bean if it declares one and IT-Wallet's otherwise, and with the
+     * application's [TrustChainSource] bean, if any, supplying the federation trust chain.
+     * Declare a [RelyingPartyConfiguration] bean of your own to replace it; the flow is then
+     * built from yours.
      *
      * Deliberately conditional on three things at once: the `client-id` property, and
      * [TrustEvaluator] and [StatusChecker] beans the application must supply. If any is
@@ -78,25 +83,15 @@ class OpenId4VpAutoConfiguration {
         properties: OpenId4VpProperties,
         trustEvaluator: TrustEvaluator,
         statusChecker: StatusChecker,
+        profiles: ObjectProvider<WalletProfile>,
+        trustChainSources: ObjectProvider<TrustChainSource>,
     ): RelyingPartyConfiguration =
-        RelyingPartyConfiguration(
-            clientId = properties.clientId,
-            endpoints =
-                RpEndpoints(
-                    properties.requestUriBase,
-                    properties.responseUriBase,
-                    properties.sameDeviceCallbackBase.ifBlank { null },
-                ),
-            keys =
-                RpKeys(
-                    requestSigningKey = ECKey.parse(properties.requestSigningKeyJwk),
-                    responseEncryptionKey = properties.responseEncryptionKeyJwk.ifBlank { null }?.let(ECKey::parse),
-                ),
-            trustEvaluator = trustEvaluator,
-            statusChecker = statusChecker,
-            walletAuthorizationScheme = properties.walletAuthorizationScheme,
-            transactionTimeToLive = Duration.ofSeconds(properties.transactionTimeToLiveSeconds),
-            maxWalletResponseLength = properties.maxWalletResponseLength,
+        relyingPartyConfigurationOf(
+            properties,
+            trustEvaluator,
+            statusChecker,
+            profiles.getIfAvailable { ItWalletProfile },
+            trustChainSources.getIfAvailable(),
         )
 
     /**
@@ -133,4 +128,32 @@ class OpenId4VpAutoConfiguration {
     @ConditionalOnBean(VerificationFlow::class)
     @ConditionalOnMissingBean
     fun openId4VpController(flow: VerificationFlow): OpenId4VpController = OpenId4VpController(flow)
+
+    /**
+     * Publishes the entity configuration of the federation identity
+     * `zilath.openid4vp.federation.*` describes, once there is one: a wallet resolving an
+     * `openid_federation:` client id, and the federation onboarding the relying party, read
+     * its metadata and keys there. Replace it as the controller above, with a bean of type
+     * [OpenId4VpFederationController].
+     */
+    @Bean
+    @ConditionalOnBean(RelyingPartyConfiguration::class)
+    @Conditional(OnFederationEntityId::class)
+    @ConditionalOnMissingBean
+    fun openId4VpFederationController(
+        config: RelyingPartyConfiguration,
+        clock: Clock,
+    ): OpenId4VpFederationController = OpenId4VpFederationController(config, clock)
+}
+
+/**
+ * Matches when `zilath.openid4vp.federation.entity-id` is set and not blank: blank means
+ * absent, as it does for the starter's other optional properties, so that a placeholder
+ * such as `${FEDERATION_ENTITY_ID:}` left unset configures no federation.
+ */
+internal class OnFederationEntityId : Condition {
+    override fun matches(
+        context: ConditionContext,
+        metadata: AnnotatedTypeMetadata,
+    ): Boolean = !context.environment.getProperty("zilath.openid4vp.federation.entity-id").isNullOrBlank()
 }

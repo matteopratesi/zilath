@@ -28,10 +28,11 @@ import dev.zilath.verifier.openid4vp.VerificationFlow
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpHeaders
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -46,7 +47,10 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 @SpringBootTest(classes = [StarterSmokeTest.TestApp::class])
 @AutoConfigureMockMvc
 class StarterSmokeTest {
-    @SpringBootApplication
+    // Auto-configuration only, no component scan: this package is the starter's own, and
+    // scanning it would register the controllers without the conditions an application gets.
+    @Configuration(proxyBeanMethods = false)
+    @EnableAutoConfiguration
     class TestApp {
         @Bean
         fun trustEvaluator(): TrustEvaluator = TrustEvaluator { TrustDecision.Untrusted("smoke test") }

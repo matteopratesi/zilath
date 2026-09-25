@@ -18,11 +18,7 @@ package dev.zilath.verifier.spring
 
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
-import dev.zilath.verifier.core.CredentialStatus
 import dev.zilath.verifier.core.DisclosedClaims
-import dev.zilath.verifier.core.StatusChecker
-import dev.zilath.verifier.core.TrustDecision
-import dev.zilath.verifier.core.TrustEvaluator
 import dev.zilath.verifier.core.VerificationResult
 import dev.zilath.verifier.openid4vp.DirectPostBody
 import dev.zilath.verifier.openid4vp.FlowOutcome
@@ -34,38 +30,13 @@ import dev.zilath.verifier.openid4vp.VerificationFlow
 import kotlinx.serialization.json.JsonObject
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import org.springframework.boot.autoconfigure.AutoConfigurations
-import org.springframework.boot.test.context.runner.ApplicationContextRunner
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Configuration
 import java.time.Clock
 
 /** What the starter builds from `zilath.openid4vp.*`, and what it refuses to start with. */
 class StarterConfigurationTest {
-    @Configuration(proxyBeanMethods = false)
-    class ApplicationBeans {
-        @Bean
-        fun trustEvaluator(): TrustEvaluator = TrustEvaluator { TrustDecision.Untrusted("configuration test") }
-
-        @Bean
-        fun statusChecker(): StatusChecker = StatusChecker { _, _ -> CredentialStatus.UNKNOWN }
-
-        @Bean
-        fun scriptedVerifier(): ScriptedVerifier = ScriptedVerifier()
-    }
-
     private val signingKey = ECKeyGenerator(Curve.P_256).keyID("rp-sign").generate()
 
-    private val runner =
-        ApplicationContextRunner()
-            .withConfiguration(AutoConfigurations.of(OpenId4VpAutoConfiguration::class.java))
-            .withUserConfiguration(ApplicationBeans::class.java)
-            .withPropertyValues(
-                "zilath.openid4vp.client-id=https://rp.example",
-                "zilath.openid4vp.request-uri-base=https://rp.example/openid4vp/request",
-                "zilath.openid4vp.response-uri-base=https://rp.example/openid4vp/response",
-                "zilath.openid4vp.request-signing-key-jwk=${signingKey.toJSONString()}",
-            )
+    private val runner = starterRunner(signingKey)
 
     @Test
     fun `without a response encryption key each transaction encrypts to a key of its own`() {

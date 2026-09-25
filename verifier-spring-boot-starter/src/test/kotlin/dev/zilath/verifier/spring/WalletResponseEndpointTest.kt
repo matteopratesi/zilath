@@ -36,10 +36,11 @@ import org.hamcrest.Matchers.startsWith
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpHeaders
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -61,7 +62,10 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 @SpringBootTest(classes = [WalletResponseEndpointTest.TestApp::class])
 @AutoConfigureMockMvc
 class WalletResponseEndpointTest {
-    @SpringBootApplication
+    // Auto-configuration only, no component scan: this package is the starter's own, and
+    // scanning it would register the controllers without the conditions an application gets.
+    @Configuration(proxyBeanMethods = false)
+    @EnableAutoConfiguration
     class TestApp {
         @Bean
         fun trustEvaluator(): TrustEvaluator = TrustEvaluator { TrustDecision.Untrusted("endpoint test") }
