@@ -32,7 +32,8 @@ import java.net.InetSocketAddress
  */
 class HttpFetcherTest {
     private val server =
-        HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0).apply {
+        // The address the URLs below name: the JVM's loopback address may be ::1 instead.
+        HttpServer.create(InetSocketAddress(InetAddress.getByName(LOOPBACK), 0), 0).apply {
             for (status in listOf(200, 404, 410, 500)) {
                 createContext("/$status") { exchange ->
                     val body = "status $status".toByteArray()
@@ -43,7 +44,7 @@ class HttpFetcherTest {
             start()
         }
 
-    private val base = "http://127.0.0.1:${server.address.port}"
+    private val base = "http://$LOOPBACK:${server.address.port}"
 
     @AfterEach
     fun stop() = server.stop(0)
@@ -63,5 +64,9 @@ class HttpFetcherTest {
             .isNotInstanceOf(FederationDocumentNotFoundException::class.java)
             .hasMessageContaining("returned 500")
         assertThat(httpFetcher(insecureTls = false).fetch("$base/200")).isEqualTo("status 200")
+    }
+
+    private companion object {
+        const val LOOPBACK = "127.0.0.1"
     }
 }
