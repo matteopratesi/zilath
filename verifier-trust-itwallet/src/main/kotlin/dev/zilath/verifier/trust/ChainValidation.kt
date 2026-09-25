@@ -111,6 +111,13 @@ private fun subordinateStatementsOf(
     if (subordinates.any { it.issuer == it.subject }) {
         trustFail("a statement after the leaf is not a subordinate statement")
     }
+    // §3.2: a subordinate statement's iss MUST be one of the authority_hints in its
+    // subject's entity configuration, "otherwise, the Federation graph is not well-formed".
+    // The chain carries only the leaf's configuration, so that is the one checked here;
+    // online resolution follows the hints at every level by construction.
+    if (subordinates.first().issuer !in leaf.authorityHints) {
+        trustFail("the leaf's superior in the chain is not among its authority_hints")
+    }
     // OID-FED §3.2: metadata_policy, metadata_policy_crit and constraints belong to
     // subordinate statements only. In an entity configuration they are not ignored — which
     // is how the leaf's was treated — nor applied — which is how a trailing anchor
@@ -147,14 +154,16 @@ private fun verifyTopDown(
         if (!verifiesWithAny(statement.jwt, listOf(keyNamedBy(statement, trustedKeys)))) {
             trustFail("the signature of the statement at chain position $index does not verify")
         }
-        if (index > 0 && statement.issuer == statement.subject) continue
         // Each statement attests the keys of the entity below it. One that carries none
         // used to inherit its superior's, which means a subordinate with an absent, empty
-        // or malformed jwks silently kept the chain going under keys it never held.
-        trustedKeys =
+        // or malformed jwks silently kept the chain going under keys it never held. §3.2
+        // requires the claim of every statement, the anchor's own configuration included,
+        // although what that one publishes is not used.
+        val attested =
             statement.federationJwks.ifEmpty {
                 trustFail("the statement at chain position $index carries no federation keys")
             }
+        if (index == 0 || statement.issuer != statement.subject) trustedKeys = attested
     }
 }
 

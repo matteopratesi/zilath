@@ -155,6 +155,7 @@ class StatementValidationTest {
                 listOf(
                     FederationFixtures.signedRsaStatement(leafKey, LEAF_ID, LEAF_ID) {
                         claim("jwks", jwksClaim(leafKey))
+                        claim("authority_hints", listOf(ANCHOR_ID))
                         claim(
                             "metadata",
                             mapOf(
@@ -190,6 +191,7 @@ class StatementValidationTest {
                 listOf(
                     signedStatement(leafFederationKey, LEAF_ID, LEAF_ID, typ = typ) {
                         claim("jwks", jwksClaim(leafFederationKey))
+                        claim("authority_hints", listOf(ANCHOR_ID))
                         claim(
                             "metadata",
                             mapOf(

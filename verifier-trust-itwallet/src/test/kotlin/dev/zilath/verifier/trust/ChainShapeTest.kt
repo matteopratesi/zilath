@@ -48,6 +48,22 @@ class ChainShapeTest {
     }
 
     @Test
+    fun `the leaf's superior in the chain must be one of its authority hints`() {
+        // OID-FED §3.2: otherwise "the Federation graph is not well-formed". The anchor does
+        // vouch for the leaf here, but the leaf names another superior.
+        val elsewhere = leafConfiguration(authorityHint = FederationFixtures.INTERMEDIATE_ID)
+        assertThat(untrustedReason(decide(listOf(elsewhere, anchorStatementAboutLeaf())))).contains("authority_hints")
+    }
+
+    @Test
+    fun `the anchor's own configuration at the end of a chain must carry its jwks`() {
+        // §3.2 requires the claim of every entity statement, although this one's is not used.
+        val withoutJwks = signedStatement(anchorKey, ANCHOR_ID, ANCHOR_ID)
+        assertThat(untrustedReason(decide(FederationFixtures.offlineChain() + withoutJwks)))
+            .contains("carries no federation keys")
+    }
+
+    @Test
     fun `a duplicated leaf cannot stand in for its own immediate superior`() {
         // [leaf, leaf, anchor's statement] links and verifies: the anchor's statement
         // attests the leaf's key, which signs both copies. It used to make the leaf its

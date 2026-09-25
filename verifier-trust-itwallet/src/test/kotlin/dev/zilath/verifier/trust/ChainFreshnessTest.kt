@@ -202,6 +202,7 @@ class ChainFreshnessTest {
                 // A leaf configuration valid for a year, like the production issuer's.
                 signedStatement(leafFederationKey, LEAF_ID, LEAF_ID, expiresInSeconds = YEAR - 600) {
                     claim("jwks", jwksClaim(leafFederationKey))
+                    claim("authority_hints", listOf(ANCHOR_ID))
                     claim("metadata", mapOf("openid_credential_issuer" to FederationFixtures.credentialIssuerSection()))
                 },
                 signedStatement(anchorKey, ANCHOR_ID, LEAF_ID, expiresInSeconds = seconds - 600) {
