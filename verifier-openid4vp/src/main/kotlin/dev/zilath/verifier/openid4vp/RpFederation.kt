@@ -62,10 +62,15 @@ data class RpFederationConfig(
     /**
      * The RP's trust chain (its own entity configuration first, up to the anchor
      * statement), obtained from the federation on onboarding. When present it travels in
-     * the JAR `trust_chain` header so wallets can validate the RP offline.
+     * the JAR `trust_chain` header so wallets can validate the RP offline — until its
+     * earliest `exp`: then the header is left out. Its shape is checked here. Federation
+     * statements live about a day, so a long-running RP should give a [trustChainSource]
+     * instead.
      */
     val trustChain: List<String> = emptyList(),
     val statementValidity: Duration = DEFAULT_STATEMENT_VALIDITY,
+    /** Supplies a renewed chain for every request object; the alternative to [trustChain]. */
+    val trustChainSource: TrustChainSource? = null,
 ) {
     init {
         // The spec mandates HTTPS entity ids with a host; plain http is tolerated for the
@@ -88,6 +93,9 @@ data class RpFederationConfig(
         require(contacts.isNotEmpty() && contacts.none { it.isBlank() }) {
             "contacts must name at least one way to reach the operator (federation_entity.contacts is essential)"
         }
+        require(trustChain.isEmpty() || trustChainSource == null) { "give either a trustChain or a trustChainSource" }
+        // Not checked for expiry: a restart with a stale chain still serves, without the header.
+        if (trustChain.isNotEmpty()) trustChainExpiryOf(trustChain, entityId)
         authorityHints.forEach { hint ->
             val hintUri = runCatching { java.net.URI(hint) }.getOrNull()
             require(

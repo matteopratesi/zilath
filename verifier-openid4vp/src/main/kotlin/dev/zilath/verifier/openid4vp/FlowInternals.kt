@@ -143,8 +143,7 @@ internal fun buildRequestJwt(
     // openid_federation client id scheme: the RP trust chain travels in the JAR header so
     // the wallet can validate the RP offline (spec v1.4.6, remote flow).
     config.federation
-        ?.trustChain
-        ?.takeIf { it.isNotEmpty() }
+        ?.let { trustChainHeaderFor(it, now) }
         ?.let { headerBuilder.customParam("trust_chain", it) }
     val header = headerBuilder.build()
     val jwt = SignedJWT(header, claims)

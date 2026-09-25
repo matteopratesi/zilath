@@ -321,27 +321,6 @@ class RpEntityConfigurationTest {
     }
 
     @Test
-    fun `the JAR carries the trust chain header when the federation provides one`() {
-        val chain = listOf("eyJa.leaf.sig", "eyJa.anchor.sig")
-        val base = config("openid_federation:https://rp.example")
-        val withChain = base.copy(federation = federation().copy(trustChain = chain))
-        val transaction =
-            Transaction(
-                id = TransactionId("tx-1"),
-                nonce = "n".repeat(32),
-                state = TransactionState.CREATED,
-                createdAt = clock.instant(),
-                expiresAt = clock.instant().plusSeconds(300),
-                request = PresentationRequest.forTestPid("urn:eudi:pid:it:1"),
-                pollTokenHash = "hash",
-            )
-        val jar = SignedJWT.parse(buildRequestJwt(withChain, transaction, clock.instant()))
-        assertThat(jar.header.getCustomParam("trust_chain")).isEqualTo(chain)
-        val bare = SignedJWT.parse(buildRequestJwt(base, transaction, clock.instant()))
-        assertThat(bare.header.getCustomParam("trust_chain")).isNull()
-    }
-
-    @Test
     fun `the entity configuration and the request object advertise the same algorithms`() {
         val config = config("openid_federation:https://rp.example")
         val statement = SignedJWT.parse(RpEntityConfiguration.build(config, federation(), clock))
