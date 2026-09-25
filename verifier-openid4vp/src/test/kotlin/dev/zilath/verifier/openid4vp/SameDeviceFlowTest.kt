@@ -16,6 +16,7 @@
  */
 package dev.zilath.verifier.openid4vp
 
+import dev.zilath.verifier.core.RejectionReason
 import dev.zilath.verifier.core.SdJwtVcCredentialVerifier
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -57,6 +58,29 @@ class SameDeviceFlowTest : FlowTestSupport() {
         val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
         val cancelled = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
         assertThat(cancelled.redirectUri).contains("response_code=")
+    }
+
+    @Test
+    fun `a rejected same-device presentation gets no return ticket, and reads as never returned`() {
+        // A code used to be minted for every recorded outcome, rejections included, while the
+        // endpoint answers a rejection with an error that carries no redirect: a live bearer
+        // secret in the store that nobody could use.
+        val retaining = RetainingTransactionStore()
+        val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
+        val started =
+            retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        val rejected =
+            retainingFlow.handleWalletResponse(
+                started.id,
+                walletBody(started, nonceOverride = "stolen", source = retainingFlow),
+            )
+        assertThat((rejected.outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.NONCE_MISMATCH)
+        assertThat(rejected.redirectUri).isNull()
+        assertThat(retaining.get(started.id)?.responseCode).isNull()
+        // What the page that started it reads: pending, then expired — never the rejection.
+        assertThat(retainingFlow.awaitOutcome(started.id, started.pollToken)).isEqualTo(FlowOutcome.Pending)
+        clock.advance(config.transactionTimeToLive.plusSeconds(1))
+        assertThat(retainingFlow.awaitOutcome(started.id, started.pollToken)).isEqualTo(FlowOutcome.Expired)
     }
 
     @Test

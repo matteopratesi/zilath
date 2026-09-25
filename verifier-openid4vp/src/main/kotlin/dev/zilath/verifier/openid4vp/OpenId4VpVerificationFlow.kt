@@ -256,7 +256,14 @@ class OpenId4VpVerificationFlow(
         if (before.state != TransactionState.CREATED) return null
         val now = clock.instant()
         val callbackBase = config.endpoints.sameDeviceCallbackBase?.takeIf { before.mode == FlowMode.SAME_DEVICE }
-        val code = callbackBase?.let { randomToken(RESPONSE_CODE_BYTES) }
+        // A code only where the acknowledgement delivers it: a verification, and a wallet
+        // error (the user who cancelled in the wallet is still sent back, RPR-59). A rejected
+        // presentation is answered with an error, which carries no redirect; a code minted for
+        // it would be a live bearer secret nobody can use.
+        val code =
+            callbackBase
+                ?.takeIf { outcome is FlowOutcome.Verified || outcome is FlowOutcome.WalletErrorAcknowledged }
+                ?.let { randomToken(RESPONSE_CODE_BYTES) }
         val state = if (outcome is FlowOutcome.Verified) TransactionState.VERIFIED else TransactionState.REJECTED
 
         fun recordable(transaction: Transaction) =

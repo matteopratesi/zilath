@@ -114,7 +114,10 @@ interface VerificationFlow {
      * the user-agent that came back with the response code: the start token then reads
      * [FlowOutcome.Pending] until the return, and nothing afterwards, so a transaction
      * started by one party and completed by another person's wallet (session fixation,
-     * §14.2) never shows that person's claims to the party who started it. A token that does
+     * §14.2) never shows that person's claims to the party who started it. A same-device
+     * presentation that was REJECTED gets no response code, so there is no return: the start
+     * token reads [FlowOutcome.Pending] until the time to live, and [FlowOutcome.Expired]
+     * after it; the holder is told by the wallet, which received the error. A token that does
      * not match answers [FlowOutcome.Unknown], exactly as an id that does not exist.
      */
     fun awaitOutcome(
@@ -158,9 +161,14 @@ data class HandledResponse(
      * ticket of the user-agent that completed the presentation.
      *
      * Present only for the call whose response RECORDED the transaction's outcome, which
-     * is exactly one call per transaction: the code is minted in the same atomic update that
-     * records the outcome. Null for cross-device transactions, for a replay, for an error
-     * posted after the outcome was reached or after expiry. Anyone knowing the transaction
+     * is exactly one call per transaction, and only when that outcome is
+     * [FlowOutcome.Verified] or [FlowOutcome.WalletErrorAcknowledged]: the code is minted in
+     * the same atomic update that records the outcome. Null for cross-device transactions,
+     * for a replay, for an error posted after the outcome was reached or after expiry, and
+     * for a [FlowOutcome.Rejected] presentation — which the endpoint answers with an error,
+     * a response that carries no redirect, so the user-agent does not come back through the
+     * callback and the start token reads [FlowOutcome.Pending] and then
+     * [FlowOutcome.Expired] (see [VerificationFlow.awaitOutcome]). Anyone knowing the transaction
      * id may post an `error`; that request is owed an acknowledgement, never a return ticket.
      * The fourth internal review found the ticket handed to whichever later caller presented
      * an outcome EQUAL to the recorded one — `access_denied`, the only error a cancelling
