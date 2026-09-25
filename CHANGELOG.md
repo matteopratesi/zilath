@@ -131,9 +131,9 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
 - **Each response is encrypted to a key of its own transaction.** One long-lived key served
   every request object, so a response captured past a TLS terminator became readable the day
   that key leaked. Each transaction now publishes a P-256 key of its own, whose private half
-  leaves the store with the response or when the transaction expires; a JWE `kid` must name
-  it. A static key
-  is only a fallback, and only when configured.
+  leaves the store with the response or when the transaction expires; a JWE `kid`, when there
+  is one, must name it or the static key. A static key is only a fallback, and only when
+  configured.
 - **The same-device return ticket goes only to the call that recorded the outcome.** A second
   post of the same `access_denied` a cancelling wallet sends used to receive the same
   `response_code`, and anyone holding the id could burn it before the user's browser came

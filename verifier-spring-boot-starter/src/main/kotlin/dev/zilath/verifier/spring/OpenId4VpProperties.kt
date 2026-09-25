@@ -64,8 +64,7 @@ data class OpenId4VpProperties(
     /** Same-device callback base, e.g. `https://rp.example/cb`; empty = cross-device only.
      *  It is also the `redirect_uris` of the federation entity configuration: a
      *  cross-device-only RP publishes none, and so cannot satisfy the production IT-Wallet
-     *  anchor's policy, which marks it essential.
-     *  Appended LAST to preserve positional-constructor compatibility for existing callers. */
+     *  anchor's policy, which marks it essential. */
     val sameDeviceCallbackBase: String = "",
     /**
      * The largest wallet response the flow decodes, in characters of the form body: a larger
