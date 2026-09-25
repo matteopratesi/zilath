@@ -87,3 +87,97 @@ class RetainingTransactionStoreContractTest : TransactionStoreContractTest() {
 class OptimisticTransactionStoreContractTest : TransactionStoreContractTest() {
     override fun newStore(): TransactionStore = OptimisticTransactionStore()
 }
+
+/**
+ * Keeps less than it is given — the wallet's description shortened, a rejection's detail
+ * dropped — as a store minimising what it holds might. It breaks the contract's lossless
+ * property on purpose: the same-device return must not depend on it.
+ */
+class MinimisingTransactionStore : TransactionStore {
+    private val delegate = RetainingTransactionStore()
+
+    private fun minimised(transaction: Transaction): Transaction =
+        transaction.copy(
+            outcome =
+                when (val outcome = transaction.outcome) {
+                    is FlowOutcome.WalletErrorAcknowledged ->
+                        outcome.copy(
+                            description = outcome.description?.take(KEPT),
+                        )
+                    is FlowOutcome.Rejected -> outcome.copy(detail = null)
+                    else -> outcome
+                },
+        )
+
+    override fun put(transaction: Transaction) = delegate.put(minimised(transaction))
+
+    override fun get(id: TransactionId): Transaction? = delegate.get(id)
+
+    override fun compareAndUpdate(
+        id: TransactionId,
+        update: (Transaction) -> Transaction,
+    ): Transaction? = delegate.compareAndUpdate(id) { minimised(update(it)) }
+
+    override fun remove(id: TransactionId) = delegate.remove(id)
+
+    private companion object {
+        const val KEPT = 8
+    }
+}
+
+/**
+ * Atomic on the primary, but [get] is served by a replica that sees a new entry at once and
+ * never catches up with an update — the read-your-writes property broken on purpose, as by
+ * a replica read that lags behind the write just made.
+ */
+class StaleReplicaTransactionStore : TransactionStore {
+    private val primary = RetainingTransactionStore()
+    private val replica = RetainingTransactionStore()
+
+    override fun put(transaction: Transaction) {
+        primary.put(transaction)
+        replica.put(transaction)
+    }
+
+    override fun get(id: TransactionId): Transaction? = replica.get(id)
+
+    override fun compareAndUpdate(
+        id: TransactionId,
+        update: (Transaction) -> Transaction,
+    ): Transaction? = primary.compareAndUpdate(id, update)
+
+    override fun remove(id: TransactionId) {
+        primary.remove(id)
+        replica.remove(id)
+    }
+}
+
+/**
+ * A conforming store caught in one legal interleaving: when [removeDuringNextUpdate] is set,
+ * the next update function runs on the current value, then the entry disappears before the
+ * write — a concurrent removal — and the update returns null, having committed nothing.
+ */
+class RemovedDuringUpdateStore(
+    private val delegate: TransactionStore,
+) : TransactionStore by delegate {
+    @Volatile
+    var removeDuringNextUpdate = false
+
+    @Volatile
+    var updatesRun = 0
+        private set
+
+    override fun compareAndUpdate(
+        id: TransactionId,
+        update: (Transaction) -> Transaction,
+    ): Transaction? {
+        if (!removeDuringNextUpdate) return delegate.compareAndUpdate(id, update)
+        removeDuringNextUpdate = false
+        delegate.get(id)?.let { current ->
+            update(current)
+            updatesRun++
+            delegate.remove(id)
+        }
+        return null
+    }
+}

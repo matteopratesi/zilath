@@ -51,7 +51,7 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
         val started = startForPid()
         assertThat(started.qrPayload).startsWith("openid4vp://authorize?client_id=")
         assertThat(started.qrPayload).contains("request_uri=")
-        val outcome = flow.handleWalletResponse(started.id, walletBody(started))
+        val outcome = flow.handleWalletResponse(started.id, walletBody(started)).outcome
         assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
         val claims = (outcome as FlowOutcome.Verified).claims.claims
         assertThat(claims["given_name"]?.jsonPrimitive?.content).isEqualTo("Ada")
@@ -86,7 +86,7 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
         jwe.encrypt(
             ECDHEncrypter(advertisedEncryptionKey(jar.jwtClaimsSet.getJSONObjectClaim("client_metadata")).toECKey()),
         )
-        recordingFlow.handleWalletResponse(started.id, DirectPostBody(mapOf("response" to jwe.serialize())))
+        recordingFlow.handleWalletResponse(started.id, DirectPostBody(mapOf("response" to jwe.serialize()))).outcome
 
         assertThat(seen.single().requestedClaims).isEqualTo(request.requestedClaims())
         assertThat(
@@ -106,20 +106,20 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
         // the requested type, so without this test the wiring could go and nothing notice.
         val started = startForPid()
         val outcome =
-            flow.handleWalletResponse(started.id, walletBody(started, vct = "urn:zilath:test:something-else"))
+            flow.handleWalletResponse(started.id, walletBody(started, vct = "urn:zilath:test:something-else")).outcome
         assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.UNSUPPORTED_FORMAT)
     }
 
     @Test
     fun `a nonce echoed in the response must be the transaction's`() {
         val wrong = startForPid()
-        val rejected = flow.handleWalletResponse(wrong.id, walletBody(wrong, echoedNonce = "wrong-nonce"))
+        val rejected = flow.handleWalletResponse(wrong.id, walletBody(wrong, echoedNonce = "wrong-nonce")).outcome
         assertThat((rejected as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
         assertThat(rejected.detail).isEqualTo("response nonce does not match the transaction")
 
         val right = startForPid()
         val nonce = SignedJWT.parse(flow.requestJwtFor(right.id)).jwtClaimsSet.getStringClaim("nonce")
-        assertThat(flow.handleWalletResponse(right.id, walletBody(right, echoedNonce = nonce)))
+        assertThat(flow.handleWalletResponse(right.id, walletBody(right, echoedNonce = nonce)).outcome)
             .isInstanceOf(FlowOutcome.Verified::class.java)
     }
 
@@ -187,7 +187,12 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
             }
         val jwe = JWEObject(JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM), Payload(payload.toString()))
         jwe.encrypt(ECDHEncrypter(encryptionKey.toPublicJWK().toECKey()))
-        val outcome = fragileFlow.handleWalletResponse(started.id, DirectPostBody(mapOf("response" to jwe.serialize())))
+        val outcome =
+            fragileFlow
+                .handleWalletResponse(
+                    started.id,
+                    DirectPostBody(mapOf("response" to jwe.serialize())),
+                ).outcome
         assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.INTERNAL_ERROR)
         assertThat(outcome.detail).doesNotContain("status backend down")
         assertThat(fragileFlow.awaitOutcome(started.id)).isEqualTo(outcome)
@@ -215,8 +220,8 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
     fun `a second response for the same transaction is rejected as replay`() {
         val started = startForPid()
         val body = walletBody(started)
-        assertThat(flow.handleWalletResponse(started.id, body)).isInstanceOf(FlowOutcome.Verified::class.java)
-        val replayed = flow.handleWalletResponse(started.id, body)
+        assertThat(flow.handleWalletResponse(started.id, body).outcome).isInstanceOf(FlowOutcome.Verified::class.java)
+        val replayed = flow.handleWalletResponse(started.id, body).outcome
         assertThat(replayed).isInstanceOf(FlowOutcome.Rejected::class.java)
         assertThat((replayed as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.REPLAY)
         assertThat(flow.awaitOutcome(started.id)).isInstanceOf(FlowOutcome.Verified::class.java)
@@ -225,21 +230,21 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
     @Test
     fun `state mismatch is rejected as malformed`() {
         val started = startForPid()
-        val outcome = flow.handleWalletResponse(started.id, walletBody(started, stateOverride = "someone-else"))
+        val outcome = flow.handleWalletResponse(started.id, walletBody(started, stateOverride = "someone-else")).outcome
         assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
     }
 
     @Test
     fun `wrong nonce in the presentation is rejected end to end`() {
         val started = startForPid()
-        val outcome = flow.handleWalletResponse(started.id, walletBody(started, nonceOverride = "stolen-nonce"))
+        val outcome = flow.handleWalletResponse(started.id, walletBody(started, nonceOverride = "stolen-nonce")).outcome
         assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.NONCE_MISMATCH)
     }
 
     @Test
     fun `unknown transactions yield unknown outcomes and no request object`() {
         val ghost = TransactionId("does-not-exist")
-        assertThat(flow.handleWalletResponse(ghost, DirectPostBody(emptyMap()))).isEqualTo(FlowOutcome.Unknown)
+        assertThat(flow.handleWalletResponse(ghost, DirectPostBody(emptyMap())).outcome).isEqualTo(FlowOutcome.Unknown)
         assertThat(flow.awaitOutcome(ghost)).isEqualTo(FlowOutcome.Unknown)
         assertThat(flow.requestJwtFor(ghost)).isNull()
     }
@@ -247,7 +252,7 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
     @Test
     fun `request object is no longer served once the transaction is consumed`() {
         val started = startForPid()
-        flow.handleWalletResponse(started.id, walletBody(started))
+        flow.handleWalletResponse(started.id, walletBody(started)).outcome
         assertThat(flow.requestJwtFor(started.id)).isNull()
     }
 
@@ -264,10 +269,11 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
                 audience = config.clientId,
             )
         val outcome =
-            arfFlow.handleWalletResponse(
-                started.id,
-                DirectPostBody(mapOf("vp_token" to compact, "state" to started.id.value)),
-            )
+            arfFlow
+                .handleWalletResponse(
+                    started.id,
+                    DirectPostBody(mapOf("vp_token" to compact, "state" to started.id.value)),
+                ).outcome
         assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
     }
 
@@ -275,10 +281,10 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
     fun `a wallet error response is acknowledged and terminal`() {
         val started = startForPid()
         val body = DirectPostBody(mapOf("error" to "access_denied", "error_description" to "user cancelled"))
-        val outcome = flow.handleWalletResponse(started.id, body)
+        val outcome = flow.handleWalletResponse(started.id, body).outcome
         assertThat(outcome).isEqualTo(FlowOutcome.WalletErrorAcknowledged("access_denied", "user cancelled"))
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(outcome)
-        val afterwards = flow.handleWalletResponse(started.id, DirectPostBody(emptyMap()))
+        val afterwards = flow.handleWalletResponse(started.id, DirectPostBody(emptyMap())).outcome
         assertThat((afterwards as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.REPLAY)
     }
 
@@ -323,7 +329,11 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
                     com.nimbusds.jose.Payload(payload.toString()),
                 )
             jwe.encrypt(ECDHEncrypter(advertised.toECKey()))
-            return prefixedFlow.handleWalletResponse(started.id, DirectPostBody(mapOf("response" to jwe.serialize())))
+            return prefixedFlow
+                .handleWalletResponse(
+                    started.id,
+                    DirectPostBody(mapOf("response" to jwe.serialize())),
+                ).outcome
         }
 
         assertThat(present(prefixed.clientId)).isInstanceOf(FlowOutcome.Verified::class.java)

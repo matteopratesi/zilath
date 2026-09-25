@@ -72,6 +72,15 @@ internal fun flowReject(
     detail: String? = null,
 ): Nothing = throw FlowRejection(reason, detail)
 
+/**
+ * Compares two secrets in time that depends on their length only, never on where they
+ * first differ: a code or token presented by an unauthenticated caller is checked with it.
+ */
+internal fun secretsEqual(
+    expected: String,
+    presented: String,
+): Boolean = java.security.MessageDigest.isEqual(expected.toByteArray(), presented.toByteArray())
+
 internal fun randomToken(bytes: Int): String {
     val buffer = ByteArray(bytes)
     secureRandom.nextBytes(buffer)

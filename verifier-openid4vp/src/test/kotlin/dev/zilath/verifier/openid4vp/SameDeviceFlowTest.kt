@@ -34,18 +34,18 @@ class SameDeviceFlowTest : FlowTestSupport() {
         // verified entitlement, and burned their return leg on the way out.
         val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
         val verified = flow.handleWalletResponse(started.id, walletBody(started))
-        assertThat(verified).isInstanceOf(FlowOutcome.Verified::class.java)
+        assertThat(verified.outcome).isInstanceOf(FlowOutcome.Verified::class.java)
 
         val attacker = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
-        assertThat(attacker).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
+        assertThat(attacker.outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
 
         // The attacker is owed an acknowledgement, and nothing else.
-        assertThat(flow.sameDeviceRedirectFor(started.id, attacker)).isNull()
+        assertThat(attacker.redirectUri).isNull()
 
-        // The verification itself is untouched: the wallet's own ack still carries the
-        // ticket, and the user completes the flow they started.
-        val redirect = checkNotNull(flow.sameDeviceRedirectFor(started.id, verified))
-        val code = redirect.substringAfter("response_code=")
+        // The verification itself is untouched: the wallet's own ack carries the ticket,
+        // and the user completes the flow they started.
+        val code = checkNotNull(verified.redirectUri).substringAfter("response_code=")
+        assertThat(verified.redirectUri).isEqualTo("https://rp.example/cb/${started.id.value}?response_code=$code")
         assertThat(flow.consumeResponseCode(started.id, code)).isTrue()
     }
 
@@ -56,7 +56,108 @@ class SameDeviceFlowTest : FlowTestSupport() {
         // back to the relying party rather than stranding them.
         val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
         val cancelled = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
-        assertThat(flow.sameDeviceRedirectFor(started.id, cancelled)).contains("response_code=")
+        assertThat(cancelled.redirectUri).contains("response_code=")
+    }
+
+    @Test
+    fun `only the call that recorded the outcome gets the return ticket, however it is guessed`() {
+        // The ticket used to go to whoever presented an outcome EQUAL to the recorded one.
+        // After a genuine cancellation, a second POST with the same `error` — access_denied
+        // is the only one a cancelling wallet sends — got the same response code, and could
+        // burn it on the callback before the user's own browser arrived.
+        val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        val wallet = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
+        val guessed = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
+        val other = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "server_error")))
+        assertThat(guessed.outcome).isEqualTo(wallet.outcome)
+        assertThat(wallet.redirectUri).contains("response_code=")
+        assertThat(guessed.redirectUri).isNull()
+        assertThat(other.redirectUri).isNull()
+        assertThat(flow.consumeResponseCode(started.id, wallet.redirectUri!!.substringAfter("response_code="))).isTrue()
+    }
+
+    @Test
+    fun `the return ticket does not depend on the store keeping the outcome bit for bit`() {
+        // The ticket was released only while the stored outcome EQUALLED the one the caller
+        // presented: a store that minimised what it kept — a shortened wallet description, a
+        // dropped detail — stranded the user who had cancelled in the wallet.
+        val minimising = MinimisingTransactionStore()
+        val minimisingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), minimising, clock)
+        val started =
+            minimisingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        val cancelled =
+            minimisingFlow.handleWalletResponse(
+                started.id,
+                DirectPostBody(mapOf("error" to "access_denied", "error_description" to "the holder declined")),
+            )
+        assertThat(minimising.get(started.id)?.outcome).isNotEqualTo(cancelled.outcome)
+        assertThat(cancelled.redirectUri).contains("response_code=")
+    }
+
+    @Test
+    fun `the acknowledgement reads nothing back from a store that reads from a replica`() {
+        // The ack wrote through compareAndUpdate and read back through get in the same
+        // request: a store whose get is served by a replica that has not caught up — the
+        // default read of several shared stores — left every same-device holder without a
+        // redirect, verified or cancelled.
+        val stale = StaleReplicaTransactionStore()
+        val staleFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), stale, clock)
+
+        val verifying =
+            staleFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        val body = walletBody(verifying, source = staleFlow)
+        val verified = staleFlow.handleWalletResponse(verifying.id, body)
+        assertThat(verified.outcome).isInstanceOf(FlowOutcome.Verified::class.java)
+        assertThat(verified.redirectUri).contains("response_code=")
+
+        val cancelling =
+            staleFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        val cancelled = staleFlow.handleWalletResponse(cancelling.id, DirectPostBody(mapOf("error" to "access_denied")))
+        assertThat(cancelled.redirectUri).contains("response_code=")
+    }
+
+    @Test
+    fun `a response code counts as consumed only if the store committed it`() {
+        // The decision came from a variable the update function set. A store may run that
+        // function and not commit its result — an optimistic store whose entry is removed
+        // between its read and its write returns null — and the flow then reported a
+        // consumption that never happened.
+        val interleaving = RemovedDuringUpdateStore(RetainingTransactionStore())
+        val interleavedFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), interleaving, clock)
+        val started =
+            interleavedFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        val handled = interleavedFlow.handleWalletResponse(started.id, walletBody(started, source = interleavedFlow))
+        val code = checkNotNull(handled.redirectUri).substringAfter("response_code=")
+        interleaving.removeDuringNextUpdate = true
+        assertThat(interleavedFlow.consumeResponseCode(started.id, code)).isFalse()
+        assertThat(interleaving.updatesRun).isPositive()
+    }
+
+    @Test
+    fun `a response code is consumed exactly once under contention`() {
+        val optimistic = OptimisticTransactionStore()
+        val optimisticFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), optimistic, clock)
+        val started =
+            optimisticFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        val handled = optimisticFlow.handleWalletResponse(started.id, walletBody(started, source = optimisticFlow))
+        val code = checkNotNull(handled.redirectUri).substringAfter("response_code=")
+        val pool =
+            java.util.concurrent.Executors
+                .newFixedThreadPool(CONTENDERS)
+        try {
+            val gate = java.util.concurrent.CountDownLatch(1)
+            val results =
+                (1..CONTENDERS).map {
+                    pool.submit<Boolean> {
+                        gate.await()
+                        optimisticFlow.consumeResponseCode(started.id, code)
+                    }
+                }
+            gate.countDown()
+            assertThat(results.count { it.get() }).isEqualTo(1)
+        } finally {
+            pool.shutdownNow()
+        }
     }
 
     @Test
@@ -67,8 +168,8 @@ class SameDeviceFlowTest : FlowTestSupport() {
         val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
         val started =
             retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
-        val verified = retainingFlow.handleWalletResponse(started.id, walletBody(started, source = retainingFlow))
-        checkNotNull(retainingFlow.sameDeviceRedirectFor(started.id, verified))
+        val handled = retainingFlow.handleWalletResponse(started.id, walletBody(started, source = retainingFlow))
+        val verified = handled.outcome
         val stored = checkNotNull(retaining.get(started.id))
         assertThat(stored.responseCode).isNotNull()
         assertThat(stored.outcome).isInstanceOf(FlowOutcome.Verified::class.java)
@@ -79,5 +180,10 @@ class SameDeviceFlowTest : FlowTestSupport() {
             .doesNotContain(stored.nonce, stored.responseCode, "Ada", "Lovelace")
         // The outcome on its own names the claims and nothing more.
         assertThat(verified.toString()).contains("given_name").doesNotContain("Ada", "Lovelace", "true")
+        assertThat(handled.toString()).doesNotContain(stored.responseCode, "Ada")
+    }
+
+    private companion object {
+        const val CONTENDERS = 32
     }
 }

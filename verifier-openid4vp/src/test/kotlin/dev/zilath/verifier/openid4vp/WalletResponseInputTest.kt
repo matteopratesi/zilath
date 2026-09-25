@@ -39,14 +39,14 @@ class WalletResponseInputTest : FlowTestSupport() {
     @Test
     fun `missing response parameter is rejected as malformed`() {
         val started = startForPid()
-        val outcome = flow.handleWalletResponse(started.id, DirectPostBody(emptyMap()))
+        val outcome = flow.handleWalletResponse(started.id, DirectPostBody(emptyMap())).outcome
         assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
     }
 
     @Test
     fun `garbage response is rejected as malformed`() {
         val started = startForPid()
-        val outcome = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("response" to "not-a-jwe")))
+        val outcome = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("response" to "not-a-jwe"))).outcome
         assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
     }
 
@@ -54,7 +54,7 @@ class WalletResponseInputTest : FlowTestSupport() {
     fun `response encrypted to the wrong key is rejected as malformed`() {
         val started = startForPid()
         val wrongKey = ECKeyGenerator(Curve.P_256).keyID("wrong").generate().toPublicJWK()
-        val outcome = flow.handleWalletResponse(started.id, walletBody(started, encryptTo = wrongKey))
+        val outcome = flow.handleWalletResponse(started.id, walletBody(started, encryptTo = wrongKey)).outcome
         assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
     }
 
@@ -74,7 +74,7 @@ class WalletResponseInputTest : FlowTestSupport() {
             )
         for (header in notAdvertised) {
             val started = startForPid()
-            val outcome = flow.handleWalletResponse(started.id, walletBody(started, jweHeader = header))
+            val outcome = flow.handleWalletResponse(started.id, walletBody(started, jweHeader = header)).outcome
             assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
         }
     }
@@ -83,7 +83,7 @@ class WalletResponseInputTest : FlowTestSupport() {
     fun `the advertised A128GCM alternative is accepted`() {
         val started = startForPid()
         val body = walletBody(started, jweHeader = JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A128GCM))
-        assertThat(flow.handleWalletResponse(started.id, body)).isInstanceOf(FlowOutcome.Verified::class.java)
+        assertThat(flow.handleWalletResponse(started.id, body).outcome).isInstanceOf(FlowOutcome.Verified::class.java)
     }
 
     @Test
@@ -93,38 +93,41 @@ class WalletResponseInputTest : FlowTestSupport() {
         // to be verified and the rest dropped unseen — here the second is not even ours.
         val two = startForPid()
         val extra =
-            flow.handleWalletResponse(
-                two.id,
-                walletBody(two, vpToken = { compact ->
-                    buildJsonObject {
-                        put(
-                            "pid",
-                            buildJsonArray {
-                                add(compact)
-                                add("not-a-presentation")
-                            },
-                        )
-                    }
-                }),
-            )
+            flow
+                .handleWalletResponse(
+                    two.id,
+                    walletBody(two, vpToken = { compact ->
+                        buildJsonObject {
+                            put(
+                                "pid",
+                                buildJsonArray {
+                                    add(compact)
+                                    add("not-a-presentation")
+                                },
+                            )
+                        }
+                    }),
+                ).outcome
         assertThat((extra as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
         assertThat(extra.detail).isEqualTo("vp_token carries more presentations than requested")
 
         val empty = startForPid()
         val none =
-            flow.handleWalletResponse(
-                empty.id,
-                walletBody(empty, vpToken = { buildJsonObject { put("pid", buildJsonArray { }) } }),
-            )
+            flow
+                .handleWalletResponse(
+                    empty.id,
+                    walletBody(empty, vpToken = { buildJsonObject { put("pid", buildJsonArray { }) } }),
+                ).outcome
         assertThat((none as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
 
         // IT-Wallet WP_093: the single presentation may also come without the array.
         val single = startForPid()
         val unwrapped =
-            flow.handleWalletResponse(
-                single.id,
-                walletBody(single, vpToken = { compact -> buildJsonObject { put("pid", compact) } }),
-            )
+            flow
+                .handleWalletResponse(
+                    single.id,
+                    walletBody(single, vpToken = { compact -> buildJsonObject { put("pid", compact) } }),
+                ).outcome
         assertThat(unwrapped).isInstanceOf(FlowOutcome.Verified::class.java)
     }
 
@@ -133,7 +136,12 @@ class WalletResponseInputTest : FlowTestSupport() {
         // IT-Wallet: the vp_token MUST be a JSON object keyed by credential query id. The
         // ARF baseline profile keeps the pre-1.0 form (see the ARF profile test below).
         val started = startForPid()
-        val outcome = flow.handleWalletResponse(started.id, walletBody(started, vpToken = { JsonPrimitive(it) }))
+        val outcome =
+            flow
+                .handleWalletResponse(
+                    started.id,
+                    walletBody(started, vpToken = { JsonPrimitive(it) }),
+                ).outcome
         assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
         assertThat(ItWalletProfile.acceptsBareVpToken).isFalse()
         assertThat(ArfBaselineProfile.acceptsBareVpToken).isTrue()
@@ -169,14 +177,14 @@ class WalletResponseInputTest : FlowTestSupport() {
 
         val over = starter.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
         val overBody = walletBody(over, source = starter)
-        val refused = limitedTo(lengthOf(overBody) - 1).handleWalletResponse(over.id, overBody)
+        val refused = limitedTo(lengthOf(overBody) - 1).handleWalletResponse(over.id, overBody).outcome
         assertThat((refused as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
         assertThat(refused.detail).isEqualTo("wallet response exceeds the size limit")
         assertThat(decoded.get()).isZero()
 
         val at = starter.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
         val atBody = walletBody(at, source = starter)
-        assertThat(limitedTo(lengthOf(atBody)).handleWalletResponse(at.id, atBody))
+        assertThat(limitedTo(lengthOf(atBody)).handleWalletResponse(at.id, atBody).outcome)
             .isInstanceOf(FlowOutcome.Verified::class.java)
         assertThat(decoded.get()).isEqualTo(1)
 
@@ -193,7 +201,11 @@ class WalletResponseInputTest : FlowTestSupport() {
         val flood = startForPid()
         val huge = "e".repeat(1_000_000)
         val flooded =
-            flow.handleWalletResponse(flood.id, DirectPostBody(mapOf("error" to huge, "error_description" to huge)))
+            flow
+                .handleWalletResponse(
+                    flood.id,
+                    DirectPostBody(mapOf("error" to huge, "error_description" to huge)),
+                ).outcome
         val kept = flow.awaitOutcome(flood.id) as FlowOutcome.WalletErrorAcknowledged
         assertThat(kept).isEqualTo(flooded)
         assertThat(kept.error).isEqualTo(FlowOutcome.WalletErrorAcknowledged.MALFORMED_ERROR)
@@ -203,30 +215,32 @@ class WalletResponseInputTest : FlowTestSupport() {
         // description keeps its length with the offending characters replaced.
         val forged = startForPid()
         val injected =
-            flow.handleWalletResponse(
-                forged.id,
-                DirectPostBody(
-                    mapOf(
-                        "error" to "access_denied\r\nX",
-                        "error_description" to "line\r\n2026-09-04 WARN forged \"quote\" \\ ok",
+            flow
+                .handleWalletResponse(
+                    forged.id,
+                    DirectPostBody(
+                        mapOf(
+                            "error" to "access_denied\r\nX",
+                            "error_description" to "line\r\n2026-09-04 WARN forged \"quote\" \\ ok",
+                        ),
                     ),
-                ),
-            ) as FlowOutcome.WalletErrorAcknowledged
+                ).outcome as FlowOutcome.WalletErrorAcknowledged
         assertThat(injected.error).isEqualTo(FlowOutcome.WalletErrorAcknowledged.MALFORMED_ERROR)
         assertThat(injected.description).isEqualTo("line??2026-09-04 WARN forged ?quote? ? ok")
 
         // A description with nothing printable left is no description.
         val blank = startForPid()
         val control =
-            flow.handleWalletResponse(
-                blank.id,
-                DirectPostBody(
-                    mapOf(
-                        "error" to "access_denied",
-                        "error_description" to " ",
+            flow
+                .handleWalletResponse(
+                    blank.id,
+                    DirectPostBody(
+                        mapOf(
+                            "error" to "access_denied",
+                            "error_description" to " ",
+                        ),
                     ),
-                ),
-            )
+                ).outcome
         assertThat(control).isEqualTo(FlowOutcome.WalletErrorAcknowledged("access_denied", null))
     }
 }

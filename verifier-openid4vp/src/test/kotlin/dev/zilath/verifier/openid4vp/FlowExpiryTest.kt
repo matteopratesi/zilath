@@ -37,7 +37,7 @@ class FlowExpiryTest : FlowTestSupport() {
         // The transaction still answers after expiry, so "expired" stays distinguishable
         // from "never existed". What it no longer answers with is the claims.
         val started = startForPid()
-        flow.handleWalletResponse(started.id, walletBody(started))
+        flow.handleWalletResponse(started.id, walletBody(started)).outcome
         clock.advance(Duration.ofMinutes(6))
         val outcome = flow.awaitOutcome(started.id)
         assertThat(outcome).isNotInstanceOf(FlowOutcome.Verified::class.java)
@@ -52,10 +52,11 @@ class FlowExpiryTest : FlowTestSupport() {
         // answers Expired whatever the tombstone did, so that version of this test would
         // have passed with the redaction removed — it would have tested nothing.
         val started = startForPid()
-        flow.handleWalletResponse(
-            started.id,
-            DirectPostBody(mapOf("error" to "access_denied", "error_description" to "user said no")),
-        )
+        flow
+            .handleWalletResponse(
+                started.id,
+                DirectPostBody(mapOf("error" to "access_denied", "error_description" to "user said no")),
+            ).outcome
         clock.advance(Duration.ofMinutes(6))
         val outcome = flow.awaitOutcome(started.id)
         assertThat(outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
@@ -90,7 +91,7 @@ class FlowExpiryTest : FlowTestSupport() {
         // until the store drops it, so later reads still say "expired", never "unknown" —
         // and never carry anything the transaction held.
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
-        assertThat(flow.handleWalletResponse(started.id, body)).isEqualTo(FlowOutcome.Expired)
+        assertThat(flow.handleWalletResponse(started.id, body).outcome).isEqualTo(FlowOutcome.Expired)
         assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
         assertThat(flow.requestJwtFor(started.id)).isNull()
     }
@@ -98,20 +99,18 @@ class FlowExpiryTest : FlowTestSupport() {
     @Test
     fun `an unreturned same-device outcome expires instead of leaking`() {
         val started = flow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
-        val outcome =
-            flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
-        assertThat(outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
-        val redirect = checkNotNull(flow.sameDeviceRedirectFor(started.id, outcome))
-        val code = redirect.substringAfter("response_code=")
+        val handled = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
+        assertThat(handled.outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
+        val code = checkNotNull(handled.redirectUri).substringAfter("response_code=")
         // The user never comes back within the transaction TTL.
         clock.advance(config.transactionTimeToLive.plusSeconds(1))
-        // No new code is minted for an expired transaction.
-        assertThat(flow.sameDeviceRedirectFor(started.id, outcome)).isNull()
-        // The stale code is not consumable, and the wallet outcome is never exposed:
-        // the first read after expiry took the entry, so what is left is Unknown.
-        assertThat(flow.awaitOutcome(started.id)).isIn(FlowOutcome.Expired, FlowOutcome.Unknown)
+        // No code is handed out for an expired transaction, not even to a later error.
+        assertThat(flow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied"))).redirectUri)
+            .isNull()
+        // The stale code is not consumable, and the wallet outcome is never exposed.
+        assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
         assertThat(flow.consumeResponseCode(started.id, code)).isFalse()
-        assertThat(flow.awaitOutcome(started.id)).isIn(FlowOutcome.Expired, FlowOutcome.Unknown)
+        assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Expired)
     }
 
     @Test
@@ -123,13 +122,12 @@ class FlowExpiryTest : FlowTestSupport() {
         val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
 
         val crossDevice = retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"))
-        retainingFlow.handleWalletResponse(crossDevice.id, walletBody(crossDevice, source = retainingFlow))
+        retainingFlow.handleWalletResponse(crossDevice.id, walletBody(crossDevice, source = retainingFlow)).outcome
 
         val sameDevice =
             retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
-        val verified = retainingFlow.handleWalletResponse(sameDevice.id, walletBody(sameDevice, source = retainingFlow))
-        val code =
-            checkNotNull(retainingFlow.sameDeviceRedirectFor(sameDevice.id, verified)).substringAfter("response_code=")
+        val handled = retainingFlow.handleWalletResponse(sameDevice.id, walletBody(sameDevice, source = retainingFlow))
+        val code = checkNotNull(handled.redirectUri).substringAfter("response_code=")
         assertThat(retainingFlow.consumeResponseCode(sameDevice.id, code)).isTrue()
         assertThat(retainingFlow.awaitOutcome(sameDevice.id)).isInstanceOf(FlowOutcome.Verified::class.java)
 
@@ -154,13 +152,14 @@ class FlowExpiryTest : FlowTestSupport() {
         val presentation = walletBody(presented)
         clock.advance(config.transactionTimeToLive.plusSeconds(1))
         val ack =
-            flow.handleWalletResponse(
-                erred.id,
-                DirectPostBody(mapOf("error" to "access_denied", "error_description" to "too late")),
-            )
+            flow
+                .handleWalletResponse(
+                    erred.id,
+                    DirectPostBody(mapOf("error" to "access_denied", "error_description" to "too late")),
+                ).outcome
         // Still acknowledged to the wallet: OpenID4VP §8.2 owes the error an answer.
         assertThat(ack).isEqualTo(FlowOutcome.WalletErrorAcknowledged("access_denied", "too late"))
-        assertThat(flow.handleWalletResponse(presented.id, presentation)).isEqualTo(FlowOutcome.Expired)
+        assertThat(flow.handleWalletResponse(presented.id, presentation).outcome).isEqualTo(FlowOutcome.Expired)
         assertThat(flow.awaitOutcome(erred.id)).isEqualTo(FlowOutcome.Expired)
         assertThat(flow.awaitOutcome(presented.id)).isEqualTo(FlowOutcome.Expired)
     }
@@ -188,9 +187,11 @@ class FlowExpiryTest : FlowTestSupport() {
         val started =
             retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
         val cancelled =
-            retainingFlow.handleWalletResponse(started.id, DirectPostBody(mapOf("error" to "access_denied")))
-        val code =
-            checkNotNull(retainingFlow.sameDeviceRedirectFor(started.id, cancelled)).substringAfter("response_code=")
+            retainingFlow.handleWalletResponse(
+                started.id,
+                DirectPostBody(mapOf("error" to "access_denied")),
+            )
+        val code = checkNotNull(cancelled.redirectUri).substringAfter("response_code=")
         clock.advance(config.transactionTimeToLive.plusSeconds(1))
         // The retained entry is findable, but the stale code must not complete the flow.
         assertThat(retainingFlow.consumeResponseCode(started.id, code)).isFalse()

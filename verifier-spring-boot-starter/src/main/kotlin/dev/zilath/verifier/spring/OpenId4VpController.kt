@@ -18,6 +18,7 @@ package dev.zilath.verifier.spring
 
 import dev.zilath.verifier.openid4vp.DirectPostBody
 import dev.zilath.verifier.openid4vp.FlowOutcome
+import dev.zilath.verifier.openid4vp.HandledResponse
 import dev.zilath.verifier.openid4vp.TransactionId
 import dev.zilath.verifier.openid4vp.VerificationFlow
 import org.springframework.http.MediaType
@@ -62,21 +63,16 @@ class OpenId4VpController(
     fun walletResponse(
         @PathVariable txId: String,
         @RequestParam parameters: MultiValueMap<String, String>,
-    ): ResponseEntity<Map<String, String>> =
-        when (
-            val outcome =
-                flow.handleWalletResponse(
-                    TransactionId(txId),
-                    DirectPostBody(parameters.toSingleValueMap()),
-                )
-        ) {
-            is FlowOutcome.Verified -> ResponseEntity.ok(ackBody(txId, outcome))
+    ): ResponseEntity<Map<String, String>> {
+        val handled = flow.handleWalletResponse(TransactionId(txId), DirectPostBody(parameters.toSingleValueMap()))
+        return when (val outcome = handled.outcome) {
+            is FlowOutcome.Verified -> ResponseEntity.ok(ackBody(handled))
             is FlowOutcome.WalletErrorAcknowledged -> {
                 // OpenID4VP direct_post: wallet error responses are acknowledged with 200.
                 // In the same-device flow the ack still carries the redirect_uri, so the
                 // user lands back on the RP even after cancelling in the wallet (RPR-59).
                 logger.info("wallet error response acknowledged: {}", forLog(outcome.error))
-                ResponseEntity.ok(ackBody(txId, outcome))
+                ResponseEntity.ok(ackBody(handled))
             }
             is FlowOutcome.Rejected -> {
                 // detail is a server-side diagnostic: only the reason code reaches the wallet.
@@ -87,17 +83,15 @@ class OpenId4VpController(
             FlowOutcome.Pending -> badRequest("response not processable")
             FlowOutcome.Unknown -> ResponseEntity.notFound().build()
         }
+    }
 
     /**
-     * Same-device transactions are acknowledged with their redirect_uri (spec v1.4.6).
-     * [outcome] is the one this request just produced, and it is what entitles this
-     * caller to the return ticket — see [VerificationFlow.sameDeviceRedirectFor].
+     * Same-device transactions are acknowledged with their redirect_uri (spec v1.4.6), which
+     * the flow hands only to the request whose response recorded the outcome — see
+     * [dev.zilath.verifier.openid4vp.HandledResponse.redirectUri].
      */
-    private fun ackBody(
-        txId: String,
-        outcome: FlowOutcome,
-    ): Map<String, String> =
-        flow.sameDeviceRedirectFor(TransactionId(txId), outcome)?.let { mapOf("redirect_uri" to it) } ?: emptyMap()
+    private fun ackBody(handled: HandledResponse): Map<String, String> =
+        handled.redirectUri?.let { mapOf("redirect_uri" to it) } ?: emptyMap()
 
     /**
      * Anyone who knows a transaction id can put an arbitrary string in `error` and have it

@@ -67,6 +67,11 @@ interface VerificationFlow {
      * yields [RejectionReason.REPLAY] rather than a second success. The returned outcome is
      * also what [awaitOutcome] will report from now on.
      *
+     * The result also carries what the acknowledgement to the wallet needs: for a
+     * same-device transaction, the `redirect_uri` with its single-use `response_code` —
+     * minted by, and handed to, ONLY the call whose response recorded the outcome (see
+     * [HandledResponse.redirectUri]).
+     *
      * Note for the endpoint on top of this: a [FlowOutcome.WalletErrorAcknowledged] must
      * be answered with HTTP 200, because OpenID4VP wants the error acknowledged rather
      * than re-reported. The status code an endpoint returns is in any case addressed to
@@ -75,31 +80,10 @@ interface VerificationFlow {
     fun handleWalletResponse(
         txId: TransactionId,
         body: DirectPostBody,
-    ): FlowOutcome
+    ): HandledResponse
 
     /** Non-blocking snapshot of the transaction outcome, meant for checkout polling. */
     fun awaitOutcome(txId: TransactionId): FlowOutcome
-
-    /**
-     * The same-device `redirect_uri` for the wallet response acknowledgement (spec
-     * v1.4.6, remote flow): callback base + a single-use `response_code`.
-     *
-     * [outcome] must be the outcome [handleWalletResponse] just returned to this caller,
-     * and the code is released only when it still matches the one recorded on the
-     * transaction. That parameter is the security boundary, not a convenience: without it
-     * any acknowledgement — including the one owed to an unauthenticated `error` POST —
-     * would hand out the return ticket for whatever outcome the transaction happened to
-     * hold, which for a completed same-device verification is somebody's verified
-     * entitlement.
-     *
-     * Null for cross-device transactions, for a transaction with no recorded outcome, for
-     * one whose return leg is already done or expired, and for any caller presenting an
-     * outcome that is not the recorded one. Idempotent for the caller it belongs to.
-     */
-    fun sameDeviceRedirectFor(
-        txId: TransactionId,
-        outcome: FlowOutcome,
-    ): String?
 
     /**
      * Completes the same-device return leg of [txId] with its single-use `code`, in one
@@ -111,6 +95,34 @@ interface VerificationFlow {
         txId: TransactionId,
         code: String,
     ): Boolean
+}
+
+/**
+ * What [VerificationFlow.handleWalletResponse] did with one wallet POST: the [outcome], and
+ * what the acknowledgement to the wallet carries.
+ */
+data class HandledResponse(
+    val outcome: FlowOutcome,
+    /**
+     * The same-device `redirect_uri` for the acknowledgement (IT-Wallet 1.4.6 remote flow,
+     * WP_094): callback base, transaction id, and a single-use `response_code` — the return
+     * ticket of the user-agent that completed the presentation.
+     *
+     * Present only for the call whose response RECORDED the transaction's outcome, which
+     * is exactly one call per transaction: the code is minted in the same atomic update that
+     * records the outcome. Null for cross-device transactions, for a replay, for an error
+     * posted after the outcome was reached or after expiry. Anyone knowing the transaction
+     * id may post an `error`; that request is owed an acknowledgement, never a return ticket.
+     * The fourth internal review found the ticket handed to whichever later caller presented
+     * an outcome EQUAL to the recorded one — `access_denied`, the only error a cancelling
+     * wallet sends, is easy to guess — and lost for the legitimate user whenever a store did
+     * not keep the outcome bit for bit, or served the read-back from a lagging replica.
+     */
+    val redirectUri: String? = null,
+) {
+    /** The redirect carries a bearer code: say whether there is one, never what it is. */
+    override fun toString(): String =
+        "HandledResponse(outcome=$outcome, redirectUri=${if (redirectUri == null) "none" else "set"})"
 }
 
 /** How the user reaches the wallet: QR on another device, or a link on the same one. */

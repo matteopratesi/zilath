@@ -87,7 +87,7 @@ class OpenId4VpVerificationFlow(
     override fun handleWalletResponse(
         txId: TransactionId,
         body: DirectPostBody,
-    ): FlowOutcome {
+    ): HandledResponse {
         val now = clock.instant()
         // An expired transaction's nonce is not consumed: nothing may complete it any more.
         val before =
@@ -97,7 +97,7 @@ class OpenId4VpVerificationFlow(
                 } else {
                     current
                 }
-            } ?: return FlowOutcome.Unknown
+            } ?: return HandledResponse(FlowOutcome.Unknown)
         val walletError = body.parameters["error"]?.let { walletErrorOf(it, body.parameters["error_description"]) }
         return when {
             // Expiry first, whatever was posted. An error is still acknowledged to the wallet
@@ -107,15 +107,15 @@ class OpenId4VpVerificationFlow(
             // presentation next to it read "unknown". Both now read Expired.
             before.isExpired(now) -> {
                 store.redactIfExpired(txId, now)
-                walletError ?: FlowOutcome.Expired
+                HandledResponse(walletError ?: FlowOutcome.Expired)
             }
             // OpenID4VP §8.2: an authorization ERROR response is acknowledged, always. It
             // grants nothing, so its state does not matter — and `record` refuses to clobber
             // an outcome that was already reached.
-            walletError != null -> walletError.also { record(txId, before, it) }
+            walletError != null -> HandledResponse(walletError, record(txId, before, walletError))
             before.state != TransactionState.CREATED ->
-                FlowOutcome.Rejected(RejectionReason.REPLAY, "transaction nonce already consumed")
-            else -> verifyResponse(before, body).also { record(txId, before, it) }
+                HandledResponse(FlowOutcome.Rejected(RejectionReason.REPLAY, "transaction nonce already consumed"))
+            else -> verifyResponse(before, body).let { HandledResponse(it, record(txId, before, it)) }
         }
     }
 
@@ -137,63 +137,26 @@ class OpenId4VpVerificationFlow(
         }
     }
 
-    override fun sameDeviceRedirectFor(
-        txId: TransactionId,
-        outcome: FlowOutcome,
-    ): String? {
-        val callbackBase = config.endpoints.sameDeviceCallbackBase
-        val transaction = store.get(txId)
-        // The redirect exists only for a same-device transaction whose response has
-        // been processed: the ack to the wallet is the only place it belongs. After the
-        // return leg no further redirect exists, and an expired transaction gets no
-        // code either — its callback could never complete the flow.
-        //
-        // And the caller must present the outcome it was just handed. Anyone can POST an
-        // `error` to the response endpoint knowing only the transaction id; that request
-        // is owed an acknowledgement, but it is owed nothing about a verification someone
-        // else's wallet completed. Without this equality the ack would mint and return
-        // that person's return ticket to whoever asked.
-        val eligible =
-            callbackBase != null &&
-                transaction != null &&
-                transaction.mode == FlowMode.SAME_DEVICE &&
-                transaction.outcome != null &&
-                transaction.outcome == outcome &&
-                !transaction.returned &&
-                !transaction.isExpired(clock.instant())
-        if (!eligible) return null
-        val code = transaction.responseCode ?: assignResponseCode(txId)
-        // The session id travels as the last path segment, the code as the query: the
-        // callback can then reject an unknown session apart from an invalid code.
-        return code?.let { "$callbackBase/${txId.value}?response_code=$it" }
-    }
-
-    /** Idempotent under concurrency: whoever sets the code first wins. */
-    private fun assignResponseCode(txId: TransactionId): String? {
-        val fresh = randomToken(RESPONSE_CODE_BYTES)
-        store.compareAndUpdate(txId) { current ->
-            if (current.responseCode == null && !current.returned) current.copy(responseCode = fresh) else current
-        }
-        return store.get(txId)?.responseCode
-    }
-
     override fun consumeResponseCode(
         txId: TransactionId,
         code: String,
     ): Boolean {
         if (code.isBlank()) return false
-        // The decision is taken INSIDE the atomic update, once, and the code must belong
-        // to THIS transaction: presenting another transaction's code here leaves it
-        // untouched, so its own return leg still works.
-        var consumed = false
-        store.compareAndUpdate(txId) { current ->
-            val eligible =
-                current.responseCode == code &&
-                    !current.isExpired(clock.instant())
-            consumed = eligible
-            if (eligible) current.copy(responseCode = null, returned = true) else current
-        }
-        return consumed
+        val now = clock.instant()
+
+        // The code must belong to THIS transaction: presenting another transaction's code
+        // here leaves it untouched, so its own return leg still works.
+        fun redeemable(transaction: Transaction) =
+            !transaction.isExpired(now) && transaction.responseCode?.let { secretsEqual(it, code) } == true
+        // Decided from the value the store replaced, not from a variable the update function
+        // set: a store may run that function and then not commit its result — an optimistic
+        // store whose entry was removed in between returns null — and a side effect of the
+        // function would then report a consumption that never happened.
+        val previous =
+            store.compareAndUpdate(txId) { current ->
+                if (redeemable(current)) current.copy(responseCode = null, returned = true) else current
+            }
+        return previous != null && redeemable(previous)
     }
 
     private fun verifyResponse(
@@ -245,24 +208,47 @@ class OpenId4VpVerificationFlow(
             }
         }
 
+    /**
+     * Records [outcome] as the transaction's and returns its same-device redirect, if any.
+     *
+     * Only the call that consumed the nonce ([before] was CREATED) records, once; a replay
+     * or a later error returns null without touching anything. The response code is minted
+     * HERE, in the same atomic update that records the outcome, and handed back from this
+     * call's own values: nothing is read back through [TransactionStore.get], which on a
+     * store reading from a replica need not see the update yet, and nothing depends on the
+     * stored outcome being equal to this one.
+     */
     private fun record(
         txId: TransactionId,
         before: Transaction,
         outcome: FlowOutcome,
-    ) {
-        when {
-            // A replayed response must not clobber the first, recorded outcome.
-            before.state != TransactionState.CREATED -> Unit
-            else ->
-                store.compareAndUpdate(txId) { current ->
-                    val state =
-                        when (outcome) {
-                            is FlowOutcome.Verified -> TransactionState.VERIFIED
-                            else -> TransactionState.REJECTED
-                        }
-                    current.copy(state = state, outcome = outcome)
+    ): String? {
+        // A replayed response must not clobber the first, recorded outcome.
+        if (before.state != TransactionState.CREATED) return null
+        val now = clock.instant()
+        val callbackBase = config.endpoints.sameDeviceCallbackBase?.takeIf { before.mode == FlowMode.SAME_DEVICE }
+        val code = callbackBase?.let { randomToken(RESPONSE_CODE_BYTES) }
+        val state = if (outcome is FlowOutcome.Verified) TransactionState.VERIFIED else TransactionState.REJECTED
+
+        fun recordable(transaction: Transaction) =
+            transaction.state == TransactionState.PRESENTED && transaction.outcome == null
+        val previous =
+            store.compareAndUpdate(txId) { current ->
+                if (recordable(current)) {
+                    // An expired transaction gets no code: its callback could never complete the flow.
+                    current.copy(
+                        state = state,
+                        outcome = outcome,
+                        responseCode = code.takeUnless { current.isExpired(now) },
+                    )
+                } else {
+                    current
                 }
-        }
+            }
+        val deliverable = previous != null && recordable(previous) && !previous.isExpired(now)
+        // The session id travels as the last path segment, the code as the query: the
+        // callback can then reject an unknown session apart from an invalid code.
+        return code?.takeIf { deliverable }?.let { "$callbackBase/${txId.value}?response_code=$it" }
     }
 
     companion object {

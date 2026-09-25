@@ -74,6 +74,7 @@ class CedSimFlowTest {
         )
     private val flow = OpenId4VpVerificationFlow.withInMemoryStore(config, SdJwtVcCredentialVerifier(), clock)
     private var lastStartedId: dev.zilath.verifier.openid4vp.TransactionId? = null
+    private var lastHandled: dev.zilath.verifier.openid4vp.HandledResponse? = null
 
     private fun encryptionKeyOf(clientMetadata: Map<String, Any?>): JWK {
         val jwks = clientMetadata["jwks"] as Map<*, *>
@@ -109,7 +110,9 @@ class CedSimFlowTest {
                 presentation,
                 encryptionKeyOf(claims.getJSONObjectClaim("client_metadata")),
             )
-        return flow.handleWalletResponse(started.id, DirectPostBody(mapOf("response" to response)))
+        val handled = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("response" to response)))
+        lastHandled = handled
+        return handled.outcome
     }
 
     @Test
@@ -170,10 +173,9 @@ class CedSimFlowTest {
         val outcome = presentSimulatedCed(keys, mode = FlowMode.SAME_DEVICE)
         assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
         val txId = lastTransactionId()
-        val redirect = flow.sameDeviceRedirectFor(txId, outcome)
+        // The acknowledgement of the wallet's own response carries the return ticket.
+        val redirect = checkNotNull(lastHandled).redirectUri
         assertThat(redirect).startsWith("https://demo.zilath.example/cb/${txId.value}?response_code=")
-        // Idempotent while unconsumed, single-use once exchanged.
-        assertThat(flow.sameDeviceRedirectFor(txId, outcome)).isEqualTo(redirect)
         // WP_094: same-device outcomes stay pending until the user-agent comes back.
         assertThat(flow.awaitOutcome(txId)).isEqualTo(FlowOutcome.Pending)
         val code = redirect!!.substringAfter("response_code=")
@@ -190,7 +192,8 @@ class CedSimFlowTest {
         assertThat(flow.consumeResponseCode(txId, code)).isTrue()
         assertThat(flow.consumeResponseCode(txId, code)).isFalse()
         // A consumed code is never re-minted, and the outcome is now observable.
-        assertThat(flow.sameDeviceRedirectFor(txId, outcome)).isNull()
+        assertThat(flow.handleWalletResponse(txId, DirectPostBody(mapOf("error" to "access_denied"))).redirectUri)
+            .isNull()
         assertThat(flow.awaitOutcome(txId)).isInstanceOf(FlowOutcome.Verified::class.java)
     }
 
@@ -215,21 +218,22 @@ class CedSimFlowTest {
     @Test
     fun `a cross-device transaction never yields a same-device redirect`() {
         val outcome = presentSimulatedCed(keys)
-        assertThat(flow.sameDeviceRedirectFor(lastTransactionId(), outcome)).isNull()
+        assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
+        assertThat(checkNotNull(lastHandled).redirectUri).isNull()
     }
 
     @Test
     fun `a wallet cancellation in same-device still gets the redirect back`() {
         val request = PresentationRequest.forVct(CedSim.VCT, CedSim.CLAIM_PATHS, CedSim.CREDENTIAL_QUERY_ID)
         val started = flow.start(request, FlowMode.SAME_DEVICE)
-        val outcome =
+        val handled =
             flow.handleWalletResponse(
                 started.id,
                 DirectPostBody(mapOf("error" to "access_denied")),
             )
-        assertThat(outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
+        assertThat(handled.outcome).isInstanceOf(FlowOutcome.WalletErrorAcknowledged::class.java)
         // RPR-59: the user who cancelled in the wallet must still land back on the RP.
-        assertThat(flow.sameDeviceRedirectFor(started.id, outcome)).contains("response_code=")
+        assertThat(handled.redirectUri).contains("response_code=")
     }
 
     private fun lastTransactionId(): dev.zilath.verifier.openid4vp.TransactionId {

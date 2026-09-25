@@ -25,6 +25,7 @@ import dev.zilath.verifier.core.TrustEvaluator
 import dev.zilath.verifier.openid4vp.DirectPostBody
 import dev.zilath.verifier.openid4vp.FlowMode
 import dev.zilath.verifier.openid4vp.FlowOutcome
+import dev.zilath.verifier.openid4vp.HandledResponse
 import dev.zilath.verifier.openid4vp.PresentationRequest
 import dev.zilath.verifier.openid4vp.RelyingPartyConfiguration
 import dev.zilath.verifier.openid4vp.RpEndpoints
@@ -63,15 +64,10 @@ class SameDeviceCallbackTest {
         override fun handleWalletResponse(
             txId: TransactionId,
             body: DirectPostBody,
-        ): FlowOutcome = FlowOutcome.Unknown
+        ): HandledResponse = HandledResponse(FlowOutcome.Unknown)
 
         override fun awaitOutcome(txId: TransactionId): FlowOutcome =
             if (txId == knownId) FlowOutcome.Pending else FlowOutcome.Unknown
-
-        override fun sameDeviceRedirectFor(
-            txId: TransactionId,
-            outcome: FlowOutcome,
-        ): String? = null
 
         override fun consumeResponseCode(
             txId: TransactionId,
