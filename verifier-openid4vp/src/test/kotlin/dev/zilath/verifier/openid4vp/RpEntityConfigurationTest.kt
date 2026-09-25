@@ -181,6 +181,7 @@ class RpEntityConfigurationTest {
                 createdAt = clock.instant(),
                 expiresAt = clock.instant().plusSeconds(300),
                 request = PresentationRequest.forTestPid("urn:eudi:pid:it:1"),
+                pollTokenHash = "hash",
             )
         val jar = SignedJWT.parse(buildRequestJwt(withChain, transaction, clock.instant()))
         assertThat(jar.header.getCustomParam("trust_chain")).isEqualTo(chain)

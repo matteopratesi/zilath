@@ -126,6 +126,11 @@ data class Transaction(
      */
     val expiresAt: Instant,
     val request: PresentationRequest,
+    /**
+     * The hash of the [PollToken] that reads this transaction's outcome (base64url SHA-256):
+     * the token itself is never stored, so neither a store nor its backups can read with it.
+     */
+    val pollTokenHash: String,
     val outcome: FlowOutcome? = null,
     val mode: FlowMode = FlowMode.CROSS_DEVICE,
     /** Single-use same-device return code; cleared when consumed. */

@@ -58,6 +58,7 @@ class OpenId4VpVerificationFlow(
         }
         val id = TransactionId(randomToken(TRANSACTION_ID_BYTES))
         val nonce = randomToken(NONCE_BYTES)
+        val pollToken = PollToken(randomToken(POLL_TOKEN_BYTES))
         val now = clock.instant()
         store.put(
             Transaction(
@@ -67,11 +68,12 @@ class OpenId4VpVerificationFlow(
                 createdAt = now,
                 expiresAt = now.plus(config.transactionTimeToLive),
                 request = request,
+                pollTokenHash = pollTokenHashOf(pollToken.value),
                 mode = mode,
             ),
         )
         val requestUri = "${config.endpoints.requestUriBase}/${id.value}"
-        return StartedTransaction(id, requestUri, qrPayloadOf(config, requestUri))
+        return StartedTransaction(id, requestUri, qrPayloadOf(config, requestUri), pollToken)
     }
 
     override fun requestJwtFor(txId: TransactionId): String? {
@@ -119,9 +121,16 @@ class OpenId4VpVerificationFlow(
         }
     }
 
-    override fun awaitOutcome(txId: TransactionId): FlowOutcome {
+    override fun awaitOutcome(
+        txId: TransactionId,
+        pollToken: PollToken,
+    ): FlowOutcome {
         val now = clock.instant()
-        val transaction = store.get(txId) ?: return FlowOutcome.Unknown
+        // A wrong token and an unknown id answer alike: the read is no oracle for which ids
+        // exist, and the id alone — public, in the QR — reads nothing.
+        val transaction =
+            store.get(txId)?.takeIf { secretsEqual(it.pollTokenHash, pollTokenHashOf(pollToken.value)) }
+                ?: return FlowOutcome.Unknown
         return when {
             // Expiry is checked FIRST, here as on every other path. It used to come after the
             // recorded outcome, which was returned as it stood: the redaction was left to the
@@ -140,8 +149,8 @@ class OpenId4VpVerificationFlow(
     override fun consumeResponseCode(
         txId: TransactionId,
         code: String,
-    ): Boolean {
-        if (code.isBlank()) return false
+    ): PollToken? {
+        if (code.isBlank()) return null
         val now = clock.instant()
 
         // The code must belong to THIS transaction: presenting another transaction's code
@@ -152,11 +161,19 @@ class OpenId4VpVerificationFlow(
         // set: a store may run that function and then not commit its result — an optimistic
         // store whose entry was removed in between returns null — and a side effect of the
         // function would then report a consumption that never happened.
+        // The read right moves to the user-agent that came back with the code: the token
+        // issued at start — held by whoever STARTED the transaction, who in a session
+        // fixation is not the person whose wallet answered — stops reading anything.
+        val reader = PollToken(randomToken(POLL_TOKEN_BYTES))
         val previous =
             store.compareAndUpdate(txId) { current ->
-                if (redeemable(current)) current.copy(responseCode = null, returned = true) else current
+                if (redeemable(current)) {
+                    current.copy(responseCode = null, returned = true, pollTokenHash = pollTokenHashOf(reader.value))
+                } else {
+                    current
+                }
             }
-        return previous != null && redeemable(previous)
+        return reader.takeIf { previous != null && redeemable(previous) }
     }
 
     private fun verifyResponse(
@@ -261,6 +278,9 @@ class OpenId4VpVerificationFlow(
 
         /** The same-device response_code is a bearer return ticket: same entropy as the nonce. */
         private const val RESPONSE_CODE_BYTES = 32
+
+        /** The right to read an outcome: same entropy again. */
+        private const val POLL_TOKEN_BYTES = 32
 
         /**
          * Convenience factory wiring the default in-memory store, which the flow owns and

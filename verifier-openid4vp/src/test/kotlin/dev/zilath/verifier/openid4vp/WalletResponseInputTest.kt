@@ -206,7 +206,7 @@ class WalletResponseInputTest : FlowTestSupport() {
                     flood.id,
                     DirectPostBody(mapOf("error" to huge, "error_description" to huge)),
                 ).outcome
-        val kept = flow.awaitOutcome(flood.id) as FlowOutcome.WalletErrorAcknowledged
+        val kept = flow.awaitOutcome(flood.id, flood.pollToken) as FlowOutcome.WalletErrorAcknowledged
         assertThat(kept).isEqualTo(flooded)
         assertThat(kept.error).isEqualTo(FlowOutcome.WalletErrorAcknowledged.MALFORMED_ERROR)
         assertThat(kept.description).hasSize(MAX_ERROR_DESCRIPTION_LENGTH)

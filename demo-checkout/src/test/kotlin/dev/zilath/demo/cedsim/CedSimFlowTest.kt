@@ -74,6 +74,7 @@ class CedSimFlowTest {
         )
     private val flow = OpenId4VpVerificationFlow.withInMemoryStore(config, SdJwtVcCredentialVerifier(), clock)
     private var lastStartedId: dev.zilath.verifier.openid4vp.TransactionId? = null
+    private var lastPollToken: dev.zilath.verifier.openid4vp.PollToken? = null
     private var lastHandled: dev.zilath.verifier.openid4vp.HandledResponse? = null
 
     private fun encryptionKeyOf(clientMetadata: Map<String, Any?>): JWK {
@@ -93,6 +94,7 @@ class CedSimFlowTest {
         val request = PresentationRequest.forVct(CedSim.VCT, CedSim.CLAIM_PATHS, CedSim.CREDENTIAL_QUERY_ID)
         val started = flow.start(request, mode)
         lastStartedId = started.id
+        lastPollToken = started.pollToken
         val jar = SignedJWT.parse(checkNotNull(flow.requestJwtFor(started.id)))
         val claims = jar.jwtClaimsSet
         val presentation =
@@ -177,7 +179,7 @@ class CedSimFlowTest {
         val redirect = checkNotNull(lastHandled).redirectUri
         assertThat(redirect).startsWith("https://demo.zilath.example/cb/${txId.value}?response_code=")
         // WP_094: same-device outcomes stay pending until the user-agent comes back.
-        assertThat(flow.awaitOutcome(txId)).isEqualTo(FlowOutcome.Pending)
+        assertThat(flow.awaitOutcome(txId, checkNotNull(lastPollToken))).isEqualTo(FlowOutcome.Pending)
         val code = redirect!!.substringAfter("response_code=")
         // Presented on ANOTHER LIVE transaction the code is refused AND left intact —
         // an unknown id would prove nothing, since there is no entry to update.
@@ -186,15 +188,15 @@ class CedSimFlowTest {
                 PresentationRequest.forVct(CedSim.VCT, CedSim.CLAIM_PATHS, CedSim.CREDENTIAL_QUERY_ID),
                 FlowMode.SAME_DEVICE,
             )
-        assertThat(flow.awaitOutcome(other.id)).isEqualTo(FlowOutcome.Pending)
-        assertThat(flow.consumeResponseCode(other.id, code)).isFalse()
+        assertThat(flow.awaitOutcome(other.id, other.pollToken)).isEqualTo(FlowOutcome.Pending)
+        assertThat(flow.consumeResponseCode(other.id, code)).isNull()
         // ...so its own return leg still completes, exactly once.
-        assertThat(flow.consumeResponseCode(txId, code)).isTrue()
-        assertThat(flow.consumeResponseCode(txId, code)).isFalse()
+        val reader = checkNotNull(flow.consumeResponseCode(txId, code))
+        assertThat(flow.consumeResponseCode(txId, code)).isNull()
         // A consumed code is never re-minted, and the outcome is now observable.
         assertThat(flow.handleWalletResponse(txId, DirectPostBody(mapOf("error" to "access_denied"))).redirectUri)
             .isNull()
-        assertThat(flow.awaitOutcome(txId)).isInstanceOf(FlowOutcome.Verified::class.java)
+        assertThat(flow.awaitOutcome(txId, reader)).isInstanceOf(FlowOutcome.Verified::class.java)
     }
 
     @Test
@@ -206,7 +208,9 @@ class CedSimFlowTest {
         // user-agent has come back through the response-code exchange (WP_094).
         val outcome = presentSimulatedCed(keys)
         assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
-        val body = ConformanceController(flow, config, clock, CedSim.VCT).outcome(lastTransactionId().value)
+        val body =
+            ConformanceController(flow, config, clock, CedSim.VCT)
+                .outcome(lastTransactionId().value, checkNotNull(lastPollToken).value)
         assertThat(body).containsEntry("outcome", "verified")
         // Nothing from inside the credential, not the claim names and not their values.
         assertThat(body.values.joinToString(" "))

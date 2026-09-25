@@ -16,6 +16,7 @@
  */
 package dev.zilath.demo
 
+import dev.zilath.verifier.openid4vp.PollToken
 import dev.zilath.verifier.openid4vp.PresentationRequest
 import dev.zilath.verifier.openid4vp.StartedTransaction
 import dev.zilath.verifier.openid4vp.TransactionId
@@ -45,7 +46,8 @@ class DemoTransactionRegistryTest {
     private val registry = DemoTransactionRegistry(clock, Duration.ofMinutes(15))
     private val request = PresentationRequest.forTestPid("urn:zilath:test:entitlement")
 
-    private fun transaction(id: String) = StartedTransaction(TransactionId(id), "https://rp/req/$id", "openid4vp://x")
+    private fun transaction(id: String) =
+        StartedTransaction(TransactionId(id), "https://rp/req/$id", "openid4vp://x", PollToken("poll-$id"))
 
     @Test
     fun `expired entries are swept on the next registration`() {

@@ -46,7 +46,7 @@ class SameDeviceFlowTest : FlowTestSupport() {
         // and the user completes the flow they started.
         val code = checkNotNull(verified.redirectUri).substringAfter("response_code=")
         assertThat(verified.redirectUri).isEqualTo("https://rp.example/cb/${started.id.value}?response_code=$code")
-        assertThat(flow.consumeResponseCode(started.id, code)).isTrue()
+        assertThat(flow.consumeResponseCode(started.id, code)).isNotNull()
     }
 
     @Test
@@ -73,7 +73,8 @@ class SameDeviceFlowTest : FlowTestSupport() {
         assertThat(wallet.redirectUri).contains("response_code=")
         assertThat(guessed.redirectUri).isNull()
         assertThat(other.redirectUri).isNull()
-        assertThat(flow.consumeResponseCode(started.id, wallet.redirectUri!!.substringAfter("response_code="))).isTrue()
+        assertThat(flow.consumeResponseCode(started.id, wallet.redirectUri!!.substringAfter("response_code=")))
+            .isNotNull()
     }
 
     @Test
@@ -129,7 +130,7 @@ class SameDeviceFlowTest : FlowTestSupport() {
         val handled = interleavedFlow.handleWalletResponse(started.id, walletBody(started, source = interleavedFlow))
         val code = checkNotNull(handled.redirectUri).substringAfter("response_code=")
         interleaving.removeDuringNextUpdate = true
-        assertThat(interleavedFlow.consumeResponseCode(started.id, code)).isFalse()
+        assertThat(interleavedFlow.consumeResponseCode(started.id, code)).isNull()
         assertThat(interleaving.updatesRun).isPositive()
     }
 
@@ -150,7 +151,7 @@ class SameDeviceFlowTest : FlowTestSupport() {
                 (1..CONTENDERS).map {
                     pool.submit<Boolean> {
                         gate.await()
-                        optimisticFlow.consumeResponseCode(started.id, code)
+                        optimisticFlow.consumeResponseCode(started.id, code) != null
                     }
                 }
             gate.countDown()

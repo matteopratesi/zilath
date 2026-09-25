@@ -180,6 +180,7 @@ abstract class TransactionStoreContractTest {
             createdAt = now,
             expiresAt = now.plus(1, ChronoUnit.HOURS),
             request = PresentationRequest.forVct("urn:zilath:test:entitlement", listOf("given_name"), "pid"),
+            pollTokenHash = "poll-token-hash-$id",
             outcome = null,
             mode = FlowMode.SAME_DEVICE,
             responseCode = "response-code-$id",

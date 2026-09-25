@@ -53,6 +53,7 @@ class InMemoryTransactionStoreTest {
         createdAt = clock.instant(),
         expiresAt = clock.instant().plus(timeToLive),
         request = PresentationRequest.forTestPid("urn:zilath:test:entitlement"),
+        pollTokenHash = "hash-$id",
     )
 
     @Test

@@ -131,6 +131,6 @@ class StarterSmokeTest {
                     .contentType("application/x-www-form-urlencoded")
                     .param("response", "not-a-jwe"),
             ).andExpect(status().isBadRequest)
-        assertThat(flow.awaitOutcome(started.id)).isInstanceOf(FlowOutcome.Rejected::class.java)
+        assertThat(flow.awaitOutcome(started.id, started.pollToken)).isInstanceOf(FlowOutcome.Rejected::class.java)
     }
 }

@@ -111,7 +111,7 @@ class DemoCheckoutController(
     fun status(
         @PathVariable txId: String,
     ): Map<String, String> {
-        val outcome = flow.awaitOutcome(TransactionId(txId))
+        val outcome = flow.outcomeOf(registry, txId)
         recordReceiptIfTerminal(txId, outcome)
         return mapOf(
             "status" to
@@ -129,7 +129,7 @@ class DemoCheckoutController(
     fun ticket(
         @PathVariable txId: String,
     ): ResponseEntity<String> {
-        val outcome = flow.awaitOutcome(TransactionId(txId))
+        val outcome = flow.outcomeOf(registry, txId)
         recordReceiptIfTerminal(txId, outcome)
         return when {
             outcome !is FlowOutcome.Verified ->
@@ -155,26 +155,32 @@ class DemoCheckoutController(
         @org.springframework.web.bind.annotation.RequestParam(name = "response_code", required = false)
         responseCode: String?,
         @org.springframework.web.bind.annotation.RequestParam(required = false) error: String?,
-    ): ResponseEntity<String> =
-        when {
+    ): ResponseEntity<String> {
+        val entry = registry.get(txId)
+        return when {
             error != null -> ResponseEntity.badRequest().body(callbackErrorHtml(error))
             responseCode.isNullOrBlank() -> unauthorizedPage()
-            flow.awaitOutcome(TransactionId(txId)) == FlowOutcome.Unknown -> unauthorizedPage()
-            !flow.consumeResponseCode(TransactionId(txId), responseCode) ->
-                ResponseEntity.badRequest().body(callbackErrorHtml("invalid_response_code"))
+            entry == null -> unauthorizedPage()
             else ->
-                ResponseEntity
-                    .status(HttpStatus.FOUND)
-                    .location(URI.create("/demo/ticket/" + txId))
-                    .build()
+                when (val reader = flow.consumeResponseCode(TransactionId(txId), responseCode)) {
+                    null -> ResponseEntity.badRequest().body(callbackErrorHtml("invalid_response_code"))
+                    else -> {
+                        entry.readToken.set(reader)
+                        ResponseEntity
+                            .status(HttpStatus.FOUND)
+                            .location(URI.create("/demo/ticket/" + txId))
+                            .build()
+                    }
+                }
         }
+    }
 
     @GetMapping("/demo/receipt/{txId}", produces = [MediaType.TEXT_PLAIN_VALUE])
     fun receipt(
         @PathVariable txId: String,
     ): ResponseEntity<String> {
         val entry = registry.get(txId) ?: return ResponseEntity.notFound().build()
-        recordReceiptIfTerminal(txId, flow.awaitOutcome(TransactionId(txId)))
+        recordReceiptIfTerminal(txId, flow.outcomeOf(registry, txId))
         return when (val receipt = entry.receipt.get()) {
             null -> ResponseEntity.status(HttpStatus.CONFLICT).body("transaction not completed")
             else -> ResponseEntity.ok(receipt)
@@ -201,6 +207,17 @@ class DemoCheckoutController(
         private const val SAME_DEVICE_PARAM = "same-device"
     }
 }
+
+/**
+ * The outcome as the demo reads it: with the token the registry holds for [txId]. The demo
+ * still looks that token up from the transaction id alone, so anyone knowing the id reads
+ * through these pages what the library no longer shows them.
+ */
+private fun VerificationFlow.outcomeOf(
+    registry: DemoTransactionRegistry,
+    txId: String,
+): FlowOutcome =
+    registry.get(txId)?.let { awaitOutcome(TransactionId(txId), it.readToken.get()) } ?: FlowOutcome.Unknown
 
 private fun notFoundPage(): ResponseEntity<String> = ResponseEntity.status(HttpStatus.NOT_FOUND).body(notFoundHtml())
 

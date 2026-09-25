@@ -81,6 +81,15 @@ internal fun secretsEqual(
     presented: String,
 ): Boolean = java.security.MessageDigest.isEqual(expected.toByteArray(), presented.toByteArray())
 
+/** What a transaction keeps of its [PollToken]: base64url SHA-256. */
+internal fun pollTokenHashOf(token: String): String =
+    Base64URL
+        .encode(
+            java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest(token.toByteArray()),
+        ).toString()
+
 internal fun randomToken(bytes: Int): String {
     val buffer = ByteArray(bytes)
     secureRandom.nextBytes(buffer)

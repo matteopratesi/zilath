@@ -55,7 +55,7 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
         assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
         val claims = (outcome as FlowOutcome.Verified).claims.claims
         assertThat(claims["given_name"]?.jsonPrimitive?.content).isEqualTo("Ada")
-        assertThat(flow.awaitOutcome(started.id)).isEqualTo(outcome)
+        assertThat(flow.awaitOutcome(started.id, started.pollToken)).isEqualTo(outcome)
     }
 
     @Test
@@ -195,7 +195,7 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
                 ).outcome
         assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.INTERNAL_ERROR)
         assertThat(outcome.detail).doesNotContain("status backend down")
-        assertThat(fragileFlow.awaitOutcome(started.id)).isEqualTo(outcome)
+        assertThat(fragileFlow.awaitOutcome(started.id, started.pollToken)).isEqualTo(outcome)
     }
 
     @Test
@@ -224,7 +224,7 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
         val replayed = flow.handleWalletResponse(started.id, body).outcome
         assertThat(replayed).isInstanceOf(FlowOutcome.Rejected::class.java)
         assertThat((replayed as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.REPLAY)
-        assertThat(flow.awaitOutcome(started.id)).isInstanceOf(FlowOutcome.Verified::class.java)
+        assertThat(flow.awaitOutcome(started.id, started.pollToken)).isInstanceOf(FlowOutcome.Verified::class.java)
     }
 
     @Test
@@ -245,7 +245,7 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
     fun `unknown transactions yield unknown outcomes and no request object`() {
         val ghost = TransactionId("does-not-exist")
         assertThat(flow.handleWalletResponse(ghost, DirectPostBody(emptyMap())).outcome).isEqualTo(FlowOutcome.Unknown)
-        assertThat(flow.awaitOutcome(ghost)).isEqualTo(FlowOutcome.Unknown)
+        assertThat(flow.awaitOutcome(ghost, PollToken("any"))).isEqualTo(FlowOutcome.Unknown)
         assertThat(flow.requestJwtFor(ghost)).isNull()
     }
 
@@ -283,7 +283,7 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
         val body = DirectPostBody(mapOf("error" to "access_denied", "error_description" to "user cancelled"))
         val outcome = flow.handleWalletResponse(started.id, body).outcome
         assertThat(outcome).isEqualTo(FlowOutcome.WalletErrorAcknowledged("access_denied", "user cancelled"))
-        assertThat(flow.awaitOutcome(started.id)).isEqualTo(outcome)
+        assertThat(flow.awaitOutcome(started.id, started.pollToken)).isEqualTo(outcome)
         val afterwards = flow.handleWalletResponse(started.id, DirectPostBody(emptyMap())).outcome
         assertThat((afterwards as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.REPLAY)
     }
@@ -291,7 +291,7 @@ class OpenId4VpFlowIntegrationTest : FlowTestSupport() {
     @Test
     fun `pending transaction reports pending`() {
         val started = startForPid()
-        assertThat(flow.awaitOutcome(started.id)).isEqualTo(FlowOutcome.Pending)
+        assertThat(flow.awaitOutcome(started.id, started.pollToken)).isEqualTo(FlowOutcome.Pending)
     }
 
     @Test

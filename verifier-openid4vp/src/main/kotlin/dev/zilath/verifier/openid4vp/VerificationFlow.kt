@@ -31,7 +31,8 @@ import kotlinx.serialization.json.putJsonObject
  * The OpenID4VP relying-party flow (cross-device, IT-Wallet profile v1.4.x):
  * [start] creates a transaction and yields the QR payload; the wallet fetches the
  * signed request JWT via [requestJwtFor] and posts its encrypted response, handled
- * by [handleWalletResponse]; the checkout page polls [awaitOutcome].
+ * by [handleWalletResponse]; the checkout page polls [awaitOutcome] with the [PollToken]
+ * that [start] returned to it and to nobody else.
  *
  * Nothing about a presentation survives the transaction: outcomes carry only the
  * disclosed claims, and transactions expire from the [TransactionStore].
@@ -82,19 +83,42 @@ interface VerificationFlow {
         body: DirectPostBody,
     ): HandledResponse
 
-    /** Non-blocking snapshot of the transaction outcome, meant for checkout polling. */
-    fun awaitOutcome(txId: TransactionId): FlowOutcome
+    /**
+     * Non-blocking snapshot of the transaction outcome, meant for checkout polling — for the
+     * holder of [pollToken] only.
+     *
+     * The transaction id is PUBLIC by construction: it is in the QR code and the request URI
+     * a bystander can photograph, and in the link a same-device user can be sent. It
+     * authorises posting a response, never reading an outcome (OpenID4VP 1.0 §14.2, §14.3.3).
+     * Before the fourth internal review this method took the id alone, and returned the
+     * verified claims to anyone who had seen the QR.
+     *
+     * Cross-device, the token is [StartedTransaction.pollToken], held by the checkout that
+     * started the transaction. Same-device, it is the token [consumeResponseCode] returns to
+     * the user-agent that came back with the response code: the start token then reads
+     * [FlowOutcome.Pending] until the return, and nothing afterwards, so a transaction
+     * started by one party and completed by another person's wallet (session fixation,
+     * §14.2) never shows that person's claims to the party who started it. A token that does
+     * not match answers [FlowOutcome.Unknown], exactly as an id that does not exist.
+     */
+    fun awaitOutcome(
+        txId: TransactionId,
+        pollToken: PollToken,
+    ): FlowOutcome
 
     /**
      * Completes the same-device return leg of [txId] with its single-use `code`, in one
-     * atomic step: true only for the caller that presented the right code for the right
-     * transaction, false for everyone after (WP_094). A code belonging to another
-     * transaction is NEVER consumed — presenting it elsewhere must not burn it.
+     * atomic step, and returns the [PollToken] that from now on reads the outcome — to the
+     * caller that presented the right code for the right transaction, and null for everyone
+     * after (WP_094). The token replaces the one [start] returned, which stops reading
+     * anything. Hand it to the user-agent that presented the code (an HttpOnly cookie), and
+     * to nobody else. A code belonging to another transaction is NEVER consumed — presenting
+     * it elsewhere must not burn it.
      */
     fun consumeResponseCode(
         txId: TransactionId,
         code: String,
-    ): Boolean
+    ): PollToken?
 }
 
 /**
@@ -129,18 +153,31 @@ data class HandledResponse(
 enum class FlowMode { CROSS_DEVICE, SAME_DEVICE }
 
 /**
- * Identifies one verification transaction. Travels as the OpenID4VP `state` and appears in
- * the response URI.
+ * Identifies one verification transaction. Travels as the OpenID4VP `state`, in the request
+ * URI inside the QR code and in the response URI: it is PUBLIC by construction, visible to
+ * anyone who sees the checkout's screen or the link a user was sent.
  *
- * Treat it as a BEARER CAPABILITY, not as a public handle. The response endpoint is
- * unauthenticated by protocol design, so whoever holds this id can post to it — including
- * an `error`, which terminally ends the transaction. That is inherent to OpenID4VP: the id
- * is 16 random bytes precisely because unguessability is what protects the exchange. Do not
- * put it anywhere it can leak — a referrer, an analytics URL, a log shipped off the box.
+ * It authorises posting to the response endpoint, which is unauthenticated by protocol
+ * design — including an `error`, which terminally ends the transaction. It never
+ * authorises reading an outcome: that takes the [PollToken].
  */
 data class TransactionId(
     val value: String,
 )
+
+/**
+ * The right to read one transaction's outcome through [VerificationFlow.awaitOutcome]: 32
+ * random bytes that appear in no QR code, request object, `state` or response URI.
+ *
+ * Keep it where only the party entitled to the outcome has it — the checkout's server-side
+ * session, or an HttpOnly cookie on the browser that started (cross-device) or returned to
+ * (same-device) the transaction — and out of URLs and logs. The flow stores only its hash.
+ */
+data class PollToken(
+    val value: String,
+) {
+    override fun toString(): String = "PollToken(***)"
+}
 
 /**
  * What the relying party asks the wallet to present: ONE credential, described by the
@@ -231,7 +268,15 @@ data class StartedTransaction(
     val requestUri: String,
     /** The full URI to encode in the QR code. */
     val qrPayload: String,
-)
+    /**
+     * Reads the outcome through [VerificationFlow.awaitOutcome]: cross-device until the end,
+     * same-device only until the user-agent returns (then [VerificationFlow.consumeResponseCode]
+     * issues the token that reads it). Never show it to the wallet or put it in the QR.
+     */
+    val pollToken: PollToken,
+) {
+    override fun toString(): String = "StartedTransaction(id=${id.value}, requestUri=$requestUri, qrPayload=$qrPayload)"
+}
 
 /** The raw form parameters posted by the wallet to the response endpoint. */
 data class DirectPostBody(
