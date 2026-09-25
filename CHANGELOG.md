@@ -12,7 +12,7 @@ that can silently let something through.
 
 The fixes of the fourth internal review (2026-09-04 to 2026-09-24), landing in parts. Headed
 for 0.4.0, not a patch: many items change what a verifier accepts or rejects, and the API
-moves with them. This part covers `verifier-core` and the build.
+moves with them. So far: `verifier-core` and the build, then `verifier-trust-itwallet`.
 
 ### Security — what the verifier now accepts that it refused
 
@@ -58,6 +58,49 @@ moves with them. This part covers `verifier-core` and the build.
   gains `credentialTypes`; a credential whose `vct` is outside a non-null set is
   `UNTRUSTED_ISSUER`. Null restricts nothing, for pinned-key evaluators.
 
+### Security — the trust chain (`verifier-trust-itwallet`)
+
+- **The production IT-Wallet chain is trusted.** The anchor serves every subordinate one
+  `metadata_policy` for five entity types, and it was applied to every type it named: the
+  disability card issuer, which is no wallet provider, failed on `wallet_provider.jwks`
+  "essential but absent", and no genuine card of it could verify. A policy, and a
+  superior's statement metadata, now apply only to the entity types the leaf publishes
+  (OpenID Federation §6.1.1, §3.1.1); policies are still validated for every type.
+- **An issuer is trusted only for the credential types it lists**: the `vct` of every SD-JWT
+  entry of its *resolved* `credential_configurations_supported`, so a superior's metadata or
+  policy restricts them (IT-Wallet 1.4.6 §6.12.1). Any member, in any role, could publish
+  signing keys and issue a disability card. A member that declares a type in its own
+  configuration still can: trust marks, which would bind the role from above, are not
+  checked.
+- **Subordinate statements' `constraints` are enforced**: `max_path_length`,
+  `naming_constraints` (excluded wins), `allowed_entity_types` (§6.2).
+- **A trust chain has the shape §4 gives it.** Every statement after the leaf is a
+  subordinate statement, the leaf's superior is one of its `authority_hints`, and
+  `metadata_policy`, `metadata_policy_crit` or `constraints` in an entity configuration make
+  the chain malformed. `[leaf, leaf, statement]` used to make the leaf its own superior.
+- **Each statement is verified only with the key its `kid` names**, and every attested key
+  needs a unique `kid`.
+- **`crit` fails the chain**, the library understanding no extension, and an operator named
+  in `metadata_policy_crit` must be one the library implements.
+- **The anchor's own configuration is verified before its fetch endpoint is used.**
+- **A credential without `iss` is untrusted on the offline path too.**
+- **A provided `trust_chain` is refreshed online**: its shape and anchor are checked, then
+  the chain is resolved again and the fresh documents decide, so a statement the superior
+  has withdrawn is a revocation. `offlineFallback = true` uses the provided chain alone,
+  and only while the federation cannot be reached. Subordinate statements valid for more
+  than 24 hours are refused (`maxStatementLifetime`, IT-Wallet §6.11.1): that bounds how long
+  a withdrawn statement can be replayed.
+- A `null` metadata parameter, an array operator on a parameter that is not an array, and an
+  `add` outside `subset_of` are policy errors, as the specification says.
+- Every `Untrusted.reason` is a fixed phrase: none repeats an identifier or a name read
+  from a document or a credential before any signature was checked.
+
+### Security — what the trust evaluator now accepts that it refused
+
+- An operator of `metadata_policy` the library does not implement is ignored unless it is
+  critical (§6.1.3.2): the IT-Wallet 1.4.6 §6.9 example statement used to fail the chain.
+- An entity statement `typ` in the long form, `application/entity-statement+jwt`.
+
 ### Changed
 
 - **`Verified.claims` is an allowlist.** Without a request: the claims the holder disclosed
@@ -90,12 +133,18 @@ moves with them. This part covers `verifier-core` and the build.
 
 ### Added
 
+- `FederationTrustEvaluator` takes `offlineFallback` (false) and `maxStatementLifetime`
+  (24 hours); `FederationDocumentNotFoundException` is what a `FederationFetcher` throws for
+  a document the server says does not exist, so that a withdrawn statement is told apart
+  from an outage. **`TrustAnchorConfig` now requires a unique `kid` on every key**: copy the
+  anchor's `jwks` as published.
 - `RequestedClaims`, `RequestedClaim`, `ClaimPathSegment`, and
   `VerificationContext.requestedClaims`; `PresentationLimits` and
   `VerificationContext.presentationLimits`. Both are new constructor parameters with
   defaults: source-compatible, not binary-compatible.
 - The production IT-Wallet federation documents, as served on 2026-09-24, in the test
-  fixtures, with their provenance: the tests replay them with a fixed clock.
+  fixtures, with their provenance: the tests replay them with a fixed clock, and a card
+  shaped as IT-Wallet 1.4.6 writes it is verified against them from one end to the other.
 
 ### Build
 
