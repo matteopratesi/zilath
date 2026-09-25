@@ -118,7 +118,16 @@ object CedSim {
                 claim("authority_hints", listOf(ANCHOR_ID))
                 claim(
                     "metadata",
-                    mapOf("openid_credential_issuer" to mapOf("jwks" to jwks(keys.issuerCredential))),
+                    mapOf(
+                        "openid_credential_issuer" to
+                            mapOf(
+                                "jwks" to jwks(keys.issuerCredential),
+                                // The federation evaluator authorises an issuer only for the
+                                // types it lists here (IT-Wallet 1.4.6 §6.12.1).
+                                "credential_configurations_supported" to
+                                    mapOf("dc_sd_jwt_ced_sim" to mapOf("format" to "dc+sd-jwt", "vct" to VCT)),
+                            ),
+                    ),
                 )
             }
         val anchorStatement =
