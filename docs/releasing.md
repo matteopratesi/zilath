@@ -190,6 +190,30 @@ available everywhere and `GPG_TTY` is what this file assumes.
    git status --porcelain     # must be empty
    ```
 
+   Then look up the pinned versions in `gradle/libs.versions.toml` against the advisory
+   databases (<https://osv.dev>, <https://github.com/advisories>), at least for the
+   libraries that parse what a wallet or a federation sends: Nimbus JOSE+JWT, the EUDI
+   SD-JWT library, kotlinx-serialization, and Spring Boot for the starter. The pins are
+   frozen on purpose, so nothing else will tell you that one of them has an advisory. A
+   version bump belongs in its own pull request, before the release one.
+
+   Every dependency and plugin is checked against the SHA-256 recorded in
+   `gradle/verification-metadata.xml`, and the build fails on anything missing or different.
+   A pull request that changes a version, adds a dependency or a plugin regenerates the file
+   in the same pull request, from an EMPTY Gradle home and with every task run, so that
+   every configuration is resolved the way CI resolves it. A warm cache hides metadata files
+   a fresh machine downloads: the first version of the file passed locally and failed in CI.
+
+   ```sh
+   export GRADLE_USER_HOME="$(mktemp -d)"
+   ./gradlew --write-verification-metadata sha256 clean build dokkaGeneratePublicationHtml \
+       javadocJar sourcesJar --rerun-tasks --no-build-cache
+   ./gradlew clean build --offline   # must pass from that cache alone
+   ```
+
+   Read the diff of the file before committing it: every new line is an artifact the
+   release will be built from.
+
 3. **Export the signing key for this shell only.**
 
    ```sh
