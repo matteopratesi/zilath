@@ -178,7 +178,8 @@ class OpenId4VpVerificationFlow(
             val payload = config.profile.decodeWalletResponse(body, config)
             checkState(payload, transaction)
             checkEchoedNonce(payload, transaction)
-            val compact = extractPresentation(payload, transaction.request.credentialQueryId)
+            val compact =
+                extractPresentation(payload, transaction.request.credentialQueryId, config.profile.acceptsBareVpToken)
             val context =
                 VerificationContext(
                     expectedNonce = transaction.nonce,

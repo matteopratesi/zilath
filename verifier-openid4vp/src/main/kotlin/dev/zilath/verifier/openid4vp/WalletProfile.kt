@@ -18,6 +18,7 @@ package dev.zilath.verifier.openid4vp
 
 import dev.zilath.verifier.core.RejectionReason
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -44,6 +45,14 @@ interface WalletProfile {
 
     /** The `response_mode` the request object announces and the response endpoint accepts. */
     val responseMode: String
+
+    /**
+     * Whether a `vp_token` that is a bare presentation string, instead of the object keyed
+     * by credential query id OpenID4VP 1.0 §8.1 defines, is accepted. It is the pre-1.0
+     * shape; IT-Wallet says the `vp_token` MUST be a JSON object. False unless a profile
+     * needs the legacy form.
+     */
+    val acceptsBareVpToken: Boolean get() = false
 
     /** The `client_metadata` object embedded in the request object. */
     fun clientMetadataFor(config: RelyingPartyConfiguration): Map<String, Any>
@@ -92,6 +101,13 @@ object ArfBaselineProfile : WalletProfile {
     override val name: String = "arf-baseline"
     override val responseMode: String = "direct_post"
 
+    /**
+     * Kept for wallets on the pre-1.0 drafts, which post the presentation itself as the
+     * `vp_token` form parameter. Refusing it here would deny holders this profile exists
+     * to serve; [ItWalletProfile] refuses it.
+     */
+    override val acceptsBareVpToken: Boolean = true
+
     override fun clientMetadataFor(config: RelyingPartyConfiguration): Map<String, Any> = baselineClientMetadata(config)
 
     override fun decodeWalletResponse(
@@ -99,8 +115,15 @@ object ArfBaselineProfile : WalletProfile {
         config: RelyingPartyConfiguration,
     ): JsonObject {
         val vpToken = body.parameters["vp_token"] ?: flowReject(RejectionReason.MALFORMED, "missing vp_token parameter")
+        // The form parameter is either the JSON object of OpenID4VP 1.0 or, in the legacy
+        // shape, the presentation itself. Anything that does not parse as a JSON structure
+        // is the latter: kotlinx reads an unquoted token as a NON-string primitive, which
+        // must not stand in for the presentation string.
         val parsedVpToken =
-            runCatching { Json.parseToJsonElement(vpToken) }.getOrElse { JsonPrimitive(vpToken) }
+            runCatching { Json.parseToJsonElement(vpToken) }
+                .getOrNull()
+                ?.takeIf { it is JsonObject || it is JsonArray }
+                ?: JsonPrimitive(vpToken)
         return buildJsonObject {
             put("vp_token", parsedVpToken)
             body.parameters["state"]?.let { put("state", JsonPrimitive(it)) }

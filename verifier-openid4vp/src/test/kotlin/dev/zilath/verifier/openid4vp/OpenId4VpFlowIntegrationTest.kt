@@ -39,7 +39,9 @@ import dev.zilath.verifier.core.StatusChecker
 import dev.zilath.verifier.core.TestVectors
 import dev.zilath.verifier.core.VerificationContext
 import dev.zilath.verifier.core.VerificationResult
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -79,7 +81,9 @@ class OpenId4VpFlowIntegrationTest {
         started: StartedTransaction,
         nonceOverride: String? = null,
         stateOverride: String? = null,
-        vpTokenAsPlainString: Boolean = false,
+        vpToken: (
+            String,
+        ) -> JsonElement = { compact -> buildJsonObject { put("pid", buildJsonArray { add(compact) }) } },
         encryptTo: JWK? = null,
         audienceOverride: String? = null,
         jweHeader: JWEHeader = JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM),
@@ -96,14 +100,7 @@ class OpenId4VpFlowIntegrationTest {
             )
         val payload =
             buildJsonObject {
-                if (vpTokenAsPlainString) {
-                    put("vp_token", JsonPrimitive(compact))
-                } else {
-                    put(
-                        "vp_token",
-                        buildJsonObject { put("pid", buildJsonArray { add(JsonPrimitive(compact)) }) },
-                    )
-                }
+                put("vp_token", vpToken(compact))
                 put("state", stateOverride ?: claims.getStringClaim("state"))
             }
         val jwe = JWEObject(jweHeader, Payload(payload.toString()))
@@ -270,7 +267,7 @@ class OpenId4VpFlowIntegrationTest {
             )
         val payload =
             buildJsonObject {
-                put("vp_token", JsonPrimitive(compact))
+                put("vp_token", buildJsonObject { put("pid", buildJsonArray { add(compact) }) })
                 put("state", claims.getStringClaim("state"))
             }
         val jwe = JWEObject(JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM), Payload(payload.toString()))
@@ -406,10 +403,56 @@ class OpenId4VpFlowIntegrationTest {
     }
 
     @Test
-    fun `vp_token as a plain string is accepted`() {
+    fun `vp_token carries exactly one presentation for the query`() {
+        // OpenID4VP 1.0 §8.1: without `multiple` the array MUST hold one presentation, and
+        // §14.1.2 wants every presentation in a response validated. The first element used
+        // to be verified and the rest dropped unseen — here the second is not even ours.
+        val two = startForPid()
+        val extra =
+            flow.handleWalletResponse(
+                two.id,
+                walletBody(two, vpToken = { compact ->
+                    buildJsonObject {
+                        put(
+                            "pid",
+                            buildJsonArray {
+                                add(compact)
+                                add("not-a-presentation")
+                            },
+                        )
+                    }
+                }),
+            )
+        assertThat((extra as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
+        assertThat(extra.detail).isEqualTo("vp_token carries more presentations than requested")
+
+        val empty = startForPid()
+        val none =
+            flow.handleWalletResponse(
+                empty.id,
+                walletBody(empty, vpToken = { buildJsonObject { put("pid", buildJsonArray { }) } }),
+            )
+        assertThat((none as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
+
+        // IT-Wallet WP_093: the single presentation may also come without the array.
+        val single = startForPid()
+        val unwrapped =
+            flow.handleWalletResponse(
+                single.id,
+                walletBody(single, vpToken = { compact -> buildJsonObject { put("pid", compact) } }),
+            )
+        assertThat(unwrapped).isInstanceOf(FlowOutcome.Verified::class.java)
+    }
+
+    @Test
+    fun `a bare vp_token string is the legacy shape, refused under IT-Wallet`() {
+        // IT-Wallet: the vp_token MUST be a JSON object keyed by credential query id. The
+        // ARF baseline profile keeps the pre-1.0 form (see the ARF profile test below).
         val started = startForPid()
-        val outcome = flow.handleWalletResponse(started.id, walletBody(started, vpTokenAsPlainString = true))
-        assertThat(outcome).isInstanceOf(FlowOutcome.Verified::class.java)
+        val outcome = flow.handleWalletResponse(started.id, walletBody(started, vpToken = { JsonPrimitive(it) }))
+        assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
+        assertThat(ItWalletProfile.acceptsBareVpToken).isFalse()
+        assertThat(ArfBaselineProfile.acceptsBareVpToken).isTrue()
     }
 
     @Test
