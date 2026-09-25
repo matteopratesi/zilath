@@ -136,11 +136,16 @@ sealed interface VerificationResult {
      * A check failed. [reason] is the stable, machine-readable outcome; [detail] is a
      * short human-readable hint for LOGS ONLY.
      *
-     * Two rules for [detail], both deliberate: it never carries a claim value or any part
-     * of the presentation, and it is not meant for the person at the other end. Telling a
-     * holder which check failed turns the verifier into an oracle for probing credentials,
-     * and the surrounding UI has no need for it — the answer the flow owes its caller is
-     * yes or no.
+     * Two rules for [detail], both deliberate: it is not meant for the person at the other
+     * end, and every phrase `SdJwtVcCredentialVerifier` writes is a fixed one, never a claim
+     * value or any part of the presentation. Telling a holder which check failed turns the
+     * verifier into an oracle for probing credentials, and the surrounding UI has no need
+     * for it — the answer the flow owes its caller is yes or no.
+     *
+     * One exception, for [RejectionReason.UNTRUSTED_ISSUER]: the detail is the
+     * [TrustEvaluator]'s own [TrustDecision.Untrusted.reason], cut to 200 characters with
+     * control characters and line separators replaced, but otherwise the evaluator's text.
+     * An evaluator that puts something from the presentation in its reason puts it here.
      */
     data class Rejected(
         val reason: RejectionReason,

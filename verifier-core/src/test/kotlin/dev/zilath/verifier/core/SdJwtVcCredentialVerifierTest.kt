@@ -228,6 +228,21 @@ class SdJwtVcCredentialVerifierTest {
     }
 
     @Test
+    fun `an untrusted reason reaches the detail bounded and on one line`() {
+        // The fourth internal review forged log lines through an iss that the federation
+        // evaluator echoed into its reason, and flooded the log with 100 KB per request.
+        // Bounded at the sink, so ANY evaluator is covered.
+        val forged =
+            "https://evil.example/\r\n2026-09-04 WARN [forged] wallet response rejected: OK" + "A".repeat(20_000)
+        val result = verify(TestVectors.vector(), context(trust = { TrustDecision.Untrusted(forged) }))
+        val detail = (result as VerificationResult.Rejected).detail
+        assertThat(result.reason).isEqualTo(RejectionReason.UNTRUSTED_ISSUER)
+        assertThat(detail).hasSize(200).doesNotContain("\r", "\n").startsWith("https://evil.example/??2026-09-04 WARN")
+        assertThat(verify(TestVectors.vector(), context(trust = { TrustDecision.Untrusted(null) })))
+            .isEqualTo(VerificationResult.Rejected(RejectionReason.UNTRUSTED_ISSUER, null))
+    }
+
+    @Test
     fun `trusted decision without keys is rejected`() {
         val noKeys = TrustEvaluator { TrustDecision.Trusted(emptyList()) }
         val result = verify(TestVectors.vector(), context(trust = noKeys))

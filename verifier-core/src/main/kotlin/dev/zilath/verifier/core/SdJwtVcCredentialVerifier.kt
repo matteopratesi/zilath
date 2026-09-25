@@ -102,6 +102,12 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         return VerificationResult.Verified(DisclosedClaims(claims))
     }
 
+    /**
+     * The evaluator's reason becomes the rejection's `detail`, the one `detail` this class
+     * does not write itself; it goes through [boundedPrintable] here, at the sink, so that
+     * every [TrustEvaluator] is covered, not only the ones that already behave.
+     */
+    @OptIn(InternalZilathApi::class)
     private fun trustedIssuer(
         issuerJwt: SignedJWT,
         ctx: VerificationContext,
@@ -111,7 +117,11 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
                 decision.also {
                     if (it.issuerKeys.isEmpty()) reject(RejectionReason.UNTRUSTED_ISSUER, "no trusted issuer keys")
                 }
-            is TrustDecision.Untrusted -> reject(RejectionReason.UNTRUSTED_ISSUER, decision.reason)
+            is TrustDecision.Untrusted ->
+                reject(
+                    RejectionReason.UNTRUSTED_ISSUER,
+                    decision.reason?.let(::boundedPrintable),
+                )
         }
 
     private fun verifyWithEudiLibrary(

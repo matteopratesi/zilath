@@ -98,6 +98,16 @@ class SharedRulesTest {
         ).forEach { assertThat(usableHttpsUriOrNull(it)).`as`(it).isNull() }
     }
 
+    @Test
+    fun `printable text is bounded, on one line and well formed`() {
+        assertThat(boundedPrintable("issuer not in the federation")).isEqualTo("issuer not in the federation")
+        assertThat(boundedPrintable("a\r\nb\u0000c\u001bd\u0085e\u2028f\u2029g\u007f")).isEqualTo("a??b?c?d?e?f?g?")
+        assertThat(boundedPrintable("x".repeat(10_000))).hasSize(200)
+        // A surrogate pair cut in half by the limit is dropped, not left dangling.
+        val cut = boundedPrintable("x".repeat(199) + "\uD83D\uDE00")
+        assertThat(cut).isEqualTo("x".repeat(199))
+    }
+
     private fun signedWith(key: RSAKey): SignedJWT =
         SignedJWT(JWSHeader(JWSAlgorithm.RS256), JWTClaimsSet.Builder().subject("x").build()).apply {
             sign(RSASSASigner(key.toRSAPrivateKey(), setOf(AllowWeakRSAKey.getInstance())))
