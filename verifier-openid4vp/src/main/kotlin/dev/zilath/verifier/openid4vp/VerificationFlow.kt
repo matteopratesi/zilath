@@ -332,6 +332,13 @@ data class DirectPostBody(
 ) {
     /** The encrypted response JWE (`direct_post.jwt` mode, mandatory in IT-Wallet). */
     val response: String? get() = parameters["response"]
+
+    /**
+     * The parameter NAMES, never their values. Under [ArfBaselineProfile] the `vp_token` is
+     * posted in plaintext, with every disclosure the holder made, and a data class prints
+     * all of it; the values are unauthenticated input besides, of any size.
+     */
+    override fun toString(): String = "DirectPostBody(parameters=${parameters.keys})"
 }
 
 /**

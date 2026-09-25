@@ -129,6 +129,18 @@ class WalletResponseInputTest : FlowTestSupport() {
     }
 
     @Test
+    fun `a wallet POST prints its parameter names, never what was posted`() {
+        // Under the ARF baseline profile the vp_token arrives in plaintext, disclosures and
+        // all; a data class printed every value of the body.
+        val compact = TestVectors.vector()
+        val body = DirectPostBody(mapOf("vp_token" to compact, "state" to "the-state", "error_description" to "x\ny"))
+        val printed = body.toString()
+        assertThat(printed).contains("vp_token", "state", "error_description")
+        compact.split('~').filter { it.isNotEmpty() }.forEach { part -> assertThat(printed).doesNotContain(part) }
+        assertThat(printed).doesNotContain("the-state", "Ada", "Lovelace", "\n")
+    }
+
+    @Test
     fun `vp_token carries exactly one presentation for the query`() {
         // OpenID4VP 1.0 §8.1: without `multiple` the array MUST hold one presentation, and
         // §14.1.2 wants every presentation in a response validated. The first element used
