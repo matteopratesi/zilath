@@ -25,7 +25,13 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
-      # Keeps the rule above true: a new step referring to an action by tag fails the build.
+      # Keeps the rule above true: a step referring to an action by anything but a full commit
+      # SHA fails the build. The value of each uses: is checked, not the line, so a SHA in a
+      # trailing comment does not excuse a tag; actions in this repository (./...) need none.
       - name: Refuse actions referenced by tag
-        run: "! grep -hE '^ *-? *uses:' .github/workflows/*.yml | grep -vE '@[0-9a-f]{40}( |$)'"
+        run: |
+          unpinned="$(grep -hE '^[[:space:]]*-?[[:space:]]*uses:' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null \
+            | sed -E 's/^[[:space:]]*-?[[:space:]]*uses:[[:space:]]*//; s/[[:space:]]+#.*$//; s/^["'"'"']//; s/["'"'"']$//' \
+            | grep -vE '^\./' | grep -vE '^[^@[:space:]]+@[0-9a-f]{40}$' || true)"
+          if [ -n "$unpinned" ]; then echo "actions not pinned to a full commit SHA:"; echo "$unpinned"; exit 1; fi
       - run: ./gradlew build

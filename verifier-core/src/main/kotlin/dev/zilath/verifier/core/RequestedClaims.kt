@@ -36,6 +36,11 @@ data class RequestedClaims(
 ) {
     init {
         require(claims.isNotEmpty()) { "requested claims must name at least one claim" }
+        // DCQL makes an id unique within its claims (OpenID4VP 1.0 §6.3). Checked here as well
+        // as by the query parser because this type is public and built by hand too: two claims
+        // sharing an id, one satisfied and one not, would let a claim set naming that id pass.
+        val declaredIds = claims.mapNotNull { it.id }
+        require(declaredIds.size == declaredIds.toSet().size) { "claim ids must be unique" }
         claimSets?.let { sets ->
             require(sets.isNotEmpty()) { "claim_sets must not be empty when present" }
             require(sets.none { it.isEmpty() }) { "a claim set must name at least one claim" }
