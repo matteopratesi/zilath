@@ -81,12 +81,12 @@ class OpenId4VpFlowIntegrationTest {
         started: StartedTransaction,
         nonceOverride: String? = null,
         stateOverride: String? = null,
-        vpToken: (
-            String,
-        ) -> JsonElement = { compact -> buildJsonObject { put("pid", buildJsonArray { add(compact) }) } },
+        vpToken: (String) -> JsonElement = ::onePresentationForPid,
         encryptTo: JWK? = null,
         audienceOverride: String? = null,
         jweHeader: JWEHeader = JWEHeader(JWEAlgorithm.ECDH_ES, EncryptionMethod.A256GCM),
+        vct: String = TestVectors.VCT,
+        echoedNonce: String? = null,
     ): DirectPostBody {
         val jar = checkNotNull(flow.requestJwtFor(started.id)) { "request JWT not available" }
         val jwt = SignedJWT.parse(jar)
@@ -97,16 +97,21 @@ class OpenId4VpFlowIntegrationTest {
             TestVectors.vector(
                 nonce = nonceOverride ?: claims.getStringClaim("nonce"),
                 audience = audienceOverride ?: config.clientId,
+                vct = vct,
             )
         val payload =
             buildJsonObject {
                 put("vp_token", vpToken(compact))
                 put("state", stateOverride ?: claims.getStringClaim("state"))
+                echoedNonce?.let { put("nonce", it) }
             }
         val jwe = JWEObject(jweHeader, Payload(payload.toString()))
         jwe.encrypt(ECDHEncrypter((encryptTo ?: advertisedKey).toECKey()))
         return DirectPostBody(mapOf("response" to jwe.serialize()))
     }
+
+    private fun onePresentationForPid(compact: String): JsonElement =
+        buildJsonObject { put("pid", buildJsonArray { add(compact) }) }
 
     private fun advertisedEncryptionKey(clientMetadata: Map<String, Any?>): JWK {
         val jwks = clientMetadata["jwks"] as Map<*, *>
@@ -170,6 +175,30 @@ class OpenId4VpFlowIntegrationTest {
                 .map { it.path },
         ).containsExactly(listOf(ClaimPathSegment.Key("given_name")), listOf(ClaimPathSegment.Key("family_name")))
         assertThat(seen.single().expectedVcts).containsExactly("urn:zilath:test:entitlement")
+    }
+
+    @Test
+    fun `a credential of another type than the query asked for is rejected by the flow`() {
+        // The type check lives in verifier-core; in the protocol it works only because the
+        // flow hands it the query's vct_values. Every other presentation in this class uses
+        // the requested type, so without this test the wiring could go and nothing notice.
+        val started = startForPid()
+        val outcome =
+            flow.handleWalletResponse(started.id, walletBody(started, vct = "urn:zilath:test:something-else"))
+        assertThat((outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.UNSUPPORTED_FORMAT)
+    }
+
+    @Test
+    fun `a nonce echoed in the response must be the transaction's`() {
+        val wrong = startForPid()
+        val rejected = flow.handleWalletResponse(wrong.id, walletBody(wrong, echoedNonce = "wrong-nonce"))
+        assertThat((rejected as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.MALFORMED)
+        assertThat(rejected.detail).isEqualTo("response nonce does not match the transaction")
+
+        val right = startForPid()
+        val nonce = SignedJWT.parse(flow.requestJwtFor(right.id)).jwtClaimsSet.getStringClaim("nonce")
+        assertThat(flow.handleWalletResponse(right.id, walletBody(right, echoedNonce = nonce)))
+            .isInstanceOf(FlowOutcome.Verified::class.java)
     }
 
     @Test
