@@ -18,7 +18,6 @@ package dev.zilath.verifier.core
 
 import com.nimbusds.jose.JWSVerifier
 import com.nimbusds.jose.jwk.JWK
-import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import eu.europa.ec.eudi.sdjwt.JwtSignatureVerifier
@@ -27,10 +26,8 @@ import eu.europa.ec.eudi.sdjwt.SdJwtVerificationException
 import eu.europa.ec.eudi.sdjwt.VerificationError
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
-import java.security.MessageDigest
 
 private const val TILDE = '~'
-private const val SHA_256 = "SHA-256"
 
 /** Internal short-circuit carrying the rejection out of the verification pipeline. */
 internal class SdJwtRejection(
@@ -125,13 +122,6 @@ internal fun rejectionOf(failure: Throwable): SdJwtRejection =
         -> SdJwtRejection(RejectionReason.DISCLOSURE_TAMPERED, "disclosures do not match the credential")
         else -> SdJwtRejection(RejectionReason.MALFORMED, "presentation does not parse")
     }
-
-/** Recomputes the `sd_hash` the key binding must commit to: SHA-256 over `issuer-jwt~d1~...~`. */
-internal fun sdHashOf(compact: String): String {
-    val presentedPart = compact.substringBeforeLast(TILDE) + TILDE
-    val digest = MessageDigest.getInstance(SHA_256).digest(presentedPart.toByteArray(Charsets.US_ASCII))
-    return Base64URL.encode(digest).toString()
-}
 
 /**
  * Extracts the OAuth Status List reference, if the credential carries one.

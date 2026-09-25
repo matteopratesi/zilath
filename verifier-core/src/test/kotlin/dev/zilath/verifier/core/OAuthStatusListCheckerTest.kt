@@ -77,6 +77,7 @@ class OAuthStatusListCheckerTest {
         typ: String? = "statuslist+jwt",
         expiresAt: Instant? = null,
         issuedAt: Instant? = now,
+        rawClaims: Map<String, Any> = emptyMap(),
     ): String {
         val claims =
             JWTClaimsSet
@@ -87,6 +88,7 @@ class OAuthStatusListCheckerTest {
                     expiresAt?.let { expirationTime(Date.from(it)) }
                     issuedAt?.let { issueTime(Date.from(it)) }
                     claim("status_list", mapOf("bits" to bits, "lst" to deflate(rawList)))
+                    rawClaims.forEach { (name, value) -> claim(name, value) }
                 }.build()
         val rsa = signWith is RSAKey
         val header =
@@ -275,6 +277,22 @@ class OAuthStatusListCheckerTest {
         // boundary the credential's own expiry uses. Pinned because an off-by-one here is
         // invisible until a clock lands exactly on it.
         assertThat(statusOf(token(expiresAt = now))).isEqualTo(CredentialStatus.UNKNOWN)
+    }
+
+    @Test
+    fun `dates that wrap around in Nimbus are not believed`() {
+        // x * 1000 overflows a long: 18446745861714352 read as now, 18446745861717952 as an
+        // hour ahead. Neither is a date; both used to pass as a fresh iat and a valid exp.
+        assertThat(
+            statusOf(token(rawClaims = mapOf("iat" to 18_446_745_861_714_352L))),
+        ).isEqualTo(CredentialStatus.UNKNOWN)
+        assertThat(
+            statusOf(token(rawClaims = mapOf("exp" to 18_446_745_861_717_952L))),
+        ).isEqualTo(CredentialStatus.UNKNOWN)
+        assertThat(statusOf(token(rawClaims = mapOf("iat" to now.toEpochMilli())))).isEqualTo(CredentialStatus.UNKNOWN)
+        assertThat(
+            statusOf(token(rawClaims = mapOf("exp" to now.plusSeconds(60).epochSecond))),
+        ).isEqualTo(CredentialStatus.VALID)
     }
 
     @Test

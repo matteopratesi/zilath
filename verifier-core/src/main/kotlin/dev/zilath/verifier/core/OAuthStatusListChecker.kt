@@ -171,12 +171,17 @@ class OAuthStatusListChecker(
         // different list cannot be replayed in place of this one.
         require(claims.subject == statusRef.uri) { "status list sub does not match the referenced uri" }
         val now = clock.instant()
-        claims.expirationTime?.let { expiry ->
+        // Both dates read as numbers from the payload, never through Nimbus's Date, whose
+        // seconds-to-milliseconds conversion wraps around: see numericDateClaim.
+        val payload = jwt.payload.toJSONObject()
+        when (val exp = numericDateClaim(payload, "exp")) {
+            NumericDateClaim.Absent -> Unit
+            NumericDateClaim.Invalid -> throw IllegalArgumentException("status list exp is not a plausible date")
             // Strictly before, per RFC 7519 §4.1.4, and deliberately WITHOUT the minute of
             // tolerance the credential's own exp gets in SdJwtVcCredentialVerifier: a stale
             // status list is refetched, a stale credential is turned away — the asymmetry is
             // the point. (The third review found this comment still claiming parity.)
-            require(now.isBefore(expiry.toInstant())) { "status list token is expired" }
+            is NumericDateClaim.At -> require(now.isBefore(exp.instant)) { "status list token is expired" }
         }
         // exp is only RECOMMENDED by the draft (§5.1), so a compliant token may carry none
         // and would then never go stale: an attacker who captured a genuine "nobody is
@@ -185,7 +190,9 @@ class OAuthStatusListChecker(
         // without exp would have been the other way to close it, at the cost of failing
         // spec-compliant issuers, and every one of those failures is a denied entitlement.
         val issuedAt =
-            requireNotNull(claims.issueTime?.toInstant()) { "status list token has no iat" }
+            requireNotNull((numericDateClaim(payload, "iat") as? NumericDateClaim.At)?.instant) {
+                "status list token has no plausible iat"
+            }
         require(!issuedAt.isAfter(now.plus(CLOCK_SKEW))) { "status list token is issued in the future" }
         require(!issuedAt.isBefore(now.minus(maxAge))) { "status list token older than $maxAge" }
     }

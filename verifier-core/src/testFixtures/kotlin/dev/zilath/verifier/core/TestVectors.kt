@@ -90,8 +90,6 @@ object TestVectors {
      * @param issuerSigningKey signs the issuer JWT instead of [issuerEcKey] or [issuerRsaKey];
      *   RSA keys below 2048 bits are allowed here, which is the point of passing one.
      * @param holderSigningKey the holder key put in `cnf` and signing the key binding.
-     * @param rawIssuerClaims plaintext numeric issuer claims written verbatim, replacing a
-     *   claim of the same name (`exp` in milliseconds, say).
      * @param kbTyp the key binding `typ` header; null omits it.
      * @param kbAudiences the key binding `aud` as a JSON array, instead of [audience] as a string.
      * @param kbIssuedAtEpochSecond the key binding `iat` verbatim, instead of [kbIssuedAt].
@@ -117,7 +115,6 @@ object TestVectors {
         issuerHeaderParams: Map<String, Any> = emptyMap(),
         issuerSigningKey: JWK? = null,
         holderSigningKey: JWK? = null,
-        rawIssuerClaims: Map<String, Number> = emptyMap(),
         kbTyp: String? = KB_TYP,
         kbAudiences: List<String>? = null,
         kbIssuedAtEpochSecond: Long? = null,
@@ -131,7 +128,6 @@ object TestVectors {
                 nbf = nbf,
                 vct = vct,
                 holder = holder.takeIf { includeCnf },
-                raw = rawIssuerClaims,
             )
         val issuance =
             Issuance(
@@ -184,15 +180,18 @@ object TestVectors {
     /**
      * A presentation built by hand, byte by byte, for the shapes an honest issuance library
      * refuses to produce: a disclosure named `...`, `_sd` that is not an array, nesting no
-     * issuer would use. [disclosures] are the JSON texts of the disclosures, in order; their
+     * issuer would use, a date no Nimbus-based issuer can write (the EUDI issuer passes the
+     * payload through `JWTClaimsSet`, whose `Date` conversion rewrites `exp` and truncates
+     * fractions). [disclosures] are the JSON texts of the disclosures, in order; their
      * digests go into the top-level `_sd` unless [referenced] is false or [payload] sets
-     * `_sd` itself. [payload] replaces or extends the plaintext envelope, and is signed by
-     * [issuerEcKey] exactly as written.
+     * `_sd` itself. [payload] replaces or extends the plaintext envelope, [omitted] names
+     * envelope claims to leave out, and the result is signed by [issuerEcKey] as written.
      */
     fun handMade(
         payload: Map<String, Any?> = emptyMap(),
         disclosures: List<String> = emptyList(),
         referenced: Boolean = true,
+        omitted: Set<String> = emptySet(),
     ): String {
         val encoded = disclosures.map(::encodeDisclosure)
         val claims =
@@ -206,6 +205,7 @@ object TestVectors {
             )
         if (referenced) claims["_sd"] = encoded.map(::digestOf)
         claims.putAll(payload)
+        omitted.forEach(claims::remove)
         val issuerJwt = signed(JWSHeader.Builder(JWSAlgorithm.ES256).build(), claims, issuerEcKey)
         val presented = encoded.fold("$issuerJwt~") { acc, disclosure -> "$acc$disclosure~" }
         return presented + keyBindingJwt(presented, Binding())
@@ -256,7 +256,6 @@ object TestVectors {
         val nbf: Instant? = null,
         val vct: String = VCT,
         val holder: JWK? = holderKey,
-        val raw: Map<String, Number> = emptyMap(),
         val written: Boolean = true,
     )
 
@@ -288,24 +287,12 @@ object TestVectors {
             val spec =
                 sdJwt {
                     if (envelope.written) {
-                        fun plain(
-                            name: String,
-                            value: Any,
-                        ) {
-                            if (name in envelope.raw) return
-                            when (value) {
-                                is String -> claim(name, value)
-                                is Long -> claim(name, value)
-                                else -> error("unsupported envelope value")
-                            }
-                        }
-                        plain("iss", ISSUER)
-                        plain("iat", envelope.iat.epochSecond)
-                        envelope.exp?.let { plain("exp", it.epochSecond) }
-                        envelope.nbf?.let { plain("nbf", it.epochSecond) }
-                        plain("vct", envelope.vct)
+                        claim("iss", ISSUER)
+                        claim("iat", envelope.iat.epochSecond)
+                        envelope.exp?.let { claim("exp", it.epochSecond) }
+                        envelope.nbf?.let { claim("nbf", it.epochSecond) }
+                        claim("vct", envelope.vct)
                         envelope.holder?.let { cnf(it.toPublicJWK()) }
-                        envelope.raw.forEach { (name, value) -> claim(name, value) }
                     }
                     claims()
                 }

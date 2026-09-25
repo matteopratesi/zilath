@@ -85,9 +85,9 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         val issuerClaims = verified.sdJwt.jwt.jwtClaimsSet
         checkIssuerAuthorisedForType(issuerClaims, trusted)
         checkCredentialType(issuerClaims, ctx)
-        checkTemporalValidity(issuerClaims, ctx)
+        checkTemporalValidity(verified.sdJwt.jwt, ctx)
         checkTypIfPresent(verified.keyBindingJwt.header, KEY_BINDING_TYPS, RejectionReason.INVALID_KEY_BINDING)
-        checkKeyBinding(verified.keyBindingJwt.jwtClaimsSet, compact, ctx)
+        checkKeyBinding(verified.keyBindingJwt, ctx)
         checkStatus(issuerClaims, issuerKeys, ctx)
         val claims = with(NimbusSdJwtOps) { verified.sdJwt.recreateClaims(null) }
         return VerificationResult.Verified(DisclosedClaims(withoutInternalClaims(claims)))
@@ -137,51 +137,93 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
     }
 
     /**
+     * `exp` is required and must be a plausible date; `nbf` is checked when present. Both are
+     * read as numbers from the signed payload ([numericDateClaim]), not through Nimbus's
+     * `Date`, whose seconds-to-milliseconds conversion wraps around silently.
+     *
+     * A credential without `exp` used to verify for ever: SD-JWT VC leaves the claim
+     * optional, but IT-Wallet 1.4.6 makes it mandatory in the credential data model, and a
+     * profile-conformant issuer never omits it. The commoner issuer bug, a timestamp in
+     * milliseconds, reads as a year beyond 9999 and is no NumericDate at all; the ceiling
+     * refuses whatever else would make a credential outlive its holder — fifty years is far
+     * beyond any credential's validity and still short of the absurd.
+     *
      * `detail` is retained on the transaction and reaches the application log, so it carries
      * no value taken from the credential — not even a timestamp. The reason code says what
      * failed; the exact instant is the holder's, not the log's.
      */
     private fun checkTemporalValidity(
-        issuerClaims: JWTClaimsSet,
+        issuerJwt: SignedJWT,
         ctx: VerificationContext,
     ) {
         val now = ctx.clock.instant()
-        val expiration = issuerClaims.expirationTime?.toInstant()
-        if (expiration != null && !expiration.isAfter(now.minus(CLOCK_SKEW))) {
+        val payload = issuerJwt.payload.toJSONObject()
+        val expiration =
+            when (val exp = numericDateClaim(payload, "exp")) {
+                NumericDateClaim.Absent -> reject(RejectionReason.MALFORMED, "credential has no exp")
+                NumericDateClaim.Invalid -> reject(RejectionReason.MALFORMED, "credential exp is not a plausible date")
+                is NumericDateClaim.At -> exp.instant
+            }
+        if (expiration.isAfter(now.plus(MAX_EXP_AHEAD))) {
+            reject(RejectionReason.MALFORMED, "credential exp is not a plausible date")
+        }
+        if (!expiration.isAfter(now.minus(CLOCK_SKEW))) {
             reject(RejectionReason.EXPIRED, "credential is expired")
         }
-        val notBefore = issuerClaims.notBeforeTime?.toInstant()
+        val notBefore =
+            when (val nbf = numericDateClaim(payload, "nbf")) {
+                NumericDateClaim.Absent -> null
+                NumericDateClaim.Invalid -> reject(RejectionReason.MALFORMED, "credential nbf is not a plausible date")
+                is NumericDateClaim.At -> nbf.instant
+            }
         if (notBefore != null && notBefore.isAfter(now.plus(CLOCK_SKEW))) {
             reject(RejectionReason.NOT_YET_VALID, "credential is not yet valid")
         }
     }
 
+    /**
+     * Audience, nonce and freshness. The key binding's signature under the `cnf` key and its
+     * `sd_hash` are checked by the EUDI library before this runs (`MustBePresentAndValid`),
+     * with the digest `_sd_alg` names, as RFC 9901 §4.3 requires. Zilath used to recompute
+     * `sd_hash` in SHA-256 whatever `_sd_alg` said: redundant for SHA-256, and for an issuer
+     * using sha-384 or sha-512 a rejection of every genuine presentation, blamed on the
+     * wallet (fourth internal review).
+     *
+     * Exactly one audience. RFC 9901 §4.3 says `aud` MUST be a single string, and IT-Wallet
+     * 1.4.6 that it MUST match the relying party's identifier; a list that names us beside
+     * someone else was accepted. A one-element array naming us is accepted: Nimbus reads
+     * both forms as the same list, and the array names the same single receiver the string
+     * would — nothing is bound differently, and refusing it would only turn a wallet's
+     * serialisation habit into a denial.
+     */
     private fun checkKeyBinding(
-        kbClaims: JWTClaimsSet,
-        compact: String,
+        kbJwt: SignedJWT,
         ctx: VerificationContext,
     ) {
-        if (kbClaims.audience.orEmpty().none { it in ctx.expectedAudiences }) {
+        val kbClaims = kbJwt.jwtClaimsSet
+        val audience = kbClaims.audience.orEmpty()
+        if (audience.size != 1 || audience.single() !in ctx.expectedAudiences) {
             reject(RejectionReason.AUDIENCE_MISMATCH, "key binding not addressed to this verifier")
         }
         val nonce = runCatching { kbClaims.getStringClaim("nonce") }.getOrNull()
         if (nonce != ctx.expectedNonce) {
             reject(RejectionReason.NONCE_MISMATCH, "key binding nonce does not match the transaction")
         }
-        checkKeyBindingFreshness(kbClaims, ctx)
-        val sdHash = runCatching { kbClaims.getStringClaim("sd_hash") }.getOrNull()
-        if (sdHash != sdHashOf(compact)) {
-            reject(RejectionReason.INVALID_KEY_BINDING, "sd_hash does not match the presented credential")
-        }
+        checkKeyBindingFreshness(kbJwt, ctx)
     }
 
+    /** An `iat` outside the representable range is, a fortiori, outside the window. */
     private fun checkKeyBindingFreshness(
-        kbClaims: JWTClaimsSet,
+        kbJwt: SignedJWT,
         ctx: VerificationContext,
     ) {
         val issuedAt =
-            kbClaims.issueTime?.toInstant()
-                ?: reject(RejectionReason.INVALID_KEY_BINDING, "key binding has no iat")
+            when (val iat = numericDateClaim(kbJwt.payload.toJSONObject(), "iat")) {
+                NumericDateClaim.Absent -> reject(RejectionReason.INVALID_KEY_BINDING, "key binding has no iat")
+                NumericDateClaim.Invalid ->
+                    reject(RejectionReason.INVALID_KEY_BINDING, "key binding iat outside the accepted window")
+                is NumericDateClaim.At -> iat.instant
+            }
         val distance = Duration.between(issuedAt, ctx.clock.instant()).abs()
         if (distance > ctx.keyBindingMaxAge) {
             reject(RejectionReason.INVALID_KEY_BINDING, "key binding iat outside the accepted window")
@@ -261,5 +303,8 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
          * is minutes wide and symmetric already.
          */
         private val CLOCK_SKEW: java.time.Duration = java.time.Duration.ofMinutes(1)
+
+        /** See [checkTemporalValidity]: fifty years of 365 days. */
+        private val MAX_EXP_AHEAD: Duration = Duration.ofDays(50L * 365)
     }
 }

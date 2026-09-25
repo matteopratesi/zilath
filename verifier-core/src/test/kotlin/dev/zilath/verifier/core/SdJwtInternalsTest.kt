@@ -132,16 +132,4 @@ class SdJwtInternalsTest {
         )
         assertThat(trustInputOf(withChain).trustChain).containsExactly("statement-a", "statement-b")
     }
-
-    @Test
-    fun `sd_hash changes when a disclosure is withheld`() {
-        val compact = TestVectors.vector()
-        val withheld =
-            compact
-                .split('~')
-                .toMutableList()
-                .also { it.removeAt(1) }
-                .joinToString("~")
-        assertThat(sdHashOf(withheld)).isNotEqualTo(sdHashOf(compact))
-    }
 }
