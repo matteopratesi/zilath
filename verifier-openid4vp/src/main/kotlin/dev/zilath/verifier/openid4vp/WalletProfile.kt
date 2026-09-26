@@ -171,6 +171,29 @@ internal val SUPPORTED_SD_JWT_ALGS = listOf("ES256", "ES384", "ES512")
 internal val SUPPORTED_KB_JWT_ALGS = listOf("ES256")
 
 /**
+ * [metadata] with the query's credential format among its `vp_formats_supported`, under the
+ * algorithms of `dc+sd-jwt`. A query for the pre-1.0 `vc+sd-jwt` came with metadata naming
+ * `dc+sd-jwt` alone: the signed request asked for a format it said it did not support, and a
+ * wallet that checks one against the other refused it. What a profile names itself is kept.
+ */
+internal fun withRequestedFormat(
+    metadata: Map<String, Any>,
+    request: PresentationRequest,
+): Map<String, Any> {
+    val credential = (request.dcqlQuery["credentials"] as? JsonArray)?.firstOrNull() as? JsonObject
+    val format = (credential?.get("format") as? JsonPrimitive)?.content
+    val formats = metadata["vp_formats_supported"] as? Map<*, *>
+    val template = formats?.get(DC_SD_JWT)
+    return when {
+        format == null || formats == null || template == null -> metadata
+        format in formats -> metadata
+        else -> metadata + ("vp_formats_supported" to formats + (format to template))
+    }
+}
+
+private const val DC_SD_JWT = "dc+sd-jwt"
+
+/**
  * The members every profile shares: the transaction's encryption key — the only key the
  * request publishes — and the supported encodings and formats.
  */

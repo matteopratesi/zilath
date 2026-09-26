@@ -185,5 +185,6 @@ data class Transaction(
      */
     override fun toString(): String =
         "Transaction(id=${id.value}, state=$state, mode=$mode, createdAt=$createdAt, expiresAt=$expiresAt, " +
-            "outcome=${outcome?.javaClass?.simpleName}, hasResponseCode=${responseCodeHash != null}, returned=$returned)"
+            "outcome=${outcome?.javaClass?.simpleName}, hasResponseCode=${responseCodeHash != null}, " +
+            "returned=$returned)"
 }

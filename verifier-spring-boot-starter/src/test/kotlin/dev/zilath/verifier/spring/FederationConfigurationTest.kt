@@ -179,7 +179,12 @@ class FederationConfigurationTest {
                     .subject("https://rp.example")
                     .claim("trust_mark_type", type)
                     .build(),
-            ).apply { sign(com.nimbusds.jose.crypto.ECDSASigner(issuer)) }.serialize()
+            ).apply {
+                sign(
+                    com.nimbusds.jose.crypto
+                        .ECDSASigner(issuer),
+                )
+            }.serialize()
         webStarterRunner(signingKey)
             .withPropertyValues(
                 *federation,

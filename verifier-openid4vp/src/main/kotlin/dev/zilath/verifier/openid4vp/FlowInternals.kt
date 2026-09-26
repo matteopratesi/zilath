@@ -26,9 +26,7 @@ import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.RejectionReason
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
@@ -126,29 +124,6 @@ internal fun qrPayloadOf(
 }
 
 /**
- * [metadata] with the query's credential format among its `vp_formats_supported`, under the
- * algorithms of `dc+sd-jwt`. A query for the pre-1.0 `vc+sd-jwt` came with metadata naming
- * `dc+sd-jwt` alone: the signed request asked for a format it said it did not support, and a
- * wallet that checks one against the other refused it. What a profile names itself is kept.
- */
-internal fun withRequestedFormat(
-    metadata: Map<String, Any>,
-    request: PresentationRequest,
-): Map<String, Any> {
-    val credential = (request.dcqlQuery["credentials"] as? JsonArray)?.firstOrNull() as? JsonObject
-    val format = (credential?.get("format") as? JsonPrimitive)?.content
-    val formats = metadata["vp_formats_supported"] as? Map<*, *>
-    val template = formats?.get(DC_SD_JWT)
-    return if (format == null || formats == null || template == null || format in formats) {
-        metadata
-    } else {
-        metadata + ("vp_formats_supported" to formats + (format to template))
-    }
-}
-
-private const val DC_SD_JWT = "dc+sd-jwt"
-
-/**
  * Builds and signs the request object (JAR) for one transaction, with [walletNonce] as its
  * `wallet_nonce` claim when a wallet asked for the object with one (OpenID4VP 1.0 §5.10).
  */
@@ -172,9 +147,12 @@ internal fun buildRequestJwt(
             .claim("dcql_query", jsonToMap(transaction.request.dcqlQuery))
             .claim(
                 "client_metadata",
+                // Public half only: a profile publishes what it is given.
                 withRequestedFormat(
-                    // Public half only: a profile publishes what it is given.
-                    config.profile.clientMetadataFor(config, responseEncryptionKeyOf(config, transaction).toPublicJWK()),
+                    config.profile.clientMetadataFor(
+                        config,
+                        responseEncryptionKeyOf(config, transaction).toPublicJWK(),
+                    ),
                     transaction.request,
                 ),
             ).issueTime(Date.from(now))
