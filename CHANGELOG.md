@@ -259,11 +259,13 @@ Spring Security, tested by the starter.
 - The production IT-Wallet federation documents, as served on 2026-09-24, in the test
   fixtures, with their provenance: the tests replay them with a fixed clock, and a card
   shaped as IT-Wallet 1.4.6 writes it is verified against them from one end to the other.
-- `RpFederationConfig.trustMarks` (`RpTrustMark`), and the starter's
-  `zilath.openid4vp.federation.trust-marks`: the trust marks the federation issued to the
-  relying party, published as `trust_marks` in its entity configuration, as IT-Wallet 1.4.6
-  onboarding asks (phase 4). Each must name the relying party as `sub` and carry its own type;
-  the signature is the wallet's to verify.
+- `RpFederationConfig.trustMarks` (`RpTrustMark`) and `trustMarkSource` (`TrustMarkSource`),
+  and in the starter `zilath.openid4vp.federation.trust-marks` or a `TrustMarkSource` bean:
+  the trust marks the federation issued to the relying party, published as `trust_marks` in
+  its entity configuration, as IT-Wallet 1.4.6 onboarding asks (phase 4). Each must have the
+  shape a wallet checks — typed `trust-mark+jwt`, with `kid`, `iss`, its own type, the
+  relying party as `sub`, `iat` and `exp` — and stops being published when it expires; the
+  signature is the wallet's to verify.
 - The starter builds an `OAuthStatusListChecker` when the application declares a
   `StatusListFetcher` and no `StatusChecker`. Before, it built no checker at all, and the
   only examples in the repository answered VALID to everything, which switches revocation

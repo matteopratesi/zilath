@@ -32,6 +32,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import org.junit.jupiter.api.Test
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.Date
@@ -47,36 +48,49 @@ class RpTrustMarksTest {
     private val issuerKey = ECKeyGenerator(Curve.P_256).keyID("ta-marks").generate()
     private val federationKey = ECKeyGenerator(Curve.P_256).keyID("rp-fed").generate()
 
+    @Suppress("LongParameterList") // test factory: every parameter is one field a wallet checks
     private fun trustMark(
         type: String = VERIFIER_MARK,
         subject: String = ENTITY_ID,
+        typ: String? = "trust-mark+jwt",
+        kid: String? = issuerKey.keyID,
+        issuer: String? = "https://ta.example",
+        issuedAt: Instant? = clock.instant(),
+        expiresAt: Instant? = clock.instant().plus(Duration.ofDays(365)),
     ): String =
         SignedJWT(
             JWSHeader
                 .Builder(JWSAlgorithm.ES256)
-                .keyID(issuerKey.keyID)
-                .type(JOSEObjectType("trust-mark+jwt"))
+                .apply { if (kid != null) keyID(kid) }
+                .apply { if (typ != null) type(JOSEObjectType(typ)) }
                 .build(),
             JWTClaimsSet
                 .Builder()
-                .issuer("https://ta.example")
+                .issuer(issuer)
                 .subject(subject)
                 .claim("trust_mark_type", type)
-                .issueTime(Date.from(clock.instant()))
+                .issueTime(issuedAt?.let(Date::from))
+                .expirationTime(expiresAt?.let(Date::from))
                 .build(),
         ).apply { sign(ECDSASigner(issuerKey)) }.serialize()
 
-    private fun federation(trustMarks: List<RpTrustMark> = emptyList()) =
-        RpFederationConfig(
-            entityId = ENTITY_ID,
-            federationKey = federationKey,
-            authorityHints = listOf("https://ta.example"),
-            organizationName = "Teatro di Prova",
-            contacts = listOf("biglietteria@teatro.example"),
-            trustMarks = trustMarks,
-        )
+    private fun federation(
+        trustMarks: List<RpTrustMark> = emptyList(),
+        source: TrustMarkSource? = null,
+    ) = RpFederationConfig(
+        entityId = ENTITY_ID,
+        federationKey = federationKey,
+        authorityHints = listOf("https://ta.example"),
+        organizationName = "Teatro di Prova",
+        contacts = listOf("biglietteria@teatro.example"),
+        trustMarks = trustMarks,
+        trustMarkSource = source,
+    )
 
-    private fun entityConfigurationOf(federation: RpFederationConfig): JWTClaimsSet {
+    private fun entityConfigurationOf(
+        federation: RpFederationConfig,
+        at: Clock = clock,
+    ): JWTClaimsSet {
         val config =
             RelyingPartyConfiguration(
                 clientId = "openid_federation:$ENTITY_ID",
@@ -86,7 +100,7 @@ class RpTrustMarksTest {
                 statusChecker = StatusChecker { _, _ -> CredentialStatus.UNKNOWN },
                 federation = federation,
             )
-        return SignedJWT.parse(RpEntityConfiguration.build(config, federation, clock)).jwtClaimsSet
+        return SignedJWT.parse(RpEntityConfiguration.build(config, federation, at)).jwtClaimsSet
     }
 
     @Test
@@ -103,19 +117,51 @@ class RpTrustMarksTest {
     }
 
     @Test
-    fun `a trust mark of another type, of another entity or no JWT at all is refused`() {
-        // §3.1.2: the type in the entry MUST be the one in the trust mark; and a trust mark
-        // issued to another entity proves nothing about this one.
+    fun `a trust mark a wallet would reject is refused at construction`() {
+        // §3.1.2: the type in the entry MUST be the one in the trust mark, and one issued to
+        // another entity proves nothing about this one. §7.1 and §7.3: typed trust-mark+jwt,
+        // with a kid, an iss and an iat; IT-Wallet 1.4.6 table 8.7 also requires exp.
         val refused =
             mapOf(
-                "another type" to RpTrustMark(VERIFIER_MARK, trustMark(type = "https://ta.example/trust_marks/other")),
-                "another entity" to RpTrustMark(VERIFIER_MARK, trustMark(subject = "https://other.example")),
-                "no JWT" to RpTrustMark(VERIFIER_MARK, "not-a-jwt"),
-                "no type" to RpTrustMark(" ", trustMark()),
-            )
+                "another type" to trustMark(type = "https://ta.example/trust_marks/other"),
+                "another entity" to trustMark(subject = "https://other.example"),
+                "untyped" to trustMark(typ = null),
+                "typed as something else" to trustMark(typ = "entity-statement+jwt"),
+                "no kid" to trustMark(kid = null),
+                "no iss" to trustMark(issuer = null),
+                "no iat" to trustMark(issuedAt = null),
+                "no exp" to trustMark(expiresAt = null),
+                "no JWT" to "not-a-jwt",
+            ).mapValues { (_, jwt) -> RpTrustMark(VERIFIER_MARK, jwt) } +
+                ("no type" to RpTrustMark(" ", trustMark()))
         for ((case, mark) in refused) {
             assertThatIllegalArgumentException().describedAs(case).isThrownBy { federation(listOf(mark)) }
         }
+    }
+
+    @Test
+    fun `a trust mark is no longer published once it has expired`() {
+        // A wallet must reject an expired mark; the relying party kept publishing it.
+        val expiring = RpTrustMark(VERIFIER_MARK, trustMark(expiresAt = clock.instant().plus(Duration.ofDays(1))))
+        val federation = federation(listOf(expiring))
+        assertThat(entityConfigurationOf(federation).getListClaim("trust_marks")).hasSize(1)
+        val later = Clock.offset(clock, Duration.ofDays(1))
+        assertThat(entityConfigurationOf(federation, later).claims).doesNotContainKey("trust_marks")
+    }
+
+    @Test
+    fun `a trust mark source renews the marks, and what it gives is checked as configured ones are`() {
+        val fresh = RpTrustMark(VERIFIER_MARK, trustMark())
+        val expired = RpTrustMark(VERIFIER_MARK, trustMark(expiresAt = clock.instant().minusSeconds(1)))
+        val foreign = RpTrustMark(VERIFIER_MARK, trustMark(subject = "https://other.example"))
+        val claims = entityConfigurationOf(federation(source = { listOf(fresh, expired, foreign) }))
+        assertThat(claims.getListClaim("trust_marks"))
+            .containsExactly(mapOf("trust_mark_type" to VERIFIER_MARK, "trust_mark" to fresh.jwt))
+        // A source that fails publishes nothing rather than failing the entity configuration.
+        assertThat(
+            entityConfigurationOf(federation(source = { error("down") })).claims,
+        ).doesNotContainKey("trust_marks")
+        assertThatIllegalArgumentException().isThrownBy { federation(listOf(fresh), source = { listOf(fresh) }) }
     }
 
     private companion object {

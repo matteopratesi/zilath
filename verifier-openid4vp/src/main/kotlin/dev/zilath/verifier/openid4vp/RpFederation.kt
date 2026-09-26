@@ -75,12 +75,14 @@ data class RpFederationConfig(
      * The trust marks the federation issued to this relying party, published as `trust_marks`
      * (OpenID Federation 1.0 §3.1.2): IT-Wallet 1.4.6 onboarding (phase 4) has the relying
      * party add them to its entity configuration, where a wallet looks for proof that it may
-     * ask for a credential. Each is checked here against what it says of itself — a JWT whose
-     * `trust_mark_type` is [RpTrustMark.type] and whose `sub` is [entityId] — but its signature
-     * is not verified: the relying party does not hold the issuer's keys, the wallet does. Not
-     * checked for expiry either, as [trustChain] is not.
+     * ask for a credential. Each is checked here for the shape a wallet will check (see
+     * [RpTrustMark]), not for its signature: the relying party does not hold the issuer's keys,
+     * the wallet does. One that has expired is no longer published; a relying party that runs
+     * past its marks' `exp` gives a [trustMarkSource] instead.
      */
     val trustMarks: List<RpTrustMark> = emptyList(),
+    /** Supplies renewed trust marks for every entity configuration; the alternative to [trustMarks]. */
+    val trustMarkSource: TrustMarkSource? = null,
 ) {
     init {
         // The spec mandates HTTPS entity ids with a host; plain http is tolerated for the
@@ -109,7 +111,8 @@ data class RpFederationConfig(
         require(trustChain.isEmpty() || trustChainSource == null) { "give either a trustChain or a trustChainSource" }
         // Not checked for expiry: a restart with a stale chain still serves, without the header.
         if (trustChain.isNotEmpty()) trustChainExpiryOf(trustChain, entityId)
-        trustMarks.forEach { checkTrustMark(it, entityId) }
+        require(trustMarks.isEmpty() || trustMarkSource == null) { "give either trustMarks or a trustMarkSource" }
+        trustMarks.forEach { trustMarkExpiryOf(it, entityId) }
         authorityHints.forEach { hint ->
             val hintUri = runCatching { java.net.URI(hint) }.getOrNull()
             require(
@@ -129,37 +132,6 @@ data class RpFederationConfig(
 
         private val LOCALHOST_HOSTS = setOf("localhost", "127.0.0.1")
     }
-}
-
-/**
- * A trust mark issued to the relying party (OpenID Federation 1.0 §7), as its issuer returned
- * it at onboarding.
- */
-data class RpTrustMark(
-    /**
-     * The trust mark type identifier, which the anchor lists in its `trust_mark_issuers`: for a
-     * relying party of the production IT-Wallet federation,
-     * `https://ta.wallet.ipzs.it/trust_marks/federation-entity/openid_credential_verifier`.
-     */
-    val type: String,
-    /** The signed trust mark, a compact JWT. */
-    val jwt: String,
-)
-
-/** A trust mark is the relying party's own and of the type it claims, or it is refused. */
-private fun checkTrustMark(
-    mark: RpTrustMark,
-    entityId: String,
-) {
-    require(mark.type.isNotBlank()) { "a trust mark needs its type" }
-    val claims =
-        requireNotNull(runCatching { SignedJWT.parse(mark.jwt).jwtClaimsSet }.getOrNull()) {
-            "trust mark ${mark.type} is not a signed JWT"
-        }
-    require(claims.getClaim("trust_mark_type") == mark.type) {
-        "trust mark ${mark.type}: its trust_mark_type claim names another type"
-    }
-    require(claims.subject == entityId) { "trust mark ${mark.type} was issued to another entity" }
 }
 
 /**
@@ -206,11 +178,9 @@ object RpEntityConfiguration {
                 .claim("authority_hints", federation.authorityHints)
                 .claim("metadata", metadata(config, federation, entityId))
                 .apply {
-                    if (federation.trustMarks.isNotEmpty()) {
-                        claim(
-                            "trust_marks",
-                            federation.trustMarks.map { mapOf("trust_mark_type" to it.type, "trust_mark" to it.jwt) },
-                        )
+                    val marks = trustMarksToPublish(federation, now)
+                    if (marks.isNotEmpty()) {
+                        claim("trust_marks", marks.map { mapOf("trust_mark_type" to it.type, "trust_mark" to it.jwt) })
                     }
                 }.build()
         val jwt =

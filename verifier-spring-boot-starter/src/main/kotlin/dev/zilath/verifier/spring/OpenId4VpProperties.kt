@@ -123,7 +123,10 @@ data class OpenId4VpProperties(
         val trustChain: List<String> = emptyList(),
         /**
          * The trust marks the federation issued to the relying party, published in its entity
-         * configuration: `trust-marks[0].type` and `trust-marks[0].jwt`, and so on.
+         * configuration as `trust_marks`. Written as the properties `trust-marks[0].type` and
+         * `trust-marks[0].jwt`, and so on. A mark stops being published when it expires: a
+         * relying party that runs longer declares a
+         * [dev.zilath.verifier.openid4vp.TrustMarkSource] bean instead.
          */
         val trustMarks: List<TrustMark> = emptyList(),
     ) {

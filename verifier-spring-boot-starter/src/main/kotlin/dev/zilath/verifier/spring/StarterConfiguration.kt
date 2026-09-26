@@ -26,6 +26,7 @@ import dev.zilath.verifier.openid4vp.RpFederationConfig
 import dev.zilath.verifier.openid4vp.RpKeys
 import dev.zilath.verifier.openid4vp.RpTrustMark
 import dev.zilath.verifier.openid4vp.TrustChainSource
+import dev.zilath.verifier.openid4vp.TrustMarkSource
 import dev.zilath.verifier.openid4vp.WalletProfile
 import java.time.Duration
 
@@ -37,14 +38,17 @@ import java.time.Duration
 /**
  * The relying party [properties] describe, trusting through [trustEvaluator] and
  * [statusChecker], under [profile], with request objects carrying the chain of
- * [trustChainSource] when the application declares one.
+ * [trustChainSource] and its entity configuration the trust marks of [trustMarkSource] when
+ * the application declares them.
  */
+@Suppress("LongParameterList") // one parameter per bean or property group the starter assembles
 internal fun relyingPartyConfigurationOf(
     properties: OpenId4VpProperties,
     trustEvaluator: TrustEvaluator,
     statusChecker: StatusChecker,
     profile: WalletProfile,
     trustChainSource: TrustChainSource?,
+    trustMarkSource: TrustMarkSource? = null,
 ): RelyingPartyConfiguration {
     // The library refuses this too, in its own terms: the fourth internal review found an
     // operator of the starter told that "a federation configuration" was required, with no
@@ -73,7 +77,7 @@ internal fun relyingPartyConfigurationOf(
         walletAuthorizationScheme = properties.walletAuthorizationScheme,
         transactionTimeToLive = Duration.ofSeconds(properties.transactionTimeToLiveSeconds),
         profile = profile,
-        federation = federationOf(properties.federation, trustChainSource),
+        federation = federationOf(properties.federation, trustChainSource, trustMarkSource),
         maxWalletResponseLength = properties.maxWalletResponseLength,
     )
 }
@@ -86,6 +90,7 @@ internal fun relyingPartyConfigurationOf(
 private fun federationOf(
     federation: OpenId4VpProperties.Federation,
     trustChainSource: TrustChainSource?,
+    trustMarkSource: TrustMarkSource?,
 ): RpFederationConfig? {
     if (federation.entityId.isBlank()) {
         require(federation.copy(entityId = "") == OpenId4VpProperties.Federation()) {
@@ -93,6 +98,9 @@ private fun federationOf(
         }
         require(trustChainSource == null) {
             "a TrustChainSource bean is declared without zilath.openid4vp.federation.entity-id"
+        }
+        require(trustMarkSource == null) {
+            "a TrustMarkSource bean is declared without zilath.openid4vp.federation.entity-id"
         }
         return null
     }
@@ -113,6 +121,7 @@ private fun federationOf(
             trustChain = federation.trustChain,
             trustChainSource = trustChainSource,
             trustMarks = federation.trustMarks.map { RpTrustMark(it.type, it.jwt) },
+            trustMarkSource = trustMarkSource,
         )
     } catch (invalid: IllegalArgumentException) {
         // The library's message says what is wrong; here it gains the properties it is about.

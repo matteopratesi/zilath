@@ -27,6 +27,7 @@ import dev.zilath.verifier.openid4vp.OpenId4VpVerificationFlow
 import dev.zilath.verifier.openid4vp.RelyingPartyConfiguration
 import dev.zilath.verifier.openid4vp.TransactionStore
 import dev.zilath.verifier.openid4vp.TrustChainSource
+import dev.zilath.verifier.openid4vp.TrustMarkSource
 import dev.zilath.verifier.openid4vp.VerificationFlow
 import dev.zilath.verifier.openid4vp.WalletProfile
 import org.springframework.beans.factory.ObjectProvider
@@ -50,8 +51,8 @@ import java.time.Clock
  * a library default.
  *
  * It MAY declare a [TransactionStore] (a shared one, when it runs on more than one node), a
- * [WalletProfile], a [TrustChainSource] for an `openid_federation:` relying party, a
- * [CredentialVerifier] and a [Clock]: each is used where the starter would otherwise use
+ * [WalletProfile], a [TrustChainSource] and a [TrustMarkSource] for an `openid_federation:`
+ * relying party, a [CredentialVerifier] and a [Clock]: each is used where the starter would otherwise use
  * its own default, or nothing.
  */
 @AutoConfiguration
@@ -91,7 +92,8 @@ class OpenId4VpAutoConfiguration {
     /**
      * The relying party, assembled from `zilath.openid4vp.*`, under the application's
      * [WalletProfile] bean if it declares one and IT-Wallet's otherwise, and with the
-     * application's [TrustChainSource] bean, if any, supplying the federation trust chain.
+     * application's [TrustChainSource] and [TrustMarkSource] beans, if any, supplying the
+     * federation trust chain and trust marks.
      * Declare a [RelyingPartyConfiguration] bean of your own to replace it; the flow is then
      * built from yours.
      *
@@ -107,12 +109,14 @@ class OpenId4VpAutoConfiguration {
     @ConditionalOnMissingBean(RelyingPartyConfiguration::class, VerificationFlow::class)
     @ConditionalOnBean(TrustEvaluator::class, StatusChecker::class)
     @ConditionalOnProperty(prefix = "zilath.openid4vp", name = ["client-id"])
+    @Suppress("LongParameterList") // Spring bean wiring: every parameter is an injected dependency
     fun relyingPartyConfiguration(
         properties: OpenId4VpProperties,
         trustEvaluator: TrustEvaluator,
         statusChecker: StatusChecker,
         profiles: ObjectProvider<WalletProfile>,
         trustChainSources: ObjectProvider<TrustChainSource>,
+        trustMarkSources: ObjectProvider<TrustMarkSource>,
     ): RelyingPartyConfiguration =
         relyingPartyConfigurationOf(
             properties,
@@ -120,6 +124,7 @@ class OpenId4VpAutoConfiguration {
             statusChecker,
             profiles.getIfAvailable { ItWalletProfile },
             trustChainSources.getIfAvailable(),
+            trustMarkSources.getIfAvailable(),
         )
 
     /**

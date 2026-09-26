@@ -29,12 +29,15 @@ import dev.zilath.verifier.openid4vp.RpEndpoints
 import dev.zilath.verifier.openid4vp.RpEntityConfiguration
 import dev.zilath.verifier.openid4vp.RpFederationConfig
 import dev.zilath.verifier.openid4vp.RpKeys
+import dev.zilath.verifier.openid4vp.RpTrustMark
 import dev.zilath.verifier.openid4vp.TrustChainSource
+import dev.zilath.verifier.openid4vp.TrustMarkSource
 import dev.zilath.verifier.openid4vp.VerificationFlow
 import dev.zilath.verifier.openid4vp.WalletProfile
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext
+import org.springframework.boot.test.context.assertj.AssertableWebApplicationContext
 import org.springframework.core.env.MapPropertySource
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
@@ -165,43 +168,66 @@ class FederationConfigurationTest {
 
     @Test
     fun `trust marks given as properties are published in the entity configuration`() {
-        val type = "https://trust-anchor.example/trust_marks/federation-entity/openid_credential_verifier"
-        val issuer = ECKeyGenerator(Curve.P_256).keyID("ta-marks").generate()
-        val mark =
-            SignedJWT(
-                com.nimbusds.jose.JWSHeader
-                    .Builder(com.nimbusds.jose.JWSAlgorithm.ES256)
-                    .keyID(issuer.keyID)
-                    .build(),
-                com.nimbusds.jwt.JWTClaimsSet
-                    .Builder()
-                    .issuer("https://trust-anchor.example")
-                    .subject("https://rp.example")
-                    .claim("trust_mark_type", type)
-                    .build(),
-            ).apply {
-                sign(
-                    com.nimbusds.jose.crypto
-                        .ECDSASigner(issuer),
-                )
-            }.serialize()
+        val mark = trustMark()
         webStarterRunner(signingKey)
             .withPropertyValues(
                 *federation,
-                "zilath.openid4vp.federation.trust-marks[0].type=$type",
+                "zilath.openid4vp.federation.trust-marks[0].type=$TRUST_MARK_TYPE",
                 "zilath.openid4vp.federation.trust-marks[0].jwt=$mark",
             ).run { context ->
-                val body =
-                    MockMvcBuilders
-                        .webAppContextSetup(context)
-                        .build()
-                        .perform(get("/.well-known/openid-federation"))
-                        .andExpect(status().isOk)
-                        .andReturn()
-                        .response.contentAsString
-                assertThat(SignedJWT.parse(body).jwtClaimsSet.getListClaim("trust_marks"))
-                    .containsExactly(mapOf("trust_mark_type" to type, "trust_mark" to mark))
+                assertThat(publishedTrustMarks(context))
+                    .containsExactly(mapOf("trust_mark_type" to TRUST_MARK_TYPE, "trust_mark" to mark))
             }
+    }
+
+    @Test
+    fun `a trust mark source bean supplies the trust marks instead`() {
+        val mark = trustMark()
+        webStarterRunner(signingKey)
+            .withPropertyValues(*federation)
+            .withBean(TrustMarkSource::class.java, { TrustMarkSource { listOf(RpTrustMark(TRUST_MARK_TYPE, mark)) } })
+            .run { context ->
+                assertThat(publishedTrustMarks(context))
+                    .containsExactly(mapOf("trust_mark_type" to TRUST_MARK_TYPE, "trust_mark" to mark))
+            }
+    }
+
+    private fun publishedTrustMarks(context: AssertableWebApplicationContext): List<Any?> {
+        val body =
+            MockMvcBuilders
+                .webAppContextSetup(context)
+                .build()
+                .perform(get("/.well-known/openid-federation"))
+                .andExpect(status().isOk)
+                .andReturn()
+                .response.contentAsString
+        return SignedJWT.parse(body).jwtClaimsSet.getListClaim("trust_marks")
+    }
+
+    /** A trust mark of the relying party, shaped as OpenID Federation 1.0 and IT-Wallet 1.4.6 want it. */
+    private fun trustMark(): String {
+        val issuer = ECKeyGenerator(Curve.P_256).keyID("ta-marks").generate()
+        val now = java.time.Instant.now()
+        return SignedJWT(
+            com.nimbusds.jose.JWSHeader
+                .Builder(com.nimbusds.jose.JWSAlgorithm.ES256)
+                .keyID(issuer.keyID)
+                .type(com.nimbusds.jose.JOSEObjectType("trust-mark+jwt"))
+                .build(),
+            com.nimbusds.jwt.JWTClaimsSet
+                .Builder()
+                .issuer("https://trust-anchor.example")
+                .subject("https://rp.example")
+                .claim("trust_mark_type", TRUST_MARK_TYPE)
+                .issueTime(java.util.Date.from(now))
+                .expirationTime(java.util.Date.from(now.plusSeconds(365L * 24 * 3600)))
+                .build(),
+        ).apply {
+            sign(
+                com.nimbusds.jose.crypto
+                    .ECDSASigner(issuer),
+            )
+        }.serialize()
     }
 
     @Test
@@ -303,4 +329,9 @@ class FederationConfigurationTest {
             statusChecker = { _, _ -> CredentialStatus.UNKNOWN },
             federation = federation,
         )
+
+    private companion object {
+        const val TRUST_MARK_TYPE =
+            "https://trust-anchor.example/trust_marks/federation-entity/openid_credential_verifier"
+    }
 }

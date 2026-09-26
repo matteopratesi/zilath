@@ -53,9 +53,11 @@ not been run yet.
    carries the RP `trust_chain` header when the federation provides one. It also publishes
    the trust marks it was issued (`RpFederationConfig.trustMarks`, as `trust_marks`, OpenID
    Federation 1.0 §3.1.2), which IT-Wallet 1.4.6 onboarding asks of a relying party; each
-   is checked when the configuration is built — it parses, carries the configured
-   `trust_mark_type` and has the relying party as `sub` — but its signature is not, since
-   the relying party does not hold its issuer's key. What remains is the onboarding itself
+   is checked when the configuration is built for the shape a wallet checks — typed
+   `trust-mark+jwt`, with a `kid`, its `iss`, the configured `trust_mark_type`, the relying
+   party as `sub`, `iat`, and the `exp` IT-Wallet requires — but its signature is not,
+   since the relying party does not hold its issuer's key. An expired mark is no longer
+   published, and a `TrustMarkSource` renews marks without a restart. What remains is the onboarding itself
    — registration under a superior and the fetch endpoints a real federation requires —
    which needs a counterpart (IPZS test environment or the AgID registration procedure,
    still unpublished).
