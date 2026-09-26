@@ -32,11 +32,15 @@ import java.time.Clock
  * Demo wallet presenting the SIMULATED CED.
  *
  * Usage:
- *   init <keysDir>                 — generates the simulated federation keys
- *   run <txId> [baseUrl] [keysDir] — presents the simulated CED for a demo transaction
+ *   init <keysDir>              — generates the simulated federation keys
+ *   run <authorizeUrl> [keysDir] — presents the simulated CED for the request in that URL
+ *
+ * The authorize URL is what the QR carries, and what the demo's waiting page shows beside it:
+ * a wallet starts from the QR, never from the transaction id, which opens nothing on the demo
+ * pages to anyone but the browser that started the transaction.
  */
 object DemoWalletSimulator {
-    private const val KEYS_DIR_ARG = 3
+    private const val KEYS_DIR_ARG = 2
     private const val HTTP_OK_MIN = 200
     private const val HTTP_OK_MAX = 299
     private val http = HttpClient.newHttpClient()
@@ -47,11 +51,10 @@ object DemoWalletSimulator {
             "init" -> init(Path.of(args.getOrNull(1) ?: "demo-keys/ced-sim"))
             "run" ->
                 run(
-                    txId = requireNotNull(args.getOrNull(1)) { "usage: run <txId> [baseUrl] [keysDir]" },
-                    baseUrl = args.getOrNull(2) ?: "http://localhost:8080",
+                    authorizeUrl = requireNotNull(args.getOrNull(1)) { "usage: run <authorizeUrl> [keysDir]" },
                     keysDir = Path.of(args.getOrNull(KEYS_DIR_ARG) ?: "demo-keys/ced-sim"),
                 )
-            else -> error("usage: init <keysDir> | run <txId> [baseUrl] [keysDir]")
+            else -> error("usage: init <keysDir> | run <authorizeUrl> [keysDir]")
         }
     }
 
@@ -65,12 +68,10 @@ object DemoWalletSimulator {
     }
 
     private fun run(
-        txId: String,
-        baseUrl: String,
+        authorizeUrl: String,
         keysDir: Path,
     ) {
         val keys = CedSim.readKeys(keysDir)
-        val authorizeUrl = get("$baseUrl/demo/authorize-url/$txId")
         val requestUri = queryParam(authorizeUrl, "request_uri")
         val jar = SignedJWT.parse(get(requestUri))
         val claims = jar.jwtClaimsSet
@@ -83,7 +84,7 @@ object DemoWalletSimulator {
         val response = CedSim.buildEncryptedResponse(state, presentation, encryptionKey)
         val status = postForm(responseUri, "response=" + java.net.URLEncoder.encode(response, StandardCharsets.UTF_8))
         check(status in HTTP_OK_MIN..HTTP_OK_MAX) { "wallet response rejected: HTTP $status" }
-        println("Presented simulated CED for $txId -> HTTP $status")
+        println("Presented simulated CED -> HTTP $status; the waiting page moves on to the ticket")
     }
 
     private fun encryptionKeyOf(clientMetadata: Map<String, Any?>): JWK {

@@ -103,13 +103,16 @@ class DemoCheckoutController(
         @CookieValue(name = SESSION_COOKIE, required = false) session: String?,
     ): ResponseEntity<String> {
         val entry = registry.ownedValid(txId, session) ?: return notFoundPage()
+        // The test wallets start where a wallet does, from the QR's authorize URL: the id alone
+        // opens nothing here to anyone but this browser.
+        val qrPayload = entry.transaction.qrPayload
         val walletCommand =
             if (credentialMode == CED_SIM_MODE) {
-                "./scripts/run-ced-wallet.sh $txId"
+                "./scripts/run-ced-wallet.sh '$qrPayload'"
             } else {
-                "./scripts/run-demo-wallet.sh $txId"
+                "./scripts/run-demo-wallet.sh '$qrPayload'"
             }
-        return ResponseEntity.ok(waitPageHtml(txId, entry.transaction.qrPayload, walletCommand))
+        return ResponseEntity.ok(waitPageHtml(txId, qrPayload, walletCommand))
     }
 
     @GetMapping("/demo/qr/{txId}.png", produces = [MediaType.IMAGE_PNG_VALUE])

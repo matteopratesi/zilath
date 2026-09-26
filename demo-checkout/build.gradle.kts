@@ -37,7 +37,7 @@ tasks.test {
 
 tasks.register<JavaExec>("cedWallet") {
     group = "demo"
-    description = "Simulated-CED demo wallet (args: init [dir] | run <txId> [baseUrl] [keysDir])"
+    description = "Simulated-CED demo wallet (args: init [dir] | run <authorizeUrl> [keysDir])"
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("dev.zilath.demo.cedsim.DemoWalletSimulator")
     // Relative key paths must resolve against the repository root, not the module dir.

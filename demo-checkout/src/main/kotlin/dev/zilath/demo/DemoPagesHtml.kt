@@ -87,7 +87,7 @@ internal fun eventPageHtml(): String =
 internal fun waitPageHtml(
     txId: String,
     qrPayload: String,
-    walletCommand: String = "./scripts/run-demo-wallet.sh $txId",
+    walletCommand: String = "./scripts/run-demo-wallet.sh '$qrPayload'",
 ): String {
     val id = htmlEscape(txId)
     return page(

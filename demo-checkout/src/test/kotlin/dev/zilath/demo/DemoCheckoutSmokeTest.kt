@@ -89,6 +89,12 @@ class DemoCheckoutSmokeTest {
             .perform(get("/demo/wait/{txId}", txId).cookie(started.session))
             .andExpect(status().isOk)
             .andExpect(content().string(org.hamcrest.Matchers.containsString("/demo/qr/$txId.png")))
+            // The test wallet starts from the QR's authorize URL, as a wallet does.
+            .andExpect(
+                content().string(
+                    org.hamcrest.Matchers.containsString("./scripts/run-demo-wallet.sh &#39;openid4vp://authorize?"),
+                ),
+            )
         mockMvc
             .perform(get("/demo/qr/{txId}.png", txId).cookie(started.session))
             .andExpect(status().isOk)
