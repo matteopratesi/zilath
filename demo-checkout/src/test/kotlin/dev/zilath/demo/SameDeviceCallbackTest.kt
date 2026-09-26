@@ -134,15 +134,17 @@ class SameDeviceCallbackTest {
     }
 
     @Test
-    fun `a return to a transaction the demo did not start completes, without a ticket`() {
+    fun `a return to a transaction the demo did not start hands the reader to the user-agent`() {
         // A conformance run: started outside these pages, which read by id alone and so are
-        // never pointed at it.
+        // never pointed at it. The token the flow issued for the return goes to the one that
+        // came back, and is not kept anywhere an id alone reaches.
         val conformance = TransactionId("tx-conformance")
         val flow = RecordingFlow(known, consumes = true, redeemable = setOf(known, conformance))
         val response = controllerWith(flow).sameDeviceCallback(conformance.value, "a-code", null)
         assertThat(response.statusCode.value()).isEqualTo(200)
         assertThat(response.headers.location).isNull()
-        assertThat(response.body).contains("Rientro dal wallet completato").doesNotContain(conformance.value)
+        assertThat(response.headers.cacheControl).isEqualTo("no-store")
+        assertThat(response.body).isEqualTo("""{"status":"returned","pollToken":"reader"}""")
     }
 
     @Test

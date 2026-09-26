@@ -66,7 +66,8 @@ class ConformanceController(
         // The conformance wallet POSTs the response and then expects to be handed a
         // redirect back: that IS the same-device flow, whatever the QR suggests.
         // Not registered with the demo pages, which still read a transaction by its id alone:
-        // /demo/cb completes its return all the same, since the flow checks the code.
+        // /demo/cb completes its return all the same, since the flow checks the code, and
+        // hands the returning user-agent the token that reads the outcome afterwards.
         val started =
             flow.start(PresentationRequest.forTestPid(pidVct), dev.zilath.verifier.openid4vp.FlowMode.SAME_DEVICE)
         return mapOf(
@@ -89,8 +90,9 @@ class ConformanceController(
      *
      * Same-device, the start token reads pending until the user-agent comes back through
      * /demo/cb, and nothing afterwards: the flow hands the read right to the user-agent that
-     * returned (OpenID4VP 1.0 §14.2). Even the category says something about the person
-     * whose wallet answered, so it is not read back through the start token either.
+     * returned (OpenID4VP 1.0 §14.2), and /demo/cb gives it the token that reads from then
+     * on. Even the category says something about the person whose wallet answered, so it is
+     * not read back through the start token.
      */
     @GetMapping("/conformance/outcome/{txId}")
     fun outcome(

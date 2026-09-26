@@ -181,16 +181,6 @@ internal fun callbackErrorHtml(reason: String): String =
         """.trimIndent(),
     )
 
-/** Return leg completed for a transaction these pages did not start: nothing about its outcome. */
-internal val RETURN_COMPLETED_HTML: String =
-    page(
-        "Rientro completato",
-        """
-        <h1>Rientro dal wallet completato</h1>
-        <p class="muted">Puoi chiudere questa pagina.</p>
-        """.trimIndent(),
-    )
-
 internal fun notFoundHtml(): String =
     page(
         "Transazione sconosciuta",

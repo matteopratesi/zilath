@@ -40,7 +40,9 @@ import dev.zilath.verifier.openid4vp.VerificationReceipts
 import dev.zilath.verifier.trust.FederationFetcher
 import dev.zilath.verifier.trust.FederationTrustEvaluator
 import dev.zilath.verifier.trust.TrustAnchorConfig
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -242,7 +244,15 @@ class CedSimFlowTest {
         val returned = demo.sameDeviceCallback(txId, code, null)
         assertThat(returned.statusCode.value()).isEqualTo(200)
         assertThat(demo.status(txId)).containsEntry("status", "unknown")
-        // The read right went with the user-agent that returned: the start token reads nothing.
+        // The read right went with the user-agent that returned, which holds the token for it;
+        // the start token reads nothing.
+        val reader =
+            Json
+                .parseToJsonElement(checkNotNull(returned.body))
+                .jsonObject
+                .getValue("pollToken")
+                .jsonPrimitive.content
+        assertThat(conformance.outcome(txId, reader)).containsEntry("outcome", "wallet_error")
         assertThat(conformance.outcome(txId, startToken)).containsEntry("outcome", "unknown")
     }
 

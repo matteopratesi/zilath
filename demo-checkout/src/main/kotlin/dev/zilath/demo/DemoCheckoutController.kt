@@ -20,11 +20,15 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import dev.zilath.verifier.openid4vp.FlowMode
 import dev.zilath.verifier.openid4vp.FlowOutcome
+import dev.zilath.verifier.openid4vp.PollToken
 import dev.zilath.verifier.openid4vp.PresentationRequest
 import dev.zilath.verifier.openid4vp.TransactionId
 import dev.zilath.verifier.openid4vp.VerificationFlow
 import dev.zilath.verifier.openid4vp.VerificationReceipts
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.http.CacheControl
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -162,7 +166,9 @@ class DemoCheckoutController(
             responseCode.isNullOrBlank() -> unauthorizedPage()
             // Asked for any id: the flow redeems a code only on its own transaction and leaves
             // another's untouched. A transaction these pages did not start — a conformance run —
-            // completes its return too, and gets no ticket page, which reads by id alone.
+            // completes its return too, and gets no ticket page, which reads by id alone: the
+            // token that reads its outcome from now on goes to this user-agent, the one that
+            // came back, as the flow means it to (OpenID4VP 1.0 §14.2).
             else ->
                 when (val reader = flow.consumeResponseCode(TransactionId(txId), responseCode)) {
                     null ->
@@ -173,7 +179,11 @@ class DemoCheckoutController(
                         }
                     else ->
                         if (entry == null) {
-                            ResponseEntity.ok(RETURN_COMPLETED_HTML)
+                            ResponseEntity
+                                .ok()
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .cacheControl(CacheControl.noStore())
+                                .body(returnedJson(reader))
                         } else {
                             entry.readToken.set(reader)
                             ResponseEntity
@@ -228,6 +238,10 @@ private fun VerificationFlow.outcomeOf(
     txId: String,
 ): FlowOutcome =
     registry.get(txId)?.let { awaitOutcome(TransactionId(txId), it.readToken.get()) } ?: FlowOutcome.Unknown
+
+/** What a user-agent that came back for a transaction these pages did not start is handed. */
+private fun returnedJson(reader: PollToken): String =
+    JsonObject(mapOf("status" to JsonPrimitive("returned"), "pollToken" to JsonPrimitive(reader.value))).toString()
 
 private fun notFoundPage(): ResponseEntity<String> = ResponseEntity.status(HttpStatus.NOT_FOUND).body(notFoundHtml())
 
