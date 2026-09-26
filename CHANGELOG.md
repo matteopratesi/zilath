@@ -240,6 +240,9 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
 - Exceptions the EUDI library throws while rebuilding claims (`_sd` not an array, a
   disclosure colliding with a plaintext claim) no longer escape `verify()`: they are
   `DISCLOSURE_TAMPERED`.
+- A request object whose query asks for the pre-1.0 `vc+sd-jwt` lists that format in its
+  `client_metadata.vp_formats_supported` beside `dc+sd-jwt`, with the same algorithms: it
+  asked for a format its own metadata said the verifier did not support.
 
 ### Added
 
