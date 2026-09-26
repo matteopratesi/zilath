@@ -47,6 +47,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.springframework.http.HttpHeaders
+import org.springframework.mock.web.MockHttpServletRequest
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
@@ -101,7 +103,19 @@ class CedSimFlowTest {
         val started = flow.start(request, mode)
         lastStartedId = started.id
         lastPollToken = started.pollToken
-        val jar = SignedJWT.parse(checkNotNull(flow.requestJwtFor(started.id)))
+        val handled = answerWithCed(started.id, withKeys, constantAttendanceAllowance, expiryDate)
+        lastHandled = handled
+        return handled.outcome
+    }
+
+    /** The simulated wallet's answer to the request object of [txId]. */
+    private fun answerWithCed(
+        txId: TransactionId,
+        withKeys: CedSim.Keys,
+        constantAttendanceAllowance: Boolean = true,
+        expiryDate: String = "2030-12-31",
+    ): dev.zilath.verifier.openid4vp.HandledResponse {
+        val jar = SignedJWT.parse(checkNotNull(flow.requestJwtFor(txId)))
         val claims = jar.jwtClaimsSet
         val presentation =
             CedSim.mintPresentation(
@@ -118,9 +132,54 @@ class CedSimFlowTest {
                 presentation,
                 encryptionKeyOf(claims.getJSONObjectClaim("client_metadata")),
             )
-        val handled = flow.handleWalletResponse(started.id, DirectPostBody(mapOf("response" to response)))
-        lastHandled = handled
-        return handled.outcome
+        return flow.handleWalletResponse(txId, DirectPostBody(mapOf("response" to response)))
+    }
+
+    private fun demoController() =
+        DemoCheckoutController(flow, VerificationReceipts(config, clock), clock, CedSim.VCT, "ced-sim")
+
+    /** A purchase started from the demo page: its transaction, and the session cookie it set. */
+    private fun startFromDemo(demo: DemoCheckoutController): Pair<TransactionId, String> {
+        val response = demo.startEntitledPurchase("cross-device", null, MockHttpServletRequest())
+        val txId = TransactionId(checkNotNull(response.headers.location).path.substringAfterLast('/'))
+        val session =
+            checkNotNull(response.headers.getFirst(HttpHeaders.SET_COOKIE))
+                .substringAfter("${DemoCheckoutController.SESSION_COOKIE}=")
+                .substringBefore(';')
+        return txId to session
+    }
+
+    @Test
+    fun `the demo pages show a verified card only to the browser that started it`() {
+        // The transaction id is in the QR on the screen: whoever had seen it read the holder's
+        // name and entitlement from the ticket page.
+        val demo = demoController()
+        val (txId, session) = startFromDemo(demo)
+        assertThat(answerWithCed(txId, keys).outcome).isInstanceOf(FlowOutcome.Verified::class.java)
+        for (bystander in listOf(null, startFromDemo(demo).second)) {
+            val ticket = demo.ticket(txId.value, bystander)
+            assertThat(ticket.statusCode.value()).isEqualTo(404)
+            assertThat(ticket.body).doesNotContain("Maria")
+            assertThat(demo.receipt(txId.value, bystander).statusCode.value()).isEqualTo(404)
+            assertThat(demo.status(txId.value, bystander)).containsEntry("status", "unknown")
+        }
+        val owner = demo.ticket(txId.value, session)
+        assertThat(owner.statusCode.value()).isEqualTo(200)
+        assertThat(owner.body).contains("Maria")
+    }
+
+    @Test
+    fun `a card without the entitlement gets a receipt that says so`() {
+        // The first status poll used to sign the receipt, before the entitlement policy ran:
+        // a card that verified without the entitlement was archived as one that had it.
+        val demo = demoController()
+        val (txId, session) = startFromDemo(demo)
+        answerWithCed(txId, keys, constantAttendanceAllowance = false)
+        assertThat(demo.status(txId.value, session)).containsEntry("status", "verified")
+        val receipt = SignedJWT.parse(checkNotNull(demo.receipt(txId.value, session).body)).jwtClaimsSet
+        assertThat(receipt.getStringClaim("outcome")).isEqualTo("verified")
+        assertThat(receipt.getBooleanClaim("entitled")).isFalse()
+        assertThat(demo.ticket(txId.value, session).statusCode.value()).isEqualTo(409)
     }
 
     @Test
@@ -241,9 +300,9 @@ class CedSimFlowTest {
         assertThat(conformance.outcome(txId, startToken)).containsEntry("outcome", "pending")
 
         // Completed, and pointed at no ticket page: those read a transaction by its id alone.
-        val returned = demo.sameDeviceCallback(txId, code, null)
+        val returned = demo.sameDeviceCallback(txId, code, null, null)
         assertThat(returned.statusCode.value()).isEqualTo(200)
-        assertThat(demo.status(txId)).containsEntry("status", "unknown")
+        assertThat(demo.status(txId, null)).containsEntry("status", "unknown")
         // The read right went with the user-agent that returned, which holds the token for it;
         // the start token reads nothing.
         val reader =

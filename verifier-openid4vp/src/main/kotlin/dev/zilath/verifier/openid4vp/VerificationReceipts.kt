@@ -45,8 +45,14 @@ class VerificationReceipts(
      * Issues a signed receipt for [txId] and returns it in compact JWS serialization.
      *
      * [request] contributes only the REQUESTED claim paths and a hash of the DCQL query —
-     * what was asked, never what was answered. [verified] is the whole outcome: a receipt
-     * for a rejection is as legitimate as one for a success, and neither says why.
+     * what was asked, never what was answered. [outcome] is the whole outcome: whether the
+     * presentation was verified (the receipt's `outcome`) and the caller's verdict on the
+     * disclosed claims (its `entitled`). A receipt for a rejection is as legitimate as one
+     * for a success, and neither says why.
+     *
+     * Issue it once the application has applied its policy to the verified claims, not
+     * before: `entitled` states that decision. It used to be a copy of `outcome`, so a card
+     * that verified but granted nothing was archived as an entitlement.
      *
      * Safe to keep and to hand to an auditor. That is the point: it is what a venue
      * archives instead of a copy of someone's medical paperwork.
@@ -54,7 +60,7 @@ class VerificationReceipts(
     fun issue(
         txId: TransactionId,
         request: PresentationRequest,
-        verified: Boolean,
+        outcome: ReceiptOutcome,
     ): String {
         val claims =
             JWTClaimsSet
@@ -62,8 +68,8 @@ class VerificationReceipts(
                 .issuer(config.clientId)
                 .jwtID(txId.value)
                 .issueTime(Date.from(clock.instant()))
-                .claim("outcome", if (verified) "verified" else "rejected")
-                .claim("entitled", verified)
+                .claim("outcome", if (outcome.verified) "verified" else "rejected")
+                .claim("entitled", outcome.entitled)
                 .claim("requested_claims", requestedClaimPaths(request.dcqlQuery))
                 .claim("request_hash", sha256Base64Url(request.dcqlQuery.toString()))
                 .build()
@@ -81,6 +87,27 @@ class VerificationReceipts(
     companion object {
         const val RECEIPT_TYP = "zilath-receipt+jwt"
     }
+}
+
+/**
+ * What a receipt records: whether the presentation was verified and, for a verified one, the
+ * CALLER's verdict on whether the disclosed claims entitle the holder to what was asked.
+ * Verifying is the library's job; deciding entitlement from a claim's value is the
+ * application's policy — a disability card can verify and still grant no companion ticket —
+ * so the application states it here.
+ */
+enum class ReceiptOutcome(
+    internal val verified: Boolean,
+    internal val entitled: Boolean,
+) {
+    /** Verified, and the application's policy grants the entitlement. */
+    VERIFIED_ENTITLED(verified = true, entitled = true),
+
+    /** Verified, but under the application's policy the disclosed claims grant nothing. */
+    VERIFIED_NOT_ENTITLED(verified = true, entitled = false),
+
+    /** Not verified: a rejected presentation or a wallet error. Never entitled. */
+    REJECTED(verified = false, entitled = false),
 }
 
 /** The dot-joined claim paths requested by a DCQL query, across all credential queries. */

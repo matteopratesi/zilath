@@ -18,31 +18,46 @@ package dev.zilath.demo
 
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import dev.zilath.demo.cedsim.CedSim
 import dev.zilath.verifier.openid4vp.FlowMode
 import dev.zilath.verifier.openid4vp.FlowOutcome
 import dev.zilath.verifier.openid4vp.PollToken
 import dev.zilath.verifier.openid4vp.PresentationRequest
+import dev.zilath.verifier.openid4vp.ReceiptOutcome
 import dev.zilath.verifier.openid4vp.TransactionId
 import dev.zilath.verifier.openid4vp.VerificationFlow
 import dev.zilath.verifier.openid4vp.VerificationReceipts
+import jakarta.servlet.http.HttpServletRequest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.CacheControl
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.http.ResponseCookie
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.CookieValue
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.net.URI
+import java.security.SecureRandom
+import java.util.Base64
 import javax.imageio.ImageIO
 
 /**
  * The "fake checkout" demo: event page, companion-ticket button,
  * QR for the wallet, polling, NOMINATIVE fake ticket and signed verification receipt.
+ *
+ * Every page about a transaction answers only the browser that started it (IT-Wallet 1.4.6
+ * §12.2.1.7): starting one sets a session cookie, and the waiting page, the QR, the status,
+ * the ticket, the receipt and the same-device return all ask for it. The transaction id is no
+ * key — it is in the QR on the screen and in the same-device link — and before the fourth
+ * internal review anyone who had seen it read the holder's name and entitlement here.
  */
 @RestController
 class DemoCheckoutController(
@@ -60,32 +75,34 @@ class DemoCheckoutController(
 
     @GetMapping("/demo/entitled")
     fun startEntitledPurchase(
-        @org.springframework.web.bind.annotation.RequestParam(defaultValue = "cross-device") flow: String,
+        @RequestParam(defaultValue = "cross-device") flow: String,
+        @CookieValue(name = SESSION_COOKIE, required = false) session: String?,
+        httpRequest: HttpServletRequest,
     ): ResponseEntity<Void> {
         val request =
             if (credentialMode == CED_SIM_MODE) {
-                PresentationRequest.forVct(
-                    dev.zilath.demo.cedsim.CedSim.VCT,
-                    dev.zilath.demo.cedsim.CedSim.CLAIM_PATHS,
-                    dev.zilath.demo.cedsim.CedSim.CREDENTIAL_QUERY_ID,
-                )
+                PresentationRequest.forVct(CedSim.VCT, CedSim.CLAIM_PATHS, CedSim.CREDENTIAL_QUERY_ID)
             } else {
                 PresentationRequest.forTestPid(pidVct)
             }
         val mode = if (flow == SAME_DEVICE_PARAM) FlowMode.SAME_DEVICE else FlowMode.CROSS_DEVICE
         val transaction = this.flow.start(request, mode)
-        registry.register(transaction, request)
+        // One secret per browser: a second purchase in the same browser keeps the first readable.
+        val secret = session?.takeIf(SESSION_SECRET::matches) ?: newSessionSecret()
+        registry.register(transaction, request, secret)
         return ResponseEntity
             .status(HttpStatus.FOUND)
             .location(URI.create("/demo/wait/${transaction.id.value}"))
+            .header(HttpHeaders.SET_COOKIE, sessionCookie(secret, httpRequest).toString())
             .build()
     }
 
     @GetMapping("/demo/wait/{txId}", produces = [MediaType.TEXT_HTML_VALUE])
     fun waitPage(
         @PathVariable txId: String,
+        @CookieValue(name = SESSION_COOKIE, required = false) session: String?,
     ): ResponseEntity<String> {
-        val entry = registry.get(txId) ?: return notFoundPage()
+        val entry = registry.ownedValid(txId, session) ?: return notFoundPage()
         val walletCommand =
             if (credentialMode == CED_SIM_MODE) {
                 "./scripts/run-ced-wallet.sh $txId"
@@ -98,25 +115,28 @@ class DemoCheckoutController(
     @GetMapping("/demo/qr/{txId}.png", produces = [MediaType.IMAGE_PNG_VALUE])
     fun qrCode(
         @PathVariable txId: String,
+        @CookieValue(name = SESSION_COOKIE, required = false) session: String?,
     ): ResponseEntity<ByteArray> {
-        val entry = registry.get(txId) ?: return ResponseEntity.notFound().build()
+        val entry = registry.ownedValid(txId, session) ?: return ResponseEntity.notFound().build()
         return ResponseEntity.ok(qrPng(entry.transaction.qrPayload))
     }
 
     @GetMapping("/demo/authorize-url/{txId}", produces = [MediaType.TEXT_PLAIN_VALUE])
     fun authorizeUrl(
         @PathVariable txId: String,
+        @CookieValue(name = SESSION_COOKIE, required = false) session: String?,
     ): ResponseEntity<String> {
-        val entry = registry.get(txId) ?: return ResponseEntity.notFound().build()
+        val entry = registry.ownedValid(txId, session) ?: return ResponseEntity.notFound().build()
         return ResponseEntity.ok(entry.transaction.qrPayload)
     }
 
     @GetMapping("/demo/status/{txId}", produces = [MediaType.APPLICATION_JSON_VALUE])
     fun status(
         @PathVariable txId: String,
+        @CookieValue(name = SESSION_COOKIE, required = false) session: String?,
     ): Map<String, String> {
-        val outcome = flow.outcomeOf(registry, txId)
-        recordReceiptIfTerminal(txId, outcome)
+        // Another browser's transaction reads as one that does not exist.
+        val outcome = registry.ownedValid(txId, session)?.let { flow.outcomeOf(txId, it) } ?: FlowOutcome.Unknown
         return mapOf(
             "status" to
                 when (outcome) {
@@ -132,16 +152,15 @@ class DemoCheckoutController(
     @GetMapping("/demo/ticket/{txId}", produces = [MediaType.TEXT_HTML_VALUE])
     fun ticket(
         @PathVariable txId: String,
+        @CookieValue(name = SESSION_COOKIE, required = false) session: String?,
     ): ResponseEntity<String> {
-        val outcome = flow.outcomeOf(registry, txId)
-        recordReceiptIfTerminal(txId, outcome)
+        val entry = registry.ownedValid(txId, session) ?: return notFoundPage()
+        val outcome = flow.outcomeOf(txId, entry)
+        val decided = decisionFor(outcome)?.also { registry.issueReceipt(txId, it, receipts) }
         return when {
             outcome !is FlowOutcome.Verified ->
                 ResponseEntity.status(HttpStatus.CONFLICT).body(notVerifiedHtml(txId))
-            // The DCQL only asks for disclosure: the VALUE of the entitlement is enforced here.
-            credentialMode == CED_SIM_MODE &&
-                !dev.zilath.demo.cedsim.CedSim
-                    .entitlementGranted(outcome.claims.claims, clock) ->
+            decided == ReceiptOutcome.VERIFIED_NOT_ENTITLED ->
                 ResponseEntity.status(HttpStatus.CONFLICT).body(notEntitledHtml(txId))
             else -> ResponseEntity.ok(verifiedTicketHtml(txId, outcome.claims.claims))
         }
@@ -156,19 +175,23 @@ class DemoCheckoutController(
     @GetMapping("/demo/cb/{txId}")
     fun sameDeviceCallback(
         @PathVariable txId: String,
-        @org.springframework.web.bind.annotation.RequestParam(name = "response_code", required = false)
-        responseCode: String?,
-        @org.springframework.web.bind.annotation.RequestParam(required = false) error: String?,
+        @RequestParam(name = "response_code", required = false) responseCode: String?,
+        @RequestParam(required = false) error: String?,
+        @CookieValue(name = SESSION_COOKIE, required = false) session: String?,
     ): ResponseEntity<String> {
         val entry = registry.get(txId)
         return when {
             error != null -> ResponseEntity.badRequest().body(callbackErrorHtml(error))
-            responseCode.isNullOrBlank() -> unauthorizedPage()
-            // Asked for any id: the flow redeems a code only on its own transaction and leaves
-            // another's untouched. A transaction these pages did not start — a conformance run —
-            // completes its return too, and gets no ticket page, which reads by id alone: the
-            // token that reads its outcome from now on goes to this user-agent, the one that
-            // came back, as the flow means it to (OpenID4VP 1.0 §14.2).
+            responseCode.isNullOrBlank() || !TRANSACTION_ID.matches(txId) -> unauthorizedPage()
+            // A transaction these pages started is completed only by the browser that started
+            // it: someone sent the link of another person's transaction (session fixation,
+            // OpenID4VP 1.0 §14.2) comes back without its cookie, and the code stays unspent.
+            entry != null && !entry.ownedBy(session) -> unauthorizedPage()
+            // Asked for any other id: the flow redeems a code only on its own transaction and
+            // leaves another's untouched. A transaction these pages did not start — a
+            // conformance run — completes its return too, and gets no ticket page: the token
+            // that reads its outcome from now on goes to this user-agent, the one that came
+            // back, as the flow means it to.
             else ->
                 when (val reader = flow.consumeResponseCode(TransactionId(txId), responseCode)) {
                     null ->
@@ -198,46 +221,96 @@ class DemoCheckoutController(
     @GetMapping("/demo/receipt/{txId}", produces = [MediaType.TEXT_PLAIN_VALUE])
     fun receipt(
         @PathVariable txId: String,
+        @CookieValue(name = SESSION_COOKIE, required = false) session: String?,
     ): ResponseEntity<String> {
-        val entry = registry.get(txId) ?: return ResponseEntity.notFound().build()
-        recordReceiptIfTerminal(txId, flow.outcomeOf(registry, txId))
-        return when (val receipt = entry.receipt.get()) {
-            null -> ResponseEntity.status(HttpStatus.CONFLICT).body("transaction not completed")
-            else -> ResponseEntity.ok(receipt)
-        }
+        val entry = registry.ownedValid(txId, session) ?: return ResponseEntity.notFound().build()
+        decisionFor(flow.outcomeOf(txId, entry))?.let { registry.issueReceipt(txId, it, receipts) }
+        return entry.receipt.get()?.let { ResponseEntity.ok(it) }
+            ?: ResponseEntity.status(HttpStatus.CONFLICT).body("transaction not completed")
     }
 
-    /** The receipt is signed ONCE, when the terminal outcome is first observed. */
-    private fun recordReceiptIfTerminal(
-        txId: String,
-        outcome: FlowOutcome,
-    ) {
-        val verified =
-            when (outcome) {
-                is FlowOutcome.Verified -> true
-                is FlowOutcome.Rejected, is FlowOutcome.WalletErrorAcknowledged -> false
-                else -> return
-            }
-        registry.receiptFor(txId) { request -> receipts.issue(TransactionId(txId), request, verified) }
-    }
+    /**
+     * The demo's policy, applied before anything is signed. The DCQL only asks for disclosure,
+     * so the VALUE of the entitlement is decided here, and the receipt states that decision:
+     * it used to be signed on the first status poll, before the policy ran, and a card that
+     * verified without the entitlement was archived as one that had it.
+     */
+    private fun decisionFor(outcome: FlowOutcome): ReceiptOutcome? =
+        when (outcome) {
+            is FlowOutcome.Verified ->
+                if (credentialMode != CED_SIM_MODE || CedSim.entitlementGranted(outcome.claims.claims, clock)) {
+                    ReceiptOutcome.VERIFIED_ENTITLED
+                } else {
+                    ReceiptOutcome.VERIFIED_NOT_ENTITLED
+                }
+            is FlowOutcome.Rejected, is FlowOutcome.WalletErrorAcknowledged -> ReceiptOutcome.REJECTED
+            else -> null
+        }
 
     companion object {
         private val REGISTRY_TIME_TO_LIVE: java.time.Duration = java.time.Duration.ofMinutes(15)
         private const val CED_SIM_MODE = "ced-sim"
         private const val SAME_DEVICE_PARAM = "same-device"
+
+        /** The cookie that binds the demo's transactions to the browser that started them. */
+        const val SESSION_COOKIE = "zilath_demo_session"
     }
 }
 
-/**
- * The outcome as the demo reads it: with the token the registry holds for [txId]. The demo
- * still looks that token up from the transaction id alone, so anyone knowing the id reads
- * through these pages what the library no longer shows them.
- */
-private fun VerificationFlow.outcomeOf(
-    registry: DemoTransactionRegistry,
+/** The entry for [txId] if the browser holding [session] started it; a malformed id is nobody's. */
+private fun DemoTransactionRegistry.ownedValid(
     txId: String,
-): FlowOutcome =
-    registry.get(txId)?.let { awaitOutcome(TransactionId(txId), it.readToken.get()) } ?: FlowOutcome.Unknown
+    session: String?,
+): DemoTransactionRegistry.Entry? = txId.takeIf(TRANSACTION_ID::matches)?.let { ownedEntry(it, session) }
+
+private fun VerificationFlow.outcomeOf(
+    txId: String,
+    entry: DemoTransactionRegistry.Entry,
+): FlowOutcome = awaitOutcome(TransactionId(txId), entry.readToken.get())
+
+/** The receipt is signed ONCE, when the terminal outcome is first observed. */
+private fun DemoTransactionRegistry.issueReceipt(
+    txId: String,
+    outcome: ReceiptOutcome,
+    receipts: VerificationReceipts,
+) {
+    receiptFor(txId) { request -> receipts.issue(TransactionId(txId), request, outcome) }
+}
+
+/** The alphabet of the flow's transaction ids (base64url), bounded: anything else is no transaction. */
+private val TRANSACTION_ID = Regex("[A-Za-z0-9_-]{1,128}")
+
+/** A session secret as [newSessionSecret] makes it: 32 random bytes, base64url. */
+private val SESSION_SECRET = Regex("[A-Za-z0-9_-]{43}")
+
+private val secureRandom = SecureRandom()
+
+private fun newSessionSecret(): String =
+    Base64
+        .getUrlEncoder()
+        .withoutPadding()
+        .encodeToString(ByteArray(SESSION_SECRET_BYTES).also(secureRandom::nextBytes))
+
+/**
+ * HttpOnly, SameSite=Lax — the same-device return is a top-level navigation, which Lax lets
+ * through — and Secure, except over plain http on a loopback host, the local setup the demo
+ * instructions use, where there is no TLS for the flag to ask for.
+ */
+private fun sessionCookie(
+    secret: String,
+    httpRequest: HttpServletRequest,
+): ResponseCookie =
+    ResponseCookie
+        .from(DemoCheckoutController.SESSION_COOKIE, secret)
+        .httpOnly(true)
+        .secure(httpRequest.isSecure || httpRequest.serverName !in LOOPBACK_NAMES)
+        .sameSite("Lax")
+        .path("/demo")
+        .build()
+
+private val LOOPBACK_NAMES = setOf("localhost", "127.0.0.1", "::1", "[::1]")
+
+private const val SESSION_SECRET_BYTES = 32
 
 /** What a user-agent that came back for a transaction these pages did not start is handed. */
 private fun returnedJson(reader: PollToken): String =

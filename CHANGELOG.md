@@ -203,6 +203,11 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
   `meta.vct_values`, which 0.3.0 accepted and verified with no type check.
 - The starter's HTTP answers change as described above, and its
   `response-encryption-key-jwk` property is optional (best left empty).
+- `VerificationReceipts.issue(txId, request, verified)` is `issue(txId, request, outcome)`,
+  with a `ReceiptOutcome`: `VERIFIED_ENTITLED`, `VERIFIED_NOT_ENTITLED` or `REJECTED`. The
+  receipt's `entitled` is the caller's verdict on the disclosed claims, to be stated once its
+  policy has run; it was a copy of `outcome`, so a card that verified without the
+  entitlement was signed as one that had it.
 
 ### Changed
 

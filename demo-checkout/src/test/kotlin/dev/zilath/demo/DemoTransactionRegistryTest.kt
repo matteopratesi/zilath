@@ -51,16 +51,16 @@ class DemoTransactionRegistryTest {
 
     @Test
     fun `expired entries are swept on the next registration`() {
-        registry.register(transaction("old"), request)
+        registry.register(transaction("old"), request, SESSION)
         clock.advance(Duration.ofMinutes(16))
-        registry.register(transaction("fresh"), request)
+        registry.register(transaction("fresh"), request, SESSION)
         assertThat(registry.get("old")).isNull()
         assertThat(registry.get("fresh")).isNotNull()
     }
 
     @Test
     fun `the receipt is issued exactly once and then reused`() {
-        registry.register(transaction("tx"), request)
+        registry.register(transaction("tx"), request, SESSION)
         var issued = 0
         val first =
             registry.receiptFor("tx") {
@@ -79,15 +79,24 @@ class DemoTransactionRegistryTest {
 
     @Test
     fun `an entry expires exactly at the TTL boundary`() {
-        registry.register(transaction("edge"), request)
+        registry.register(transaction("edge"), request, SESSION)
         clock.advance(Duration.ofMinutes(15))
-        registry.register(transaction("fresh"), request)
+        registry.register(transaction("fresh"), request, SESSION)
         assertThat(registry.get("edge")).isNull()
     }
 
     @Test
+    fun `an entry answers only the session that started it`() {
+        registry.register(transaction("tx"), request, SESSION)
+        assertThat(registry.ownedEntry("tx", SESSION)).isNotNull()
+        assertThat(registry.ownedEntry("tx", "another-session")).isNull()
+        assertThat(registry.ownedEntry("tx", null)).isNull()
+        assertThat(registry.ownedEntry("ghost", SESSION)).isNull()
+    }
+
+    @Test
     fun `concurrent receipt requests issue exactly once`() {
-        registry.register(transaction("tx"), request)
+        registry.register(transaction("tx"), request, SESSION)
         val issued =
             java.util.concurrent.atomic
                 .AtomicInteger()
@@ -114,5 +123,40 @@ class DemoTransactionRegistryTest {
         val html = ticketHtml("tx", "<script>alert(1)</script>")
         assertThat(html).doesNotContain("<script>alert(1)</script>")
         assertThat(html).contains("&lt;script&gt;")
+    }
+
+    @Test
+    fun `transaction ids are escaped in every page that shows one`() {
+        // The controller refuses an id outside the flow's alphabet before any page is built;
+        // the pages escape it anyway, so that a copy of them does not depend on that check.
+        val hostile = "<img src=x onerror=alert(1)>"
+        val pages =
+            listOf(
+                notVerifiedHtml(hostile),
+                notEntitledHtml(hostile),
+                ticketHtml(hostile, "Ada"),
+                waitPageHtml(hostile, "openid4vp://authorize?x=<b>"),
+            )
+        for (html in pages) {
+            assertThat(html).doesNotContain(hostile).doesNotContain("<b>").contains("&lt;img src=x")
+        }
+    }
+
+    @Test
+    fun `the demo's example status checker never calls a credential valid`() {
+        // It is asked only about a credential that carries a status reference.
+        val checker = ConformanceDemoApp().statusChecker()
+        val status =
+            checker.check(
+                dev.zilath.verifier.core
+                    .StatusReference("https://status.example/1", 0),
+                dev.zilath.verifier.core
+                    .StatusIssuerTrust("https://issuer.example", emptyList()),
+            )
+        assertThat(status).isEqualTo(dev.zilath.verifier.core.CredentialStatus.UNKNOWN)
+    }
+
+    private companion object {
+        const val SESSION = "session-secret-of-the-starting-browser"
     }
 }

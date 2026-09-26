@@ -37,6 +37,8 @@ import dev.zilath.verifier.openid4vp.VerificationFlow
 import dev.zilath.verifier.openid4vp.VerificationReceipts
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.http.HttpHeaders
+import org.springframework.mock.web.MockHttpServletRequest
 import java.time.Clock
 
 /**
@@ -83,7 +85,13 @@ class SameDeviceCallbackTest {
         }
     }
 
-    private fun controllerWith(flow: VerificationFlow): DemoCheckoutController {
+    /** A controller that started the known transaction, and the session secret it set for it. */
+    private class Started(
+        val controller: DemoCheckoutController,
+        val session: String,
+    )
+
+    private fun controllerFor(flow: VerificationFlow): DemoCheckoutController {
         val config =
             RelyingPartyConfiguration(
                 clientId = "https://demo.zilath.example",
@@ -96,31 +104,95 @@ class SameDeviceCallbackTest {
                 trustEvaluator = TrustEvaluator { TrustDecision.Untrusted("test") },
                 statusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
             )
-        val controller =
-            DemoCheckoutController(
-                flow = flow,
-                receipts = VerificationReceipts(config, Clock.systemUTC()),
-                clock = Clock.systemUTC(),
-                pidVct = "urn:eudi:pid:it:1",
-                credentialMode = "pid",
-            )
-        // The known session exists because this controller started it.
-        controller.startEntitledPurchase("same-device")
-        return controller
+        return DemoCheckoutController(
+            flow = flow,
+            receipts = VerificationReceipts(config, Clock.systemUTC()),
+            clock = Clock.systemUTC(),
+            pidVct = "urn:eudi:pid:it:1",
+            credentialMode = "pid",
+        )
     }
+
+    /** The known session exists because this controller started it, in this browser. */
+    private fun startedWith(flow: VerificationFlow): Started {
+        val controller = controllerFor(flow)
+        val response = controller.startEntitledPurchase("same-device", null, MockHttpServletRequest())
+        return Started(controller, sessionOf(response.headers.getFirst(HttpHeaders.SET_COOKIE)))
+    }
+
+    private fun sessionOf(setCookie: String?): String =
+        checkNotNull(setCookie).substringAfter("${DemoCheckoutController.SESSION_COOKIE}=").substringBefore(';')
 
     @Test
     fun `a valid code on its own transaction redirects to the ticket`() {
         val flow = RecordingFlow(known, consumes = true)
-        val response = controllerWith(flow).sameDeviceCallback(known.value, "a-code", null)
+        val started = startedWith(flow)
+        val response = started.controller.sameDeviceCallback(known.value, "a-code", null, started.session)
         assertThat(response.statusCode.value()).isEqualTo(302)
         assertThat(response.headers.location.toString()).isEqualTo("/demo/ticket/tx-known")
     }
 
     @Test
+    fun `a browser that did not start the transaction cannot complete its return`() {
+        // Session fixation: whoever started the transaction sends its link to someone else,
+        // whose wallet answers and whose browser comes back here. It holds no session of this
+        // transaction, and the code must stay unspent.
+        val flow = RecordingFlow(known, consumes = true)
+        val started = startedWith(flow)
+        for (session in listOf(null, "another-browser-session")) {
+            assertThat(
+                started.controller
+                    .sameDeviceCallback(known.value, "a-code", null, session)
+                    .statusCode
+                    .value(),
+            ).describedAs("session %s", session)
+                .isEqualTo(401)
+        }
+        assertThat(flow.consumeCalls).isZero()
+        assertThat(
+            started.controller
+                .sameDeviceCallback(known.value, "a-code", null, started.session)
+                .statusCode
+                .value(),
+        ).isEqualTo(302)
+    }
+
+    @Test
+    fun `the session cookie is HttpOnly, Lax, scoped to the demo, and Secure off the loopback`() {
+        val controller = controllerFor(RecordingFlow(known, consumes = true))
+        val local =
+            checkNotNull(
+                controller
+                    .startEntitledPurchase("cross-device", null, MockHttpServletRequest())
+                    .headers
+                    .getFirst(HttpHeaders.SET_COOKIE),
+            )
+        assertThat(local).contains("HttpOnly", "SameSite=Lax", "Path=/demo").doesNotContain("Secure")
+        val deployed =
+            checkNotNull(
+                controller
+                    .startEntitledPurchase(
+                        "cross-device",
+                        null,
+                        MockHttpServletRequest().apply {
+                            serverName =
+                                "demo.example"
+                        },
+                    ).headers
+                    .getFirst(HttpHeaders.SET_COOKIE),
+            )
+        assertThat(deployed).contains("Secure", "HttpOnly")
+        // A second purchase in the same browser keeps its session, and so the first one.
+        val session = sessionOf(local)
+        val again = controller.startEntitledPurchase("cross-device", session, MockHttpServletRequest())
+        assertThat(sessionOf(again.headers.getFirst(HttpHeaders.SET_COOKIE))).isEqualTo(session)
+    }
+
+    @Test
     fun `an error in the query is a bad request and never spends the code`() {
         val flow = RecordingFlow(known, consumes = true)
-        val response = controllerWith(flow).sameDeviceCallback(known.value, "a-code", "server_error")
+        val started = startedWith(flow)
+        val response = started.controller.sameDeviceCallback(known.value, "a-code", "server_error", started.session)
         assertThat(response.statusCode.value()).isEqualTo(400)
         assertThat(flow.consumeCalls).isZero()
     }
@@ -129,18 +201,18 @@ class SameDeviceCallbackTest {
     fun `a session neither the demo nor the flow knows is unauthorized`() {
         // The flow is asked, and redeems nothing: a code only ever redeems its own transaction.
         val flow = RecordingFlow(known, consumes = true)
-        val response = controllerWith(flow).sameDeviceCallback("someone-elses-tx", "a-code", null)
+        val response = startedWith(flow).controller.sameDeviceCallback("someone-elses-tx", "a-code", null, null)
         assertThat(response.statusCode.value()).isEqualTo(401)
     }
 
     @Test
     fun `a return to a transaction the demo did not start hands the reader to the user-agent`() {
-        // A conformance run: started outside these pages, which read by id alone and so are
-        // never pointed at it. The token the flow issued for the return goes to the one that
-        // came back, and is not kept anywhere an id alone reaches.
+        // A conformance run: started outside these pages, which never point at it. The token
+        // the flow issued for the return goes to the one that came back, and is not kept
+        // anywhere an id alone reaches.
         val conformance = TransactionId("tx-conformance")
         val flow = RecordingFlow(known, consumes = true, redeemable = setOf(known, conformance))
-        val response = controllerWith(flow).sameDeviceCallback(conformance.value, "a-code", null)
+        val response = startedWith(flow).controller.sameDeviceCallback(conformance.value, "a-code", null, null)
         assertThat(response.statusCode.value()).isEqualTo(200)
         assertThat(response.headers.location).isNull()
         assertThat(response.headers.cacheControl).isEqualTo("no-store")
@@ -150,16 +222,26 @@ class SameDeviceCallbackTest {
     @Test
     fun `a missing code is unauthorized`() {
         val flow = RecordingFlow(known, consumes = true)
-        assertThat(controllerWith(flow).sameDeviceCallback(known.value, null, null).statusCode.value())
-            .isEqualTo(401)
-        assertThat(controllerWith(flow).sameDeviceCallback(known.value, "  ", null).statusCode.value())
-            .isEqualTo(401)
+        val started = startedWith(flow)
+        assertThat(
+            started.controller
+                .sameDeviceCallback(known.value, null, null, started.session)
+                .statusCode
+                .value(),
+        ).isEqualTo(401)
+        assertThat(
+            started.controller
+                .sameDeviceCallback(known.value, "  ", null, started.session)
+                .statusCode
+                .value(),
+        ).isEqualTo(401)
     }
 
     @Test
     fun `a code the flow refuses is a bad request`() {
         val flow = RecordingFlow(known, consumes = false)
-        val response = controllerWith(flow).sameDeviceCallback(known.value, "stale", null)
+        val started = startedWith(flow)
+        val response = started.controller.sameDeviceCallback(known.value, "stale", null, started.session)
         assertThat(response.statusCode.value()).isEqualTo(400)
         assertThat(response.body).contains("invalid_response_code")
     }

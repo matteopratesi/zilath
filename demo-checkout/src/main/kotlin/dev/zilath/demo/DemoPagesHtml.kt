@@ -24,7 +24,13 @@ import kotlinx.serialization.json.jsonPrimitive
  * Italian copy: the demo's audience is Italian venues and associations.
  */
 
-/** Escapes a value coming from credential claims before interpolating it into HTML. */
+/**
+ * Escapes a value before it is interpolated into HTML: credential claims, and every
+ * transaction id, which reaches these pages from a URL path. The controller also refuses an
+ * id outside the flow's base64url alphabet, the only thing that keeps it safe inside the
+ * inline script and the image URL below, where HTML escaping is not the encoding that
+ * applies.
+ */
 internal fun htmlEscape(value: String): String =
     value
         .replace("&", "&amp;")
@@ -82,21 +88,22 @@ internal fun waitPageHtml(
     txId: String,
     qrPayload: String,
     walletCommand: String = "./scripts/run-demo-wallet.sh $txId",
-): String =
-    page(
+): String {
+    val id = htmlEscape(txId)
+    return page(
         "Verifica in corso",
         """
         <h1>Inquadra il QR col tuo wallet</h1>
-        <img class="qr" src="/demo/qr/$txId.png" width="320" height="320" alt="QR OpenID4VP">
+        <img class="qr" src="/demo/qr/$id.png" width="320" height="320" alt="QR OpenID4VP">
         <p class="muted">Oppure, per la demo, fai presentare la credenziale al wallet di test:<br>
-        <code>$walletCommand</code></p>
+        <code>${htmlEscape(walletCommand)}</code></p>
         <p id="status" class="muted">In attesa della presentazione…</p>
-        <details><summary class="muted">authorize URL</summary><p><code>$qrPayload</code></p></details>
+        <details><summary class="muted">authorize URL</summary><p><code>${htmlEscape(qrPayload)}</code></p></details>
         <script>
           const poll = setInterval(async () => {
-            const r = await fetch('/demo/status/$txId');
+            const r = await fetch('/demo/status/$id');
             const s = (await r.json()).status;
-            if (s === 'verified') { clearInterval(poll); location.href = '/demo/ticket/$txId'; }
+            if (s === 'verified') { clearInterval(poll); location.href = '/demo/ticket/$id'; }
             else if (s !== 'pending') {
               clearInterval(poll);
               document.getElementById('status').textContent = 'Verifica non riuscita (' + s + ').';
@@ -105,6 +112,7 @@ internal fun waitPageHtml(
         </script>
         """.trimIndent(),
     )
+}
 
 /** Renders the verified ticket from the disclosed claims. */
 internal fun verifiedTicketHtml(
@@ -140,9 +148,9 @@ internal fun ticketHtml(
           Venerdì 20 novembre 2026, ore 21:00 — Platea, posto D13</p>
           <p>Intestato a: <strong>${htmlEscape(holder)}</strong><br>
           <span class="muted">Biglietto nominativo, valido solo insieme al titolare del diritto.</span></p>
-          <p class="muted">Transazione: <code>$txId</code> — DEMO, non valido per l'ingresso</p>
+          <p class="muted">Transazione: <code>${htmlEscape(txId)}</code> — DEMO, non valido per l'ingresso</p>
         </div>
-        <p><a href="/demo/receipt/$txId">Ricevuta di verifica firmata</a> —
+        <p><a href="/demo/receipt/${htmlEscape(txId)}">Ricevuta di verifica firmata</a> —
         <span class="muted">l'unica cosa che il teatro conserva: esito e orario, mai i tuoi documenti.</span></p>
         <p><a href="/demo">← Torna all'evento</a></p>
         """.trimIndent(),
@@ -153,7 +161,7 @@ internal fun notVerifiedHtml(txId: String): String =
         "Verifica non completata",
         """
         <h1>Verifica non completata</h1>
-        <p class="muted">La transazione <code>$txId</code> non risulta verificata.</p>
+        <p class="muted">La transazione <code>${htmlEscape(txId)}</code> non risulta verificata.</p>
         <p><a class="btn" href="/demo">Riprova dall'evento</a></p>
         """.trimIndent(),
     )
@@ -164,7 +172,7 @@ internal fun notEntitledHtml(txId: String): String =
         """
         <h1>La credenziale è valida, ma il diritto non c'è</h1>
         <p class="muted">La carta presentata non include il diritto al biglietto accompagnatore
-        o risulta scaduta. Transazione <code>$txId</code>.</p>
+        o risulta scaduta. Transazione <code>${htmlEscape(txId)}</code>.</p>
         <p><a class="btn" href="/demo">Torna all'evento</a></p>
         """.trimIndent(),
     )

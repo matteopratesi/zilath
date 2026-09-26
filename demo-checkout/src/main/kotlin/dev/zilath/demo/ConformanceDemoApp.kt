@@ -57,9 +57,13 @@ class ConformanceDemoApp {
     @Bean
     fun statusChecker(): StatusChecker =
         StatusChecker { _, _ ->
-            // Status list checks are exercised in unit tests; the conformance PID carries
-            // no status reference, so a static VALID keeps the demo deterministic.
-            CredentialStatus.VALID
+            // The verifier asks only about a credential that carries a status reference — the
+            // conformance PID and the simulated card carry none — so this answers exactly for
+            // the credentials that could be revoked, and must not call them valid. A constant
+            // VALID here was the shortest way to switch revocation off in a copy of this code.
+            // A real deployment declares a StatusListFetcher and the starter wires
+            // OAuthStatusListChecker to it.
+            CredentialStatus.UNKNOWN
         }
 
     @Bean
