@@ -124,10 +124,6 @@ class ConformanceDemoApp {
     fun demoClock(): Clock = Clock.systemUTC()
 
     @Bean
-    fun demoTransactionRegistry(clock: Clock): DemoTransactionRegistry =
-        DemoTransactionRegistry(clock, DemoTransactionRegistry.DEFAULT_TIME_TO_LIVE)
-
-    @Bean
     @Suppress("LongParameterList") // Spring bean wiring: every parameter is an injected dependency
     fun relyingPartyConfiguration(
         trustEvaluator: TrustEvaluator,

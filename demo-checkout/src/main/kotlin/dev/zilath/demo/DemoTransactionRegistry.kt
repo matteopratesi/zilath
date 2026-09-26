@@ -29,15 +29,12 @@ import java.util.concurrent.atomic.AtomicReference
  * Demo-side bookkeeping of started transactions: time-bounded (lazy sweep on insert,
  * like the flow's own store) and holding at most ONE issued receipt per transaction,
  * so its signed timestamp reflects when the outcome was first observed — not each download.
- *
- * One instance for the application, shared by the demo pages and the conformance endpoints:
- * a same-device transaction either of them starts comes back through the same callback.
  */
-class DemoTransactionRegistry(
+internal class DemoTransactionRegistry(
     private val clock: Clock,
     private val timeToLive: Duration,
 ) {
-    class Entry(
+    internal class Entry(
         val transaction: StartedTransaction,
         val request: PresentationRequest,
         val createdAt: Instant,
@@ -77,11 +74,6 @@ class DemoTransactionRegistry(
                 entry.receipt.get() ?: issue(entry.request).also(entry.receipt::set)
             }
         }
-
-    companion object {
-        /** A bit longer than the flow's time to live, so that receipts stay downloadable. */
-        val DEFAULT_TIME_TO_LIVE: Duration = Duration.ofMinutes(15)
-    }
 
     private fun sweep() {
         val now = clock.instant()

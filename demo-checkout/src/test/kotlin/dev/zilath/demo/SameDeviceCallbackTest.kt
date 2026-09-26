@@ -51,6 +51,8 @@ class SameDeviceCallbackTest {
     private class RecordingFlow(
         private val knownId: TransactionId,
         private val consumes: Boolean,
+        /** The transactions whose code this flow redeems; the demo started only [knownId]. */
+        private val redeemable: Set<TransactionId> = setOf(knownId),
     ) : VerificationFlow {
         var consumeCalls = 0
             private set
@@ -77,7 +79,7 @@ class SameDeviceCallbackTest {
             code: String,
         ): PollToken? {
             consumeCalls++
-            return PollToken("reader").takeIf { consumes && txId == knownId }
+            return PollToken("reader").takeIf { consumes && txId in redeemable }
         }
     }
 
@@ -99,7 +101,6 @@ class SameDeviceCallbackTest {
                 flow = flow,
                 receipts = VerificationReceipts(config, Clock.systemUTC()),
                 clock = Clock.systemUTC(),
-                registry = DemoTransactionRegistry(Clock.systemUTC(), DemoTransactionRegistry.DEFAULT_TIME_TO_LIVE),
                 pidVct = "urn:eudi:pid:it:1",
                 credentialMode = "pid",
             )
@@ -125,11 +126,23 @@ class SameDeviceCallbackTest {
     }
 
     @Test
-    fun `an unknown session is unauthorized, and the code is left alone`() {
+    fun `a session neither the demo nor the flow knows is unauthorized`() {
+        // The flow is asked, and redeems nothing: a code only ever redeems its own transaction.
         val flow = RecordingFlow(known, consumes = true)
         val response = controllerWith(flow).sameDeviceCallback("someone-elses-tx", "a-code", null)
         assertThat(response.statusCode.value()).isEqualTo(401)
-        assertThat(flow.consumeCalls).isZero()
+    }
+
+    @Test
+    fun `a return to a transaction the demo did not start completes, without a ticket`() {
+        // A conformance run: started outside these pages, which read by id alone and so are
+        // never pointed at it.
+        val conformance = TransactionId("tx-conformance")
+        val flow = RecordingFlow(known, consumes = true, redeemable = setOf(known, conformance))
+        val response = controllerWith(flow).sameDeviceCallback(conformance.value, "a-code", null)
+        assertThat(response.statusCode.value()).isEqualTo(200)
+        assertThat(response.headers.location).isNull()
+        assertThat(response.body).contains("Rientro dal wallet completato").doesNotContain(conformance.value)
     }
 
     @Test

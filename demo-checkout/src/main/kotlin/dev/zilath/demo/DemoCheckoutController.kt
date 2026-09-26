@@ -45,10 +45,12 @@ class DemoCheckoutController(
     private val flow: VerificationFlow,
     private val receipts: VerificationReceipts,
     private val clock: java.time.Clock,
-    private val registry: DemoTransactionRegistry,
     @Value("\${zilath.demo.pid-vct:urn:eu.europa.ec.eudi:pid:1}") private val pidVct: String,
     @Value("\${zilath.demo.credential-mode:pid}") private val credentialMode: String,
 ) {
+    /** Started transactions, kept a bit longer than the flow TTL so receipts stay downloadable. */
+    private val registry = DemoTransactionRegistry(clock, REGISTRY_TIME_TO_LIVE)
+
     @GetMapping("/demo", produces = [MediaType.TEXT_HTML_VALUE])
     fun eventPage(): String = eventPageHtml()
 
@@ -158,17 +160,27 @@ class DemoCheckoutController(
         return when {
             error != null -> ResponseEntity.badRequest().body(callbackErrorHtml(error))
             responseCode.isNullOrBlank() -> unauthorizedPage()
-            entry == null -> unauthorizedPage()
+            // Asked for any id: the flow redeems a code only on its own transaction and leaves
+            // another's untouched. A transaction these pages did not start — a conformance run —
+            // completes its return too, and gets no ticket page, which reads by id alone.
             else ->
                 when (val reader = flow.consumeResponseCode(TransactionId(txId), responseCode)) {
-                    null -> ResponseEntity.badRequest().body(callbackErrorHtml("invalid_response_code"))
-                    else -> {
-                        entry.readToken.set(reader)
-                        ResponseEntity
-                            .status(HttpStatus.FOUND)
-                            .location(URI.create("/demo/ticket/" + txId))
-                            .build()
-                    }
+                    null ->
+                        if (entry == null) {
+                            unauthorizedPage()
+                        } else {
+                            ResponseEntity.badRequest().body(callbackErrorHtml("invalid_response_code"))
+                        }
+                    else ->
+                        if (entry == null) {
+                            ResponseEntity.ok(RETURN_COMPLETED_HTML)
+                        } else {
+                            entry.readToken.set(reader)
+                            ResponseEntity
+                                .status(HttpStatus.FOUND)
+                                .location(URI.create("/demo/ticket/" + txId))
+                                .build()
+                        }
                 }
         }
     }
@@ -200,6 +212,7 @@ class DemoCheckoutController(
     }
 
     companion object {
+        private val REGISTRY_TIME_TO_LIVE: java.time.Duration = java.time.Duration.ofMinutes(15)
         private const val CED_SIM_MODE = "ced-sim"
         private const val SAME_DEVICE_PARAM = "same-device"
     }

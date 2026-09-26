@@ -47,7 +47,6 @@ class ConformanceController(
     private val flow: VerificationFlow,
     private val config: RelyingPartyConfiguration,
     private val clock: Clock,
-    private val registry: DemoTransactionRegistry,
     @Value("\${zilath.demo.pid-vct:urn:eu.europa.ec.eudi:pid:1}") private val pidVct: String,
 ) {
     /** The RP entity configuration: how a federation discovers and onboards us. */
@@ -66,11 +65,10 @@ class ConformanceController(
     fun start(): Map<String, String> {
         // The conformance wallet POSTs the response and then expects to be handed a
         // redirect back: that IS the same-device flow, whatever the QR suggests.
-        val request = PresentationRequest.forTestPid(pidVct)
-        val started = flow.start(request, dev.zilath.verifier.openid4vp.FlowMode.SAME_DEVICE)
-        // Registered as the demo pages register theirs: the wallet's redirect brings the
-        // user-agent back through /demo/cb, which completes only a transaction it knows.
-        registry.register(started, request)
+        // Not registered with the demo pages, which still read a transaction by its id alone:
+        // /demo/cb completes its return all the same, since the flow checks the code.
+        val started =
+            flow.start(PresentationRequest.forTestPid(pidVct), dev.zilath.verifier.openid4vp.FlowMode.SAME_DEVICE)
         return mapOf(
             "transactionId" to started.id.value,
             "authorizeUrl" to started.qrPayload,
