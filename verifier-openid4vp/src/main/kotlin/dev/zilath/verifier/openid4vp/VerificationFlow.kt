@@ -372,9 +372,10 @@ sealed interface FlowOutcome {
     }
 
     /**
-     * The presentation was verified. [claims] holds what the wallet disclosed for this query
-     * plus `iss` and `vct`, and nothing else of the issuer envelope — the credential itself
-     * is already gone by the time this is returned.
+     * The presentation was verified. [claims] holds the requested claims that are present
+     * (for a query without `claims`, what the holder disclosed), plus `iss` and `vct`, and
+     * nothing else of the issuer envelope — the credential itself is already gone by the
+     * time this is returned.
      */
     data class Verified(
         val claims: DisclosedClaims,
@@ -385,7 +386,12 @@ sealed interface FlowOutcome {
 
     /**
      * The presentation arrived but did not pass. As in [dev.zilath.verifier.core.VerificationResult.Rejected],
-     * [detail] is for logs and must not be echoed to the person at the checkout.
+     * [detail] is for logs and must not be echoed to the person at the checkout. It is one
+     * of the library's fixed phrases, the verifier's or the flow's own, with two exceptions:
+     * for [RejectionReason.UNTRUSTED_ISSUER] it is the TrustEvaluator's reason, cut to 200
+     * characters with control characters replaced; and a CredentialVerifier of the
+     * application's own writes whatever it writes. Once the transaction expires, [detail] is
+     * dropped and [reason] stays.
      */
     data class Rejected(
         val reason: RejectionReason,

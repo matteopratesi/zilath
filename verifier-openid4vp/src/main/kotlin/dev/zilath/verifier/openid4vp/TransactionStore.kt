@@ -62,8 +62,12 @@ import java.time.Instant
  * read, a minimising codec, the new value in place of the old — with nothing in the
  * library to notice.
  *
- * What a transaction holds is not only nonces: once verified, its [Transaction.outcome]
- * carries the DISCLOSED CLAIMS. Treat any store, and its logs, accordingly.
+ * What a transaction holds is not only nonces: the request; the hashes of the poll token and
+ * of the response code; the transaction's PRIVATE response-encryption key, until the first
+ * response or expiry; and, once verified, an [Transaction.outcome] carrying the claims
+ * [dev.zilath.verifier.core.VerificationResult.Verified] hands over, until
+ * [Transaction.expiresAt], past which no read returns them. Treat any store, and its logs,
+ * accordingly.
  */
 interface TransactionStore {
     /** Stores [transaction], replacing any entry with the same id. */
