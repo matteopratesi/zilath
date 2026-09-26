@@ -194,12 +194,14 @@ from that same shell. The script checks this for you before doing anything else.
    ./gradlew :demo-checkout:bootRun
    ```
 
-3. Open <http://localhost:8080/demo>, click "Ho diritto al biglietto accompagnatore" and
-   copy the transaction id shown on the QR page.
-4. Let the test wallet present the PID (transactions live 5 minutes, so use a fresh id):
+3. Open <http://localhost:8080/demo> and click "Ho diritto al biglietto accompagnatore". The
+   QR page shows, under the QR, the command for the test wallet with the QR's authorize URL
+   filled in: a wallet starts from that URL, and the transaction id alone opens nothing on
+   the demo pages to anyone but the browser that started the purchase.
+4. Let the test wallet present the PID (transactions live 5 minutes, so use a fresh page):
 
    ```sh
-   ./scripts/run-demo-wallet.sh <transactionId>
+   ./scripts/run-demo-wallet.sh '<authorize URL>'
    ```
 
    The script runs only the conformance tool's happy-flow tests, and there is a reason:
@@ -211,8 +213,8 @@ from that same shell. The script checks this for you before doing anything else.
 
    Some conformance assertions fail even in the happy flow: they are the known gaps in
    [docs/note-divergenze.md](docs/note-divergenze.md), not regressions. What decides
-   whether the presentation went through is the transaction status, which the script
-   reports at the end.
+   whether the presentation went through is the transaction itself: the QR page in the
+   browser that started it moves on to the ticket once the presentation is verified.
 
 5. The page turns into a nominative companion ticket; the "ricevuta di verifica" link is
    the signed receipt a venue would keep — outcome, the venue's entitlement verdict and the
@@ -258,8 +260,8 @@ the companion "A".
 ZILATH_TRUST_ANCHOR_ID=https://anchor.ced-sim.zilath.invalid \
 ZILATH_TRUST_ANCHOR_JWKS_PATH=$PWD/demo-keys/ced-sim/anchor-jwks.json \
 ZILATH_DEMO_CREDENTIAL_MODE=ced-sim ./gradlew :demo-checkout:bootRun
-# then, with the transaction id from the QR page:
-./scripts/run-ced-wallet.sh <transactionId>
+# then, with the command the QR page shows:
+./scripts/run-ced-wallet.sh '<authorize URL>'
 ```
 
 For the full conformance run against this RP, see [docs/conformance](docs/conformance/).

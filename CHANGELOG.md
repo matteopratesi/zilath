@@ -13,8 +13,9 @@ that can silently let something through.
 The fixes of the fourth internal review (2026-09-04 to 2026-09-24), landing in parts. Headed
 for 0.4.0, not a patch: many items change what a verifier accepts or rejects, and the API
 moves with them. In three parts: `verifier-core` and the build; `verifier-trust-itwallet`;
-`verifier-openid4vp` and the Spring starter. The demo application's own findings, the
-receipt's `entitled` field and a guide for Spring Security are not part of this release.
+`verifier-openid4vp`, the Spring starter, the demo application and the documentation. The
+demo binds each transaction to the browser that started it; the README gains a guide for
+Spring Security, tested by the starter.
 
 ### Security — what the verifier now accepts that it refused
 
