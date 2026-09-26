@@ -214,6 +214,16 @@ available everywhere and `GPG_TTY` is what this file assumes.
    Read the diff of the file before committing it: every new line is an artifact the
    release will be built from.
 
+   Then **re-read `README.md`, `SECURITY.md` and `docs/privacy-by-design.md` against the
+   code being released**: every sentence about what the library does, keeps, returns or
+   refuses, every boundary and every known limit, and every "planned for" or "not released
+   yet" that this release makes true or false. Open the code each sentence describes;
+   memory and the changelog are not the code. No test reads prose, and prose drifts: the
+   fourth internal review found a boundary in `SECURITY.md` that the code did not enforce,
+   a known limit whose stated reason no longer held, and a fix announced for a version that
+   had shipped without it. Correct what is wrong in the release pull request, before the
+   review starts.
+
 3. **Export the signing key for this shell only.**
 
    ```sh
