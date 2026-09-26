@@ -27,8 +27,8 @@ A single verification, end to end:
 |---|---|---|
 | Request | A DCQL query naming the credential type and the claim paths you ask for | Signed into the request object (JAR) the wallet fetches |
 | Response | The wallet's response, carrying the SD-JWT VC presentation and its key-binding JWT. **Encrypted only on profiles that require it** — see below | Decrypted or parsed in memory; never written |
-| Verification | Issuer signature, trust chain, key binding (`nonce`, `aud`, `sd_hash`), disclosure digests, validity window, revocation status | Nothing written anywhere |
-| Result | `Verified(claims)` — the disclosed claims plus the envelope claims (`iss`, `vct`, `exp`, `iat`), with `cnf` and `status` stripped — or `Rejected(reason)` | Returned to your application; recorded on the transaction |
+| Verification | Issuer signature, trust chain, key binding (`nonce`, `aud`, `sd_hash`), disclosure digests, validity window, the claims the request asked for, revocation status | Nothing written anywhere |
+| Result | `Verified(claims)` — the requested claims that are present (for a query without `claims`, the claims the holder disclosed) plus `iss` and `vct`; the rest of the SD-JWT VC envelope (`cnf`, `status`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti`, `_sd_alg`) never, see §4 — or `Rejected(reason)` | Returned to your application; recorded on the transaction |
 
 **Whether the response is encrypted depends on the profile you select.** `ItWalletProfile`,
 the default, mandates `direct_post.jwt`: the response is a JWE (ECDH-ES + A256GCM) and is
@@ -42,34 +42,43 @@ gone when that call returns.
 
 **Selective disclosure is the mechanism that keeps this small.** You ask for claim paths
 in the DCQL query; the wallet discloses those and withholds the rest. What comes back is
-those claims plus the envelope the format requires — `iss`, `vct`, `exp`, `iat` — and not
-the whole credential. Ask for a boolean
+those claims plus `iss` and `vct`, which name the issuer and the credential type and are
+the same for every holder of it — not the whole credential. Ask for a boolean
 entitlement and an expiry date, and a boolean and a date are what you get — the diagnosis,
 the percentage of invalidity and the medical record are not withheld by our good manners,
-they are never transmitted.
+they are never transmitted. And if a wallet discloses more than the query asked for, the
+surplus is dropped before the outcome is returned: what reaches you is what you asked
+for, whatever the wallet sent.
 
 ## 3. What is retained, and for how long
 
 This is the section that matters, so it is stated plainly rather than favourably.
 
 **The transaction store** holds, per in-flight verification: the transaction id, the nonce,
-the state, the creation timestamp, the request that was made, the flow mode, the
-same-device response code where applicable, and **the outcome**. For a successful
-verification the outcome carries the **disclosed claims** — they have to survive between
-the wallet's POST and your application's read of `awaitOutcome`, because those are two
-separate HTTP exchanges.
+the state, the creation and expiry instants, the request that was made, the flow mode, a
+hash of the poll token that reads the outcome, a hash of the same-device response code
+where applicable, the transaction's own response-decryption key until the wallet's
+response arrives (or the transaction expires), and **the outcome**. For a successful
+verification the outcome carries **the claims `Verified` hands over** (§2) — they have to
+survive between the wallet's POST and your application's read of `awaitOutcome`, because
+those are two separate HTTP exchanges.
 
-The outcome is retained whole, so for a rejection what persists is the reason code **and
-`detail`**, for the same lifetime. Almost every `detail` is a fixed string from this
-library, with one exception worth knowing: if you supply your own `TrustEvaluator`, the
-text your implementation puts in `TrustDecision.Untrusted(reason)` is passed straight
-through and stored with the transaction. Keep personal data out of it. A custom
-`StatusChecker` cannot do this — it returns an enum, and the `detail` for a status failure
-is written here.
+For a rejection what persists is the reason code **and `detail`**, for the same lifetime.
+Every `detail` this library writes is a fixed phrase, with one exception worth knowing: if
+you supply your own `TrustEvaluator`, the text your implementation puts in
+`TrustDecision.Untrusted(reason)` becomes the `detail` — cut to 200 characters, control
+characters and line separators replaced, otherwise as written — and is stored with the
+transaction. So is whatever your own `CredentialVerifier`, if you replace the library's,
+puts in its rejections. Keep personal data out of both. A custom `StatusChecker` cannot do
+this — it returns an enum, and the `detail` for a status failure is written here.
 
-So: the presentation is not retained, the claims and the diagnostic text briefly are. With
-the default `InMemoryTransactionStore` they live in the process heap and expire with the
-transaction time to live. They are never written to disk by this library.
+So: the presentation is not retained, the claims and the diagnostic text briefly are. No
+read returns them after the transaction's `expiresAt` (creation plus
+`RelyingPartyConfiguration.transactionTimeToLive`, five minutes by default, one hour at
+most), on any store: past it a verified outcome reads `Expired`, a rejection keeps its
+reason without its detail. The default `InMemoryTransactionStore` holds them in the process
+heap and redacts the entry within 30 seconds of expiry, even in an idle process, then
+removes it a minute later. They are never written to disk by this library.
 
 **If you plug in a shared store** — Redis, a database, anything that outlives the
 process — you are putting those claims on that infrastructure, and it becomes part of your
@@ -81,7 +90,13 @@ so you can do this; the consequences are yours.
 A receipt is a signed JWT carrying: the issuer (your client id), the transaction id as
 `jti`, the issue time, `outcome` (`verified` or `rejected`), `entitled` (a boolean), the
 claim paths that were **requested**, and a SHA-256 hash of the request. It records that a
-verification happened and how it came out. **It contains no claim values**, so it is the
+verification happened and how it came out. The two are different facts: `outcome` is the
+library's, whether the presentation verified; `entitled` is **yours**, your verdict on the
+disclosed claims, which you pass when you issue the receipt
+(`ReceiptOutcome.VERIFIED_ENTITLED`, `VERIFIED_NOT_ENTITLED` or `REJECTED`). A card that
+verifies and says `constant_attendance_allowance: false` is verified and not entitled, and
+its receipt should say so — so issue it after your entitlement rule has run, not on the
+first poll that reads `Verified`. **It contains no claim values**, so it is the
 thing a venue archives instead of a copy of someone's medical paperwork — under the
 retention rules in §6, because a receipt linked to a person is still personal data.
 
@@ -89,33 +104,49 @@ retention rules in §6, because a receipt linked to a person is still personal d
 
 - **The nonce is single-use.** A replayed response is rejected as `REPLAY`, and nothing in
   the protocol carries across transactions.
-- **The outcome carries no stable identifier from the SD-JWT envelope.** Note the scope:
-  this is about the envelope, not about what you asked for. A claim path YOU request can of
-  course be an identifier — a document number is one — and the library will faithfully return
-  what the wallet discloses for it. The envelope contains
-  two that would survive every presentation — `cnf.jwk`, the holder's public key, and
-  `status.status_list.idx`, the credential's slot in its issuer's revocation list. Both are
-  stripped before the outcome is returned. They exist for verification; the library is done
-  with them by the time it answers, and passing them on would hand whoever is downstream a
-  way to link two checkouts, at different venues and months apart, to one person.
+- **The outcome is an allowlist, and carries no stable identifier from the SD-JWT
+  envelope.** What `Verified` hands over is built up from what was asked for, not cut down
+  from what arrived: the requested claims that are present (for a query without `claims`,
+  the claims the holder disclosed), plus `iss` and `vct`. An issuer's plaintext claim nobody
+  asked for does not reach you, nor does a wallet's surplus disclosure. On top of that the
+  envelope is removed whatever was asked: `cnf`, `status`, `sub`, `aud`, `exp`, `nbf`,
+  `iat`, `jti`, `_sd_alg`. Two of those would survive every presentation — `cnf.jwk`, the
+  holder's public key, and `status.status_list.idx`, the credential's slot in its issuer's
+  revocation list — and the dates, with `iss` and `vct`, single out one credential almost
+  as surely. They exist for verification; the library is done with them by the time it
+  answers, and passing them on would hand whoever is downstream a way to link two
+  checkouts, at different venues and months apart, to one person. Note the scope: a claim
+  path YOU request can of course be an identifier — a document number is one — and the
+  library will faithfully return what the wallet discloses for it.
+- **Only the checkout, or the browser that came back, reads an outcome.** The transaction id
+  is public — it is in the QR code — so it reads nothing: `awaitOutcome` takes a poll token
+  that appears in no QR code, request or URL, and of which the store keeps only a hash.
+  Same-device, the token that reads is handed to the browser that came back from the
+  wallet, and the one that started the transaction stops reading, so a transaction started
+  by one party and completed by someone else's wallet never shows that person's claims to
+  the party who started it (SECURITY.md, boundary 2).
 - **No counters, no history, no profiles.** There is no per-person state of any kind, not
   even for abuse prevention. That is a deliberate refusal, not an omission.
 - **Rejection reasons are coarse by design.** `RejectionReason` is a small enum of outcome
   categories — no claim values, nothing about the credential's content, nothing that turns
   the endpoint into a probe for what a person's credential says.
-- **Diagnostic detail stays server-side at the HTTP boundary.** The Spring endpoint returns
-  the reason code to the wallet and keeps `detail` in the log.
+- **Diagnostic detail stays server-side at the HTTP boundary.** The Spring endpoint answers
+  the wallet with the HTTP status IT-Wallet 1.4.6 §12.2.1.6.1 tabulates and one fixed
+  description per status, and keeps the reason code and `detail` in the log, bounded to
+  one line.
 - **On the IT-Wallet profile, responses are encrypted and not merely signed.**
   `direct_post.jwt` with ECDH-ES and A256GCM: the presentation is unreadable to anything
-  between wallet and verifier. This is a property of that profile, not of the library —
-  `ArfBaselineProfile` posts in the clear over TLS.
+  between wallet and verifier. Each transaction publishes an encryption key of its own,
+  whose private half leaves the store when the response arrives, so a response captured
+  today cannot be read with a key stolen later. This is a property of that profile, not of
+  the library — `ArfBaselineProfile` posts in the clear over TLS.
 
 ## 5. Known limits
 
 An honest list is more useful than a short one.
 
-1. **Disclosed claims sit in the transaction store for the transaction's lifetime.** See
-   §3. Unavoidable in a polling architecture; bounded, but not zero.
+1. **The claims a verification returns sit in the transaction store for the transaction's
+   lifetime.** See §3. Unavoidable in a polling architecture; bounded, but not zero.
 2. **`VerificationResult.Rejected.detail` travels with the result.** It is diagnostic text,
    not a log-only string: a caller holding the result can read it. Do not surface it to the
    person at the checkout, and do not put it in anything user-facing.
@@ -154,20 +185,27 @@ An honest list is more useful than a short one.
    turns into denied entitlements. **And decide what your fetcher is allowed to reach**: it
    dereferences a URL that arrived inside a credential. The verification order limits this
    — trust chain and issuer signature are checked before the status call, so the URI comes
-   from an issuer you already trust — but a fetcher able to reach arbitrary hosts is one
-   compromised issuer away from being a request-forgery tool inside your network. An
-   allow-list of expected status hosts costs nothing.
-8. **What is stripped from the returned claims is a blocklist.** The verifier removes the
-   SD-JWT VC envelope — `cnf`, `status`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti`, `_sd_alg`
-   — because every one of them is stable per credential and would let a consumer link two
-   verifications of the same person. It cannot remove what it cannot recognise: a claim the
-   ISSUER puts in the credential unprotected, outside selective disclosure and under a name
-   of its own, reaches your application, and nothing in the verifier distinguishes it from a
-   legitimate always-visible attribute. **If you consume the claims, treat unexpected names
-   as suspect rather than as data.** The airtight form is an allowlist of what the holder
-   actually disclosed; it needs the nested-object case settled against a real issuer first,
-   so it is a limit today and not a promise. (Third review, 2026-09-02, raised in automated
-   review.)
+   from an issuer you already trust — and the library holds the URI to the shape rule of
+   SECURITY.md boundary 1 before your fetcher sees it: https, a hostname, no userinfo, no
+   IP literal but loopback. But it never resolves the name, and a fetcher able to reach
+   arbitrary hosts is one compromised issuer away from being a request-forgery tool inside
+   your network. An allow-list of expected status hosts costs nothing.
+8. **Revocation is checked only through a Token Status List, in plaintext.** Two
+   consequences, both of them denials or blind spots rather than silent acceptance:
+   - A credential whose `status` carries another mechanism and no `status_list` — IT-Wallet's
+     `status_assertion` or `status_attestation` — is rejected at every presentation
+     (`STATUS_CHECK_FAILED`, "status mechanism not supported"). The production disability
+     card issuer's entity configuration, as served on 2026-09-24, advertises exactly those
+     endpoints and no status list. Check what your population's credentials carry before
+     deploying.
+   - SD-JWT VC forbids an issuer to make `iss`, `nbf`, `exp`, `cnf`, `vct`,
+     `vct#integrity` or `status` selectively disclosable, and the verifier refuses a
+     presentation that discloses one of them, or `_sd_alg` (`MALFORMED`): every check reads
+     them from the signed payload, where a disclosable claim is only a digest. A disclosure
+     the holder WITHHOLDS cannot be recognised, since a digest is opaque. For `exp` that
+     changes nothing — a credential without a plaintext `exp` is refused anyway — but a
+     withheld `status` looks exactly like a credential that has none, and is not checked.
+     Only a non-conformant issuer can produce this; only the issuer can close it.
 9. **Receipts are signed with the request-signing key.** A request object lives five minutes
    by default — `RelyingPartyConfiguration.transactionTimeToLive`, which the request object's
    `exp` follows;
@@ -175,8 +213,9 @@ An honest list is more useful than a short one.
    receipt already issued verifies only against the retired public key, so whoever archives
    receipts must keep the history of the RP's published keys, and this library offers no
    function that verifies a receipt for them. A dedicated receipt key, rotated on its own
-   schedule as the federation key already is, is the fix; it is an API change and is planned
-   for 0.3. (Third review, 2026-09-02.)
+   schedule as the federation key already is, is the fix. It is an API change that has not
+   been made: neither 0.3.0 nor the code after it has a receipt key. (Third review,
+   2026-09-02.)
 10. **Pre-alpha.** The API is not frozen and this library has not been independently audited.
 
 ## 6. What you still have to do
@@ -214,8 +253,11 @@ Zilath handles the cryptography and the minimisation. It does not handle your ob
 | What a transaction holds | `verifier-openid4vp/.../TransactionStore.kt` |
 | What a receipt contains | `verifier-openid4vp/.../VerificationReceipts.kt` |
 | Reason codes carry no content | `verifier-core/.../CredentialVerifier.kt`, `RejectionReason` |
-| `cnf` and `status` never reach the outcome | `verifier-core/.../SdJwtVcCredentialVerifier.kt`, `withoutInternalClaims` |
-| The credential type is the one requested | same file, `checkCredentialType` |
+| Only the requested claims, plus `iss` and `vct`, reach the outcome; never the envelope | `verifier-core/.../ClaimsOutcome.kt`, `outcomeClaims`, `ENVELOPE_CLAIMS` |
+| A presentation disclosing an envelope claim is refused | `verifier-core/.../DisclosureChecks.kt`, `checkEnvelopeIsPlaintext` |
+| The credential type is the one requested | `verifier-core/.../SdJwtVcCredentialVerifier.kt`, `checkCredentialType` |
+| The outcome is read with a poll token, not the transaction id | `verifier-openid4vp/.../VerificationFlow.kt`, `awaitOutcome`, `PollToken` |
+| Nothing is handed out past expiry | `verifier-openid4vp/.../Expiry.kt` |
 | Detail is kept server-side | `verifier-spring-boot-starter/.../OpenId4VpController.kt` |
 | Nonce single use, replay rejected | `verifier-openid4vp/.../OpenId4VpVerificationFlow.kt` |
 | No outbound calls to the project | grep the four library modules for any HTTP client — there are none. Every network access goes through `FederationFetcher` and `StatusListFetcher`, interfaces you implement and inject. (The `demo-checkout` app does make HTTP calls; it is an example, not a published artifact.) |
