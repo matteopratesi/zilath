@@ -189,8 +189,10 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
   `Boolean`.
 - `handleWalletResponse` returns `HandledResponse(outcome, redirectUri)`;
   `sameDeviceRedirectFor` is gone.
-- `Transaction` gains `expiresAt`, `pollTokenHash` and the transaction's key;
-  `isExpired(now, ttl)` is `isExpired(now)`. `InMemoryTransactionStore(clock, ttl)` is
+- `Transaction` gains `expiresAt`, `pollTokenHash` and the transaction's key, and keeps
+  `responseCodeHash` instead of `responseCode`: the same-device return code is stored only
+  as a hash, so a store and its backups cannot redeem it; `isExpired(now, ttl)` is
+  `isExpired(now)`. `InMemoryTransactionStore(clock, ttl)` is
   `InMemoryTransactionStore(clock, maxTransactions)`; the store and the flow are
   `AutoCloseable`. Custom stores: the six properties the flow relies on are in the
   `TransactionStore` KDoc; `TransactionStoreContractTest` checks the first five (not

@@ -191,7 +191,7 @@ abstract class TransactionStoreContractTest {
             pollTokenHash = "poll-token-hash-$id",
             outcome = null,
             mode = FlowMode.SAME_DEVICE,
-            responseCode = "response-code-$id",
+            responseCodeHash = "response-code-hash-$id",
             returned = false,
             // Private key material: a store keeps it, whole, for the transaction's life.
             responseEncryptionKey = ECKeyGenerator(Curve.P_256).keyID("tx-key-$id").generate(),

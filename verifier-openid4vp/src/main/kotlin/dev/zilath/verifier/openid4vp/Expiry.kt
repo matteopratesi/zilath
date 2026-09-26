@@ -29,7 +29,7 @@ import java.time.Instant
  * code — and no decryption key.
  */
 internal fun Transaction.redactedForExpiry(): Transaction =
-    copy(outcome = tombstoneOf(outcome), responseCode = null, responseEncryptionKey = null)
+    copy(outcome = tombstoneOf(outcome), responseCodeHash = null, responseEncryptionKey = null)
 
 /**
  * An expired outcome loses everything a person could be found in. A rejection keeps its

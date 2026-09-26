@@ -71,7 +71,7 @@ class InMemoryTransactionStoreTest {
                 state = TransactionState.VERIFIED,
                 outcome = FlowOutcome.Verified(DisclosedClaims(buildJsonObject { put("given_name", "Ada") })),
                 mode = FlowMode.SAME_DEVICE,
-                responseCode = "code",
+                responseCodeHash = "code-hash",
             )
         val unanswered = transaction("abandoned").copy(responseEncryptionKey = newTransactionEncryptionKey())
         idle.put(verified)
@@ -85,7 +85,7 @@ class InMemoryTransactionStoreTest {
         assertThat(idle.size).isEqualTo(2)
         val redacted = checkNotNull(idle.get(verified.id))
         assertThat(redacted.outcome).isEqualTo(FlowOutcome.Expired)
-        assertThat(redacted.responseCode).isNull()
+        assertThat(redacted.responseCodeHash).isNull()
         assertThat(checkNotNull(idle.get(unanswered.id)).responseEncryptionKey).isNull()
     }
 

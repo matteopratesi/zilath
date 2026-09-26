@@ -68,7 +68,7 @@ class OpenId4VpVerificationFlow(
                 createdAt = now,
                 expiresAt = now.plus(config.transactionTimeToLive),
                 request = request,
-                pollTokenHash = pollTokenHashOf(pollToken.value),
+                pollTokenHash = secretHashOf(pollToken.value),
                 mode = mode,
                 responseEncryptionKey = newTransactionEncryptionKey(),
             ),
@@ -151,7 +151,7 @@ class OpenId4VpVerificationFlow(
         // A wrong token and an unknown id answer alike: the read is no oracle for which ids
         // exist, and the id alone — public, in the QR — reads nothing.
         return when {
-            !secretsEqual(transaction.pollTokenHash, pollTokenHashOf(pollToken.value)) -> FlowOutcome.Unknown
+            !secretsEqual(transaction.pollTokenHash, secretHashOf(pollToken.value)) -> FlowOutcome.Unknown
             expired -> expiredAnswerFor(transaction)
             // Same-device: the transaction is complete only when the user-agent has come
             // back through the response-code exchange (WP_094) — pending until then.
@@ -172,7 +172,8 @@ class OpenId4VpVerificationFlow(
         // The code must belong to THIS transaction: presenting another transaction's code
         // here leaves it untouched, so its own return leg still works.
         fun redeemable(transaction: Transaction) =
-            !transaction.isExpired(now) && transaction.responseCode?.let { secretsEqual(it, code) } == true
+            !transaction.isExpired(now) &&
+                transaction.responseCodeHash?.let { secretsEqual(it, secretHashOf(code)) } == true
         // Decided from the value the store replaced, not from a variable the update function
         // set: a store may run that function and then not commit its result — an optimistic
         // store whose entry was removed in between returns null — and a side effect of the
@@ -187,9 +188,9 @@ class OpenId4VpVerificationFlow(
                 when {
                     redeemable(current) ->
                         current.copy(
-                            responseCode = null,
+                            responseCodeHash = null,
                             returned = true,
-                            pollTokenHash = pollTokenHashOf(reader.value),
+                            pollTokenHash = secretHashOf(reader.value),
                         )
                     // Every call that finds the transaction expired redacts it: see Transaction.
                     current.isExpired(now) -> current.redactedForExpiry()
@@ -284,7 +285,7 @@ class OpenId4VpVerificationFlow(
                 when {
                     !recordable(current) -> current
                     current.isExpired(now) -> current.redactedForExpiry()
-                    else -> current.copy(state = state, outcome = outcome, responseCode = code)
+                    else -> current.copy(state = state, outcome = outcome, responseCodeHash = code?.let(::secretHashOf))
                 }
             }
         return when {

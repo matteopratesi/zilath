@@ -76,7 +76,7 @@ class SameDeviceFlowTest : FlowTestSupport() {
             )
         assertThat((rejected.outcome as FlowOutcome.Rejected).reason).isEqualTo(RejectionReason.NONCE_MISMATCH)
         assertThat(rejected.redirectUri).isNull()
-        assertThat(retaining.get(started.id)?.responseCode).isNull()
+        assertThat(retaining.get(started.id)?.responseCodeHash).isNull()
         // What the page that started it reads: pending, then expired — never the rejection.
         assertThat(retainingFlow.awaitOutcome(started.id, started.pollToken)).isEqualTo(FlowOutcome.Pending)
         clock.advance(config.transactionTimeToLive.plusSeconds(1))
@@ -196,16 +196,33 @@ class SameDeviceFlowTest : FlowTestSupport() {
         val handled = retainingFlow.handleWalletResponse(started.id, walletBody(started, source = retainingFlow))
         val verified = handled.outcome
         val stored = checkNotNull(retaining.get(started.id))
-        assertThat(stored.responseCode).isNotNull()
+        val code = checkNotNull(handled.redirectUri).substringAfter("response_code=")
+        val codeHash = checkNotNull(stored.responseCodeHash)
         assertThat(stored.outcome).isInstanceOf(FlowOutcome.Verified::class.java)
 
         val printed = stored.toString()
         assertThat(printed)
             .contains(started.id.value, "VERIFIED", "Verified")
-            .doesNotContain(stored.nonce, stored.responseCode, "Ada", "Lovelace")
+            .doesNotContain(stored.nonce, code, codeHash, "Ada", "Lovelace")
         // The outcome on its own names the claims and nothing more.
         assertThat(verified.toString()).contains("given_name").doesNotContain("Ada", "Lovelace", "true")
-        assertThat(handled.toString()).doesNotContain(stored.responseCode, "Ada")
+        assertThat(handled.toString()).doesNotContain(code, "Ada")
+    }
+
+    @Test
+    fun `the store keeps only a hash of the response code, which redeems nothing`() {
+        // The code was stored as it was: whoever could read the store, or a backup of it,
+        // redeemed it before the user came back and took the read right over.
+        val retaining = RetainingTransactionStore()
+        val retainingFlow = OpenId4VpVerificationFlow(config, SdJwtVcCredentialVerifier(), retaining, clock)
+        val started =
+            retainingFlow.start(PresentationRequest.forTestPid("urn:zilath:test:entitlement"), FlowMode.SAME_DEVICE)
+        val handled = retainingFlow.handleWalletResponse(started.id, walletBody(started, source = retainingFlow))
+        val code = checkNotNull(handled.redirectUri).substringAfter("response_code=")
+        val kept = checkNotNull(checkNotNull(retaining.get(started.id)).responseCodeHash)
+        assertThat(kept).isNotEqualTo(code)
+        assertThat(retainingFlow.consumeResponseCode(started.id, kept)).isNull()
+        assertThat(retainingFlow.consumeResponseCode(started.id, code)).isNotNull()
     }
 
     private companion object {

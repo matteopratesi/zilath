@@ -96,8 +96,8 @@ internal fun secretsEqual(
     presented: String,
 ): Boolean = java.security.MessageDigest.isEqual(expected.toByteArray(), presented.toByteArray())
 
-/** What a transaction keeps of its [PollToken]: base64url SHA-256. */
-internal fun pollTokenHashOf(token: String): String =
+/** What a transaction keeps of a secret it hands out, a [PollToken] or a response code: base64url SHA-256. */
+internal fun secretHashOf(token: String): String =
     Base64URL
         .encode(
             java.security.MessageDigest

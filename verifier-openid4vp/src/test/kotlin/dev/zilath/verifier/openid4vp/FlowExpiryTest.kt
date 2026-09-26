@@ -170,7 +170,7 @@ class FlowExpiryTest : FlowTestSupport() {
             assertThat(late).isEqualTo(FlowOutcome.Expired)
             // ...and redacted where it is kept, not only in the answer.
             assertThat(retaining.get(id)?.outcome).isEqualTo(FlowOutcome.Expired)
-            assertThat(retaining.get(id)?.responseCode).isNull()
+            assertThat(retaining.get(id)?.responseCodeHash).isNull()
             assertThat(retainingFlow.awaitOutcome(id, token)).isEqualTo(late)
         }
     }
@@ -256,7 +256,7 @@ class FlowExpiryTest : FlowTestSupport() {
             assertThat(handled.redirectUri).isNull()
             val stored = checkNotNull(retaining.get(started.id))
             assertThat(stored.outcome).isNull()
-            assertThat(stored.responseCode).isNull()
+            assertThat(stored.responseCodeHash).isNull()
             assertThat(stored.responseEncryptionKey).isNull()
             assertThat(slowFlow.awaitOutcome(started.id, started.pollToken)).isEqualTo(FlowOutcome.Expired)
         }

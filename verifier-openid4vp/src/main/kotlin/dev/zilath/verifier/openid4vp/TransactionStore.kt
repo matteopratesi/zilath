@@ -149,8 +149,13 @@ data class Transaction(
     val pollTokenHash: String,
     val outcome: FlowOutcome? = null,
     val mode: FlowMode = FlowMode.CROSS_DEVICE,
-    /** Single-use same-device return code; cleared when consumed. */
-    val responseCode: String? = null,
+    /**
+     * The hash of the single-use same-device return code (base64url SHA-256), as
+     * [pollTokenHash] is of its token: the code itself goes to the wallet and is never
+     * stored, so a store and its backups cannot redeem it and take the read right over.
+     * Cleared when consumed.
+     */
+    val responseCodeHash: String? = null,
     /** True once the user-agent came back through the response-code exchange (WP_094). */
     val returned: Boolean = false,
     /**
@@ -176,5 +181,5 @@ data class Transaction(
      */
     override fun toString(): String =
         "Transaction(id=${id.value}, state=$state, mode=$mode, createdAt=$createdAt, expiresAt=$expiresAt, " +
-            "outcome=${outcome?.javaClass?.simpleName}, hasResponseCode=${responseCode != null}, returned=$returned)"
+            "outcome=${outcome?.javaClass?.simpleName}, hasResponseCode=${responseCodeHash != null}, returned=$returned)"
 }
