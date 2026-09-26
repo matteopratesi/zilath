@@ -176,6 +176,36 @@ class FederationConfigurationTest {
     }
 
     @Test
+    fun `an application's own configuration with a federation is served once the entity id is set`() {
+        val own = ownConfiguration(ownFederation())
+        webStarterRunner(signingKey)
+            .withBean(RelyingPartyConfiguration::class.java, { own })
+            .withPropertyValues("zilath.openid4vp.federation.entity-id=https://rp.example")
+            .run { context ->
+                assertThat(context).hasNotFailed()
+                val body =
+                    MockMvcBuilders
+                        .webAppContextSetup(context)
+                        .build()
+                        .perform(get("/.well-known/openid-federation"))
+                        .andExpect(status().isOk)
+                        .andReturn()
+                        .response.contentAsString
+                assertThat(SignedJWT.parse(body).jwtClaimsSet.subject).isEqualTo("https://rp.example")
+            }
+    }
+
+    @Test
+    fun `the entity id set over an own configuration without a federation fails at startup`() {
+        starterRunner(signingKey)
+            .withBean(RelyingPartyConfiguration::class.java, { ownConfiguration(federation = null) })
+            .withPropertyValues("zilath.openid4vp.federation.entity-id=https://rp.example")
+            .run { context ->
+                assertThat(startupFailureOf(context)).contains("no federation identity to publish")
+            }
+    }
+
+    @Test
     fun `a blank entity id is no federation, as an empty one is`() {
         // Written as a property source: the test property helper would trim the blank away.
         starterRunner(signingKey)
@@ -205,27 +235,31 @@ class FederationConfigurationTest {
      * onboarding: what the first element of a trust chain for this relying party looks like.
      */
     private fun entityConfigurationOfTheSameRelyingParty(): String {
-        val federationConfig =
-            RpFederationConfig(
-                entityId = "https://rp.example",
-                federationKey = federationKey,
-                authorityHints = listOf("https://trust-anchor.example"),
-                organizationName = "Teatro di Prova",
-                contacts = listOf("biglietteria@teatro.example"),
-            )
-        val config =
-            RelyingPartyConfiguration(
-                clientId = "openid_federation:https://rp.example",
-                endpoints =
-                    RpEndpoints(
-                        "https://rp.example/openid4vp/request",
-                        "https://rp.example/openid4vp/response",
-                    ),
-                keys = RpKeys(requestSigningKey = signingKey),
-                trustEvaluator = TrustEvaluator { TrustDecision.Untrusted("unused") },
-                statusChecker = { _, _ -> CredentialStatus.UNKNOWN },
-                federation = federationConfig,
-            )
-        return RpEntityConfiguration.build(config, federationConfig, Clock.systemUTC())
+        val federationConfig = ownFederation()
+        return RpEntityConfiguration.build(ownConfiguration(federationConfig), federationConfig, Clock.systemUTC())
     }
+
+    private fun ownFederation() =
+        RpFederationConfig(
+            entityId = "https://rp.example",
+            federationKey = federationKey,
+            authorityHints = listOf("https://trust-anchor.example"),
+            organizationName = "Teatro di Prova",
+            contacts = listOf("biglietteria@teatro.example"),
+        )
+
+    /** A relying party configuration the application declares itself, instead of the starter's. */
+    private fun ownConfiguration(federation: RpFederationConfig?) =
+        RelyingPartyConfiguration(
+            clientId = if (federation != null) "openid_federation:https://rp.example" else "https://rp.example",
+            endpoints =
+                RpEndpoints(
+                    "https://rp.example/openid4vp/request",
+                    "https://rp.example/openid4vp/response",
+                ),
+            keys = RpKeys(requestSigningKey = signingKey),
+            trustEvaluator = TrustEvaluator { TrustDecision.Untrusted("unused") },
+            statusChecker = { _, _ -> CredentialStatus.UNKNOWN },
+            federation = federation,
+        )
 }

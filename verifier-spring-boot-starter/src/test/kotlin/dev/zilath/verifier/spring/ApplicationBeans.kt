@@ -45,13 +45,22 @@ class ApplicationBeans {
 internal fun starterRunner(signingKey: ECKey): ApplicationContextRunner =
     ApplicationContextRunner().withStarter(signingKey)
 
+/** The same properties, with [configurations] as the application's beans instead of [ApplicationBeans]. */
+internal fun starterRunnerWith(
+    signingKey: ECKey,
+    vararg configurations: Class<*>,
+): ApplicationContextRunner = ApplicationContextRunner().withStarter(signingKey, *configurations)
+
 /** The same, as a web application, for MockMvc. */
 internal fun webStarterRunner(signingKey: ECKey): WebApplicationContextRunner =
     WebApplicationContextRunner().withStarter(signingKey)
 
-private fun <R : AbstractApplicationContextRunner<R, *, *>> R.withStarter(signingKey: ECKey): R =
+private fun <R : AbstractApplicationContextRunner<R, *, *>> R.withStarter(
+    signingKey: ECKey,
+    vararg configurations: Class<*> = arrayOf(ApplicationBeans::class.java),
+): R =
     withConfiguration(AutoConfigurations.of(OpenId4VpAutoConfiguration::class.java))
-        .withUserConfiguration(ApplicationBeans::class.java)
+        .withUserConfiguration(*configurations)
         .withPropertyValues(
             "zilath.openid4vp.client-id=https://rp.example",
             "zilath.openid4vp.request-uri-base=https://rp.example/openid4vp/request",

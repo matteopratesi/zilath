@@ -253,6 +253,10 @@ receipt's `entitled` field and a guide for Spring Security are not part of this 
 - The production IT-Wallet federation documents, as served on 2026-09-24, in the test
   fixtures, with their provenance: the tests replay them with a fixed clock, and a card
   shaped as IT-Wallet 1.4.6 writes it is verified against them from one end to the other.
+- The starter builds an `OAuthStatusListChecker` when the application declares a
+  `StatusListFetcher` and no `StatusChecker`. Before, it built no checker at all, and the
+  only examples in the repository answered VALID to everything, which switches revocation
+  off.
 
 ### Build
 

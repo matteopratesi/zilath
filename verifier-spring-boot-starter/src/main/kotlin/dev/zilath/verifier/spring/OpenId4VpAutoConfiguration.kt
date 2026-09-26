@@ -17,8 +17,10 @@
 package dev.zilath.verifier.spring
 
 import dev.zilath.verifier.core.CredentialVerifier
+import dev.zilath.verifier.core.OAuthStatusListChecker
 import dev.zilath.verifier.core.SdJwtVcCredentialVerifier
 import dev.zilath.verifier.core.StatusChecker
+import dev.zilath.verifier.core.StatusListFetcher
 import dev.zilath.verifier.core.TrustEvaluator
 import dev.zilath.verifier.openid4vp.ItWalletProfile
 import dev.zilath.verifier.openid4vp.OpenId4VpVerificationFlow
@@ -42,8 +44,10 @@ import java.time.Clock
 
 /**
  * Wires a [VerificationFlow] and its HTTP endpoints from `zilath.openid4vp.*` properties.
- * The integrating application MUST provide [TrustEvaluator] and [StatusChecker] beans:
- * deciding who to trust is never a library default.
+ * The integrating application MUST provide a [TrustEvaluator] bean, and either a
+ * [StatusChecker] or a [StatusListFetcher], on which the starter builds an
+ * [OAuthStatusListChecker]: deciding who to trust, and how to reach a status list, is never
+ * a library default.
  *
  * It MAY declare a [TransactionStore] (a shared one, when it runs on more than one node), a
  * [WalletProfile], a [TrustChainSource] for an `openid_federation:` relying party, a
@@ -67,6 +71,24 @@ class OpenId4VpAutoConfiguration {
     fun verificationClock(): Clock = Clock.systemUTC()
 
     /**
+     * Token Status List revocation checking, once the application declares the one piece that
+     * is its own: the [StatusListFetcher], which decides how a list is fetched — timeouts, size
+     * cap, the network boundary its KDoc describes. Declare a [StatusChecker] to replace it.
+     *
+     * Declared before the relying party, which is conditional on a [StatusChecker] bean. The
+     * starter used to build no checker at all, and the only examples in the repository
+     * answered VALID to everything: a checker like that switches revocation off, since the
+     * verifier asks it only about a credential that carries a status reference.
+     */
+    @Bean
+    @ConditionalOnMissingBean(StatusChecker::class)
+    @ConditionalOnBean(StatusListFetcher::class)
+    fun statusChecker(
+        fetcher: StatusListFetcher,
+        clock: Clock,
+    ): StatusChecker = OAuthStatusListChecker(fetcher, clock)
+
+    /**
      * The relying party, assembled from `zilath.openid4vp.*`, under the application's
      * [WalletProfile] bean if it declares one and IT-Wallet's otherwise, and with the
      * application's [TrustChainSource] bean, if any, supplying the federation trust chain.
@@ -74,7 +96,8 @@ class OpenId4VpAutoConfiguration {
      * built from yours.
      *
      * Deliberately conditional on three things at once: the `client-id` property, and
-     * [TrustEvaluator] and [StatusChecker] beans the application must supply. If any is
+     * [TrustEvaluator] and [StatusChecker] beans — the checker the application's own or the
+     * one built on its [StatusListFetcher]. If any is
      * missing the configuration is simply not created — and neither are the flow and the
      * controller, so no wallet-facing endpoint is ever exposed by an application that has
      * not said whom it trusts. A half-configured verifier that answers requests would be
@@ -140,6 +163,12 @@ class OpenId4VpAutoConfiguration {
      * `openid_federation:` client id, and the federation onboarding the relying party, read
      * its metadata and keys there. Replace it as the controller above, with a bean of type
      * [OpenId4VpFederationController].
+     *
+     * Published when `zilath.openid4vp.federation.entity-id` is set, also for a
+     * [RelyingPartyConfiguration] the application declares itself: one that carries a
+     * federation identity gets the endpoint by setting that property as well, and with the
+     * property set and no federation in the configuration, startup fails. It is not published
+     * from the configuration alone because an application may already map this path itself.
      */
     @Bean
     @ConditionalOnBean(RelyingPartyConfiguration::class)
