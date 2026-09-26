@@ -17,6 +17,7 @@
 package dev.zilath.demo
 
 import dev.zilath.verifier.openid4vp.FlowOutcome
+import dev.zilath.verifier.openid4vp.PollToken
 import dev.zilath.verifier.openid4vp.PresentationRequest
 import dev.zilath.verifier.openid4vp.RelyingPartyConfiguration
 import dev.zilath.verifier.openid4vp.RpEntityConfiguration
@@ -64,12 +65,17 @@ class ConformanceController(
     fun start(): Map<String, String> {
         // The conformance wallet POSTs the response and then expects to be handed a
         // redirect back: that IS the same-device flow, whatever the QR suggests.
+        // Not registered with the demo pages, which still read a transaction by its id alone:
+        // /demo/cb completes its return all the same, since the flow checks the code, and
+        // hands the returning user-agent the token that reads the outcome afterwards.
         val started =
             flow.start(PresentationRequest.forTestPid(pidVct), dev.zilath.verifier.openid4vp.FlowMode.SAME_DEVICE)
         return mapOf(
             "transactionId" to started.id.value,
             "authorizeUrl" to started.qrPayload,
             "requestUri" to started.requestUri,
+            // What reads the outcome below: the transaction id alone no longer does.
+            "pollToken" to started.pollToken.value,
         )
     }
 
@@ -81,12 +87,19 @@ class ConformanceController(
      * carries the disclosed claims — so an unauthenticated GET with a transaction id
      * returned somebody's name and entitlement. The harness never needed them, and neither
      * does anything else: an outcome is a yes or a no.
+     *
+     * Same-device, the start token reads pending until the user-agent comes back through
+     * /demo/cb, and nothing afterwards: the flow hands the read right to the user-agent that
+     * returned (OpenID4VP 1.0 §14.2), and /demo/cb gives it the token that reads from then
+     * on. Even the category says something about the person whose wallet answered, so it is
+     * not read back through the start token.
      */
     @GetMapping("/conformance/outcome/{txId}")
     fun outcome(
         @PathVariable txId: String,
+        @org.springframework.web.bind.annotation.RequestParam pollToken: String,
     ): Map<String, String> =
-        when (val outcome = flow.awaitOutcome(TransactionId(txId))) {
+        when (val outcome = flow.awaitOutcome(TransactionId(txId), PollToken(pollToken))) {
             is FlowOutcome.Verified -> mapOf("outcome" to "verified")
             is FlowOutcome.Rejected -> mapOf("outcome" to "rejected", "reason" to outcome.reason.name)
             is FlowOutcome.WalletErrorAcknowledged -> mapOf("outcome" to "wallet_error")

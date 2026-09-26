@@ -20,14 +20,13 @@ import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSASigner
+import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.util.Base64
 import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.RejectionReason
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonPrimitive
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
@@ -64,6 +63,19 @@ internal fun acceptedAudiencesFor(clientId: String): Set<String> {
 
 private val CLIENT_ID_PREFIXES = listOf(OPENID_FEDERATION_PREFIX, X509_HASH_PREFIX)
 
+/**
+ * The `x509_hash` client identifier of a certificate: the base64url-encoded SHA-256 hash of
+ * its DER encoding (OpenID4VP 1.0 §5.9.3). [certificate] is an `x5c` element, which is
+ * standard base64 of the DER.
+ */
+internal fun x509HashOf(certificate: Base64): String =
+    Base64URL
+        .encode(
+            java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest(certificate.decode()),
+        ).toString()
+
 /** Internal short-circuit carrying a rejection out of the response pipeline. */
 internal class FlowRejection(
     val reason: RejectionReason,
@@ -74,6 +86,24 @@ internal fun flowReject(
     reason: RejectionReason,
     detail: String? = null,
 ): Nothing = throw FlowRejection(reason, detail)
+
+/**
+ * Compares two secrets in time that depends on their length only, never on where they
+ * first differ: a code or token presented by an unauthenticated caller is checked with it.
+ */
+internal fun secretsEqual(
+    expected: String,
+    presented: String,
+): Boolean = java.security.MessageDigest.isEqual(expected.toByteArray(), presented.toByteArray())
+
+/** What a transaction keeps of a secret it hands out, a [PollToken] or a response code: base64url SHA-256. */
+internal fun secretHashOf(token: String): String =
+    Base64URL
+        .encode(
+            java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest(token.toByteArray()),
+        ).toString()
 
 internal fun randomToken(bytes: Int): String {
     val buffer = ByteArray(bytes)
@@ -87,14 +117,21 @@ internal fun qrPayloadOf(
 ): String {
     val clientId = URLEncoder.encode(config.clientId, StandardCharsets.UTF_8)
     val encodedRequestUri = URLEncoder.encode(requestUri, StandardCharsets.UTF_8)
-    return "${config.walletAuthorizationScheme}authorize?client_id=$clientId&request_uri=$encodedRequestUri"
+    // OpenID4VP 1.0 §5.1: announced only where the request endpoint answers POST. A wallet
+    // that does not support it still sends the GET, which is always served.
+    val method = if (config.endpoints.requestUriMethodPost) "&request_uri_method=post" else ""
+    return "${config.walletAuthorizationScheme}authorize?client_id=$clientId&request_uri=$encodedRequestUri$method"
 }
 
-/** Builds and signs the request object (JAR) for one transaction. */
+/**
+ * Builds and signs the request object (JAR) for one transaction, with [walletNonce] as its
+ * `wallet_nonce` claim when a wallet asked for the object with one (OpenID4VP 1.0 §5.10).
+ */
 internal fun buildRequestJwt(
     config: RelyingPartyConfiguration,
     transaction: Transaction,
     now: Instant,
+    walletNonce: String? = null,
 ): String {
     val claims =
         JWTClaimsSet
@@ -108,10 +145,20 @@ internal fun buildRequestJwt(
             .claim("nonce", transaction.nonce)
             .claim("state", transaction.id.value)
             .claim("dcql_query", jsonToMap(transaction.request.dcqlQuery))
-            .claim("client_metadata", config.profile.clientMetadataFor(config))
-            .issueTime(Date.from(now))
+            .claim(
+                "client_metadata",
+                // Public half only: a profile publishes what it is given.
+                withRequestedFormat(
+                    config.profile.clientMetadataFor(
+                        config,
+                        responseEncryptionKeyOf(config, transaction).toPublicJWK(),
+                    ),
+                    transaction.request,
+                ),
+            ).issueTime(Date.from(now))
             // The JAR must not advertise a validity window outliving the transaction itself.
-            .expirationTime(Date.from(transaction.createdAt.plus(config.transactionTimeToLive)))
+            .expirationTime(Date.from(transaction.expiresAt))
+            .apply { walletNonce?.let { claim("wallet_nonce", it) } }
             .build()
     val headerBuilder =
         JWSHeader
@@ -125,8 +172,7 @@ internal fun buildRequestJwt(
     // openid_federation client id scheme: the RP trust chain travels in the JAR header so
     // the wallet can validate the RP offline (spec v1.4.6, remote flow).
     config.federation
-        ?.trustChain
-        ?.takeIf { it.isNotEmpty() }
+        ?.let { trustChainHeaderFor(it, now) }
         ?.let { headerBuilder.customParam("trust_chain", it) }
     val header = headerBuilder.build()
     val jwt = SignedJWT(header, claims)
@@ -134,52 +180,18 @@ internal fun buildRequestJwt(
     return jwt.serialize()
 }
 
+/**
+ * The key a request object publishes for [transaction]: its own, or the static fallback for
+ * a transaction a store handed back without one. Neither is a store that lost the key.
+ */
+private fun responseEncryptionKeyOf(
+    config: RelyingPartyConfiguration,
+    transaction: Transaction,
+): ECKey =
+    checkNotNull(transaction.responseEncryptionKey ?: config.keys.responseEncryptionKey) {
+        "the transaction holds no response encryption key and no static one is configured"
+    }
+
 private fun jsonToMap(json: JsonObject): Map<String, Any?> =
     com.nimbusds.jose.util.JSONObjectUtils
         .parse(json.toString())
-
-/** Extracts the compact SD-JWT presentation for the requested credential from `vp_token`. */
-internal fun extractPresentation(
-    payload: JsonObject,
-    credentialQueryId: String,
-): String {
-    val entry =
-        when (val vpToken = payload["vp_token"]) {
-            is JsonPrimitive -> vpToken
-            is JsonObject -> vpToken[credentialQueryId]
-            else -> null
-        }
-    val presentation =
-        when (entry) {
-            is JsonPrimitive -> entry.content
-            is JsonArray -> (entry.firstOrNull() as? JsonPrimitive)?.content
-            else -> null
-        }
-    return presentation ?: flowReject(RejectionReason.MALFORMED, "vp_token has no presentation for the query")
-}
-
-/**
- * A `nonce` echoed in the response payload must match the transaction's. The binding that
- * matters is the one inside the key-binding JWT (checked by the credential verifier); this
- * is defence in depth against a response assembled for a different request.
- */
-internal fun checkEchoedNonce(
-    payload: JsonObject,
-    transaction: Transaction,
-) {
-    val nonce = (payload["nonce"] as? JsonPrimitive)?.content ?: return
-    if (nonce != transaction.nonce) {
-        flowReject(RejectionReason.MALFORMED, "response nonce does not match the transaction")
-    }
-}
-
-/** The `state` echoed by the wallet must match the transaction. */
-internal fun checkState(
-    payload: JsonObject,
-    transaction: Transaction,
-) {
-    val state = (payload["state"] as? JsonPrimitive)?.jsonPrimitive?.content
-    if (state != transaction.id.value) {
-        flowReject(RejectionReason.MALFORMED, "response state does not match the transaction")
-    }
-}

@@ -12,7 +12,10 @@ that can silently let something through.
 
 The fixes of the fourth internal review (2026-09-04 to 2026-09-24), landing in parts. Headed
 for 0.4.0, not a patch: many items change what a verifier accepts or rejects, and the API
-moves with them. So far: `verifier-core` and the build, then `verifier-trust-itwallet`.
+moves with them. In three parts: `verifier-core` and the build; `verifier-trust-itwallet`;
+`verifier-openid4vp`, the Spring starter, the demo application and the documentation. The
+demo binds each transaction to the browser that started it; the README gains a guide for
+Spring Security, tested by the starter.
 
 ### Security — what the verifier now accepts that it refused
 
@@ -116,6 +119,99 @@ moves with them. So far: `verifier-core` and the build, then `verifier-trust-itw
   longer counts towards `maxChainLength`, as it does not online: a leaf under two
   intermediates whose chain carried it was refused.
 
+### Security — the flow and the starter (`verifier-openid4vp`, `verifier-spring-boot-starter`)
+
+- **An outcome is read with a poll token, never with the transaction id.** The id is public
+  by construction: it is in the QR code, in `state` and in the response URI. Anyone who saw
+  a venue's screen could read the verified claims, and whoever started a same-device
+  transaction and sent its link to someone else read that person's outcome once they came
+  back (OpenID4VP 1.0 §14.2). `start()` returns a `PollToken` that travels nowhere a wallet
+  or a bystander sees, the store keeps only its hash, and a wrong token reads `Unknown`, as a
+  transaction that does not exist would. In same-device mode `consumeResponseCode` hands a
+  fresh token to the user agent that came back with the code, and only that one reads.
+- **Each response is encrypted to a key of its own transaction.** One long-lived key served
+  every request object, so a response captured past a TLS terminator became readable the day
+  that key leaked. Each transaction now publishes a P-256 key of its own, whose private half
+  leaves the store with the response or when the transaction expires; a JWE `kid`, when there
+  is one, must name it or the static key. A static key is only a fallback, and only when
+  configured.
+- **The same-device return ticket goes only to the call that recorded the outcome.** A second
+  post of the same `access_denied` a cancelling wallet sends used to receive the same
+  `response_code`, and anyone holding the id could burn it before the user's browser came
+  back. It no longer depends on the store keeping the outcome bit for bit, nor on reading
+  back through a replica. A rejected presentation gets no ticket: the page that started it
+  reads pending, then expired.
+- **Expiry is the flow's.** A transaction carries one `expiresAt`; every call checks it
+  first and redacts an expired entry in place, and a verification that finishes after it is
+  not recorded, so no outcome with claims is read past the time to live, whatever the store
+  keeps: a verified outcome reads `Expired` from then on, a rejection keeps its reason without
+  its detail, a wallet error its code without its description. In 0.3.0 a recorded outcome
+  survived expiry. The in-memory store redacts an entry at its expiry and removes it a minute later,
+  sweeping itself in the background by due time; it holds at most 10,000 transactions
+  (`TooManyTransactionsException` beyond) and is closed with the flow.
+- **A `vp_token` carries exactly one presentation**, under the query's id and no other key,
+  as a JSON string; the bare string of pre-1.0 wallets only under `ArfBaselineProfile`. A
+  request is read at construction: a DCQL query the library cannot evaluate is refused when
+  the request is built instead of failing every response — one asking for more than one
+  credential, one without `meta.vct_values` (which used to switch the credential type check
+  off), a format other than `dc+sd-jwt` or the pre-1.0 `vc+sd-jwt`, `trusted_authorities`,
+  or `require_cryptographic_holder_binding: false`. Its `claims` reach the verifier as
+  `requestedClaims`.
+- **What a wallet sends is bounded before it is kept or decoded**: the response (1 MiB,
+  `maxWalletResponseLength`), its `error` (a token of 64 characters at most) and
+  `error_description` (256 characters, printable ASCII). A `Transaction`, and a
+  `DirectPostBody` (the wallet's POST), print neither secrets nor claims. A rejection's detail reaches the starter's log bounded, on one
+  line. The time to live is capped at one hour.
+- **The relying party's keys serve one purpose each**, under a `kid` of their own.
+- **The entity configuration meets the production anchor's policy for verifiers**: it
+  publishes `redirect_uris` (the same-device callback, when there is one), `vp_formats` and
+  `authorization_encrypted_response_enc`
+  alongside their current names, and `contacts`, now required. One parameter the policy marks
+  essential, `authorization_signed_response_alg`, is left out on purpose: it would ask
+  wallets to sign the response inside the JWE, a form the flow does not read. A
+  cross-device-only relying party, which has no redirect, leaves out `redirect_uris` too, so
+  it cannot satisfy that policy. The
+  `trust_chain` of a request object is never sent expired, and can come from a
+  `TrustChainSource`.
+- **The starter** answers the wallet with the statuses IT-Wallet 1.4.6 §12.2.1.6.1
+  tabulates, 403, 400 or 500, with a fixed description instead of the rejection reason; serves
+  both endpoints with `Cache-Control: no-store` and whatever the wallet puts in `Accept`;
+  serves the request object by POST too, with the wallet's `wallet_nonce` in it, and answers
+  400 JSON for one that is not available, instead of a bare 404; configures an
+  `openid_federation:` relying party (`zilath.openid4vp.federation.*`, and the entity
+  configuration at `/.well-known/openid-federation`) and checks an `x509_hash:` client id
+  against its certificate at startup; and uses the application's `TransactionStore`,
+  `WalletProfile` and `TrustChainSource` beans when there are any.
+
+### Breaking — the flow and starter API
+
+- `awaitOutcome(txId)` is `awaitOutcome(txId, pollToken)`; `StartedTransaction` carries the
+  `PollToken`; `consumeResponseCode` returns the reading token (`PollToken?`) instead of a
+  `Boolean`.
+- `handleWalletResponse` returns `HandledResponse(outcome, redirectUri)`;
+  `sameDeviceRedirectFor` is gone.
+- `Transaction` gains `expiresAt`, `pollTokenHash` and the transaction's key, and keeps
+  `responseCodeHash` instead of `responseCode`: the same-device return code is stored only
+  as a hash, so a store and its backups cannot redeem it; `isExpired(now, ttl)` is
+  `isExpired(now)`. `InMemoryTransactionStore(clock, ttl)` is
+  `InMemoryTransactionStore(clock, maxTransactions)`; the store and the flow are
+  `AutoCloseable`. Custom stores: the six properties the flow relies on are in the
+  `TransactionStore` KDoc; `TransactionStoreContractTest` checks the first five (not
+  retention). It is in the repository's test fixtures of `verifier-openid4vp`, not published
+  to Maven Central.
+- `RpKeys.responseEncryptionKey` is optional; `RpFederationConfig.contacts` is required;
+  `WalletProfile`'s methods take the transaction's key. An `x509_hash:` client id without a
+  matching `x5c` fails at construction.
+- `PresentationRequest` throws for a DCQL query it cannot evaluate, including one without
+  `meta.vct_values`, which 0.3.0 accepted and verified with no type check.
+- The starter's HTTP answers change as described above, and its
+  `response-encryption-key-jwk` property is optional (best left empty).
+- `VerificationReceipts.issue(txId, request, verified)` is `issue(txId, request, outcome)`,
+  with a `ReceiptOutcome`: `VERIFIED_ENTITLED`, `VERIFIED_NOT_ENTITLED` or `REJECTED`. The
+  receipt's `entitled` is the caller's verdict on the disclosed claims, to be stated once its
+  policy has run; it was a copy of `outcome`, so a card that verified without the
+  entitlement was signed as one that had it.
+
 ### Changed
 
 - **`Verified.claims` is an allowlist.** Without a request: the claims the holder disclosed
@@ -145,6 +241,9 @@ moves with them. So far: `verifier-core` and the build, then `verifier-trust-itw
 - Exceptions the EUDI library throws while rebuilding claims (`_sd` not an array, a
   disclosure colliding with a plaintext claim) no longer escape `verify()`: they are
   `DISCLOSURE_TAMPERED`.
+- A request object whose query asks for the pre-1.0 `vc+sd-jwt` lists that format in its
+  `client_metadata.vp_formats_supported` beside `dc+sd-jwt`, with the same algorithms: it
+  asked for a format its own metadata said the verifier did not support.
 
 ### Added
 
@@ -160,6 +259,17 @@ moves with them. So far: `verifier-core` and the build, then `verifier-trust-itw
 - The production IT-Wallet federation documents, as served on 2026-09-24, in the test
   fixtures, with their provenance: the tests replay them with a fixed clock, and a card
   shaped as IT-Wallet 1.4.6 writes it is verified against them from one end to the other.
+- `RpFederationConfig.trustMarks` (`RpTrustMark`) and `trustMarkSource` (`TrustMarkSource`),
+  and in the starter `zilath.openid4vp.federation.trust-marks` or a `TrustMarkSource` bean:
+  the trust marks the federation issued to the relying party, published as `trust_marks` in
+  its entity configuration, as IT-Wallet 1.4.6 onboarding asks (phase 4). Each must have the
+  shape a wallet checks — typed `trust-mark+jwt`, with `kid`, `iss`, its own type, the
+  relying party as `sub`, `iat` and `exp` — and stops being published when it expires; the
+  signature is the wallet's to verify.
+- The starter builds an `OAuthStatusListChecker` when the application declares a
+  `StatusListFetcher` and no `StatusChecker`. Before, it built no checker at all, and the
+  only examples in the repository answered VALID to everything, which switches revocation
+  off.
 
 ### Build
 

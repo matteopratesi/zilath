@@ -26,7 +26,15 @@ not been run yet.
   the anchor's own entity configuration, not the URL it is reached at.
 - The mock PID (vct `urn:eudi:pid:it:1`) carries its **`trust_chain` in the JWS header**
   (offline scenario): a verifier must support provided-chain validation, not only online
-  resolution.
+  resolution. The library checks a provided chain's shape and anchor and then refreshes it
+  online, since IT-Wallet 1.4.6 §6.9 and §6.12.1 want revocation verifiable online and a
+  provided chain refreshed when a connection is available; `FederationTrustEvaluator`'s
+  `offlineFallback` takes a statement from the header only when it cannot be fetched at
+  all. One limit comes from the JOSE library, not from the specifications: Nimbus JOSE+JWT
+  refuses a header over 20,000 characters, and the production disability card issuer's
+  entity configuration alone is 39,668. A credential embedding that chain is rejected
+  (`MALFORMED`, "issuer JWT header exceeds the parser limit"); one without it is resolved
+  online.
 - Wallet **authorization error responses** are posted to the same `response_uri` and the RP
   must acknowledge them with HTTP 200 (`direct_post` semantics).
 
@@ -42,10 +50,17 @@ not been run yet.
 2. **RP federation onboarding**: the RP now publishes its entity configuration
    at `/.well-known/openid-federation` (`federation_entity` + `openid_credential_verifier`
    metadata, attested `request_uris`/`response_uris`, protocol JWKS by value) and the JAR
-   carries the RP `trust_chain` header when the federation provides one. What remains is
-   the onboarding itself — registration under a superior and the fetch endpoints a real
-   federation requires — which needs a counterpart (IPZS test environment or the AgID
-   registration procedure, still unpublished).
+   carries the RP `trust_chain` header when the federation provides one. It also publishes
+   the trust marks it was issued (`RpFederationConfig.trustMarks`, as `trust_marks`, OpenID
+   Federation 1.0 §3.1.2), which IT-Wallet 1.4.6 onboarding asks of a relying party; each
+   is checked when the configuration is built for the shape a wallet checks — typed
+   `trust-mark+jwt`, with a `kid`, its `iss`, the configured `trust_mark_type`, the relying
+   party as `sub`, `iat`, and the `exp` IT-Wallet requires — but its signature is not,
+   since the relying party does not hold its issuer's key. An expired mark is no longer
+   published, and a `TrustMarkSource` renews marks without a restart. What remains is the onboarding itself
+   — registration under a superior and the fetch endpoints a real federation requires —
+   which needs a counterpart (IPZS test environment or the AgID registration procedure,
+   still unpublished).
 3. **`metadata_policy` operators**: applied — `value`, `add`, `default`,
    `one_of`, `subset_of`, `superset_of`, `essential` are merged anchor-first and resolved
    against the leaf metadata; the credential keys come from the resolved metadata.
@@ -60,7 +75,13 @@ not been run yet.
    only when signed by the **issuer of the credential being checked**. The draft permits a
    separate Status Issuer (§11.3) and mandates no way to establish trust in one, so a token
    from any other entity is `UNKNOWN`. Supporting a third-party status issuer needs a policy
-   decision and configuration; it is not a default.
+   decision and configuration; it is not a default. And Token Status List is the only
+   status **mechanism** evaluated: a credential whose `status` carries `status_assertion` or
+   `status_attestation` and no `status_list` is rejected (`STATUS_CHECK_FAILED`, "status
+   mechanism not supported"). The production disability card issuer
+   (`https://eaa.wallet.ipzs.it/1-0`), in its entity configuration as served on
+   2026-09-24, advertises a status assertion and a status attestation endpoint and no
+   status list.
 6. The issuer JWT's and key-binding JWT's `typ` headers are checked only when PRESENT. The
    specification requires them, but our own vectors omit them and there is no evidence yet
    about the production IT-Wallet issuer — and rejecting a genuine credential is, on this

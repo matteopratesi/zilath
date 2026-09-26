@@ -8,6 +8,8 @@
 [versions]
 kotlin = "2.4.10"
 springBoot = "4.1.1"
+# The Spring Security of Spring Boot 4.1.1 (its BOM); test classpath only.
+springSecurity = "7.1.1"
 nimbusJoseJwt = "10.3"
 eudiSdJwt = "0.13.1"
 zxing = "3.5.4"
@@ -34,6 +36,8 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web", version.ref = "springBoot" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test", version.ref = "springBoot" }
 spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test", version.ref = "springBoot" }
+spring-security-config = { module = "org.springframework.security:spring-security-config", version.ref = "springSecurity" }
+spring-security-web = { module = "org.springframework.security:spring-security-web", version.ref = "springSecurity" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }

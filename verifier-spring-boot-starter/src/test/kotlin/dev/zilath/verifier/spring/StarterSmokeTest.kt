@@ -28,22 +28,30 @@ import dev.zilath.verifier.openid4vp.VerificationFlow
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpHeaders
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 @SpringBootTest(classes = [StarterSmokeTest.TestApp::class])
 @AutoConfigureMockMvc
 class StarterSmokeTest {
-    @SpringBootApplication
+    // Auto-configuration only, no component scan: this package is the starter's own, and
+    // scanning it would register the controllers without the conditions an application gets.
+    @Configuration(proxyBeanMethods = false)
+    @EnableAutoConfiguration
     class TestApp {
         @Bean
         fun trustEvaluator(): TrustEvaluator = TrustEvaluator { TrustDecision.Untrusted("smoke test") }
@@ -54,7 +62,6 @@ class StarterSmokeTest {
 
     companion object {
         private val signingKey = ECKeyGenerator(Curve.P_256).keyID("rp-sign").generate()
-        private val encryptionKey = ECKeyGenerator(Curve.P_256).keyID("rp-enc").generate()
 
         @JvmStatic
         @DynamicPropertySource
@@ -63,7 +70,6 @@ class StarterSmokeTest {
             registry.add("zilath.openid4vp.request-uri-base") { "https://rp.example/openid4vp/request" }
             registry.add("zilath.openid4vp.response-uri-base") { "https://rp.example/openid4vp/response" }
             registry.add("zilath.openid4vp.request-signing-key-jwk") { signingKey.toJSONString() }
-            registry.add("zilath.openid4vp.response-encryption-key-jwk") { encryptionKey.toJSONString() }
         }
     }
 
@@ -82,13 +88,33 @@ class StarterSmokeTest {
             .perform(get("/openid4vp/request/{txId}", started.id.value))
             .andExpect(status().isOk)
             .andExpect(content().contentTypeCompatibleWith("application/oauth-authz-req+jwt"))
+            .andExpectUncached()
     }
 
     @Test
-    fun `request endpoint returns 404 for unknown transactions`() {
+    fun `a wallet accepting only application jwt still gets the request object`() {
+        // The response's type is fixed by the specifications; what a wallet accepts is not.
+        val started = start()
+        mockMvc
+            .perform(get("/openid4vp/request/{txId}", started.id.value).accept("application/jwt"))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith("application/oauth-authz-req+jwt"))
+    }
+
+    @Test
+    fun `request endpoint answers 400 invalid_request for unknown transactions`() {
+        // IT-Wallet 1.4.6 §12.2.1.3.1, for GET and POST alike; it used to be a bare 404.
         mockMvc
             .perform(get("/openid4vp/request/{txId}", "ghost"))
-            .andExpect(status().isNotFound)
+            .andExpect(status().isBadRequest)
+            .andExpect(content().contentTypeCompatibleWith("application/json"))
+            .andExpect(jsonPath("$.error").value("invalid_request"))
+            .andExpect(jsonPath("$.error_description").value("request object not available"))
+            .andExpectUncached()
+        mockMvc
+            .perform(post("/openid4vp/request/{txId}", "ghost").contentType("application/x-www-form-urlencoded"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error_description").value("request object not available"))
     }
 
     @Test
@@ -99,6 +125,7 @@ class StarterSmokeTest {
                     .contentType("application/x-www-form-urlencoded")
                     .param("response", "whatever"),
             ).andExpect(status().isNotFound)
+            .andExpectUncached()
     }
 
     @Test
@@ -110,6 +137,20 @@ class StarterSmokeTest {
                     .contentType("application/x-www-form-urlencoded")
                     .param("error", "access_denied"),
             ).andExpect(status().isOk)
+            .andExpectUncached()
+    }
+
+    @Test
+    fun `an acknowledgement is JSON whatever the wallet accepts`() {
+        val started = start()
+        mockMvc
+            .perform(
+                post("/openid4vp/response/{txId}", started.id.value)
+                    .contentType("application/x-www-form-urlencoded")
+                    .accept("application/jwt")
+                    .param("error", "access_denied"),
+            ).andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith("application/json"))
     }
 
     @Test
@@ -121,16 +162,26 @@ class StarterSmokeTest {
                     .contentType("application/x-www-form-urlencoded")
                     .param("response", "not-a-jwe"),
             ).andExpect(status().isBadRequest)
+            .andExpectUncached()
         // Consumed: the request object is gone and a retry is a replay, still 400.
         mockMvc
             .perform(get("/openid4vp/request/{txId}", started.id.value))
-            .andExpect(status().isNotFound)
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error_description").value("request object not available"))
         mockMvc
             .perform(
                 post("/openid4vp/response/{txId}", started.id.value)
                     .contentType("application/x-www-form-urlencoded")
                     .param("response", "not-a-jwe"),
             ).andExpect(status().isBadRequest)
-        assertThat(flow.awaitOutcome(started.id)).isInstanceOf(FlowOutcome.Rejected::class.java)
+        assertThat(flow.awaitOutcome(started.id, started.pollToken)).isInstanceOf(FlowOutcome.Rejected::class.java)
     }
+
+    /**
+     * Neither the request object (nonce, state) nor an acknowledgement (the same-device
+     * response code) may be kept by a cache on the way, and the error answers follow suit.
+     */
+    private fun ResultActions.andExpectUncached(): ResultActions =
+        andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+            .andExpect(header().string(HttpHeaders.PRAGMA, "no-cache"))
 }

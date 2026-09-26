@@ -22,6 +22,7 @@ import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSASigner
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.KeyUse
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import java.time.Clock
@@ -51,14 +52,37 @@ data class RpFederationConfig(
     val authorityHints: List<String>,
     /** Shown to the user by the wallet and published as `organization_name`. */
     val organizationName: String,
-    val contacts: List<String> = emptyList(),
+    /**
+     * Where the federation reaches the RP's operator, published as `federation_entity.contacts`.
+     * At least one: the production IT-Wallet trust anchor's policy marks it essential, and a
+     * wallet applying that policy treats metadata without it as broken (OpenID Federation
+     * §6.1.4.2) — every presentation to the RP would fail.
+     */
+    val contacts: List<String>,
     /**
      * The RP's trust chain (its own entity configuration first, up to the anchor
      * statement), obtained from the federation on onboarding. When present it travels in
-     * the JAR `trust_chain` header so wallets can validate the RP offline.
+     * the JAR `trust_chain` header so wallets can validate the RP offline — until its
+     * earliest `exp`: then the header is left out. Its shape is checked here. Federation
+     * statements live about a day, so a long-running RP should give a [trustChainSource]
+     * instead.
      */
     val trustChain: List<String> = emptyList(),
     val statementValidity: Duration = DEFAULT_STATEMENT_VALIDITY,
+    /** Supplies a renewed chain for every request object; the alternative to [trustChain]. */
+    val trustChainSource: TrustChainSource? = null,
+    /**
+     * The trust marks the federation issued to this relying party, published as `trust_marks`
+     * (OpenID Federation 1.0 §3.1.2): IT-Wallet 1.4.6 onboarding (phase 4) has the relying
+     * party add them to its entity configuration, where a wallet looks for proof that it may
+     * ask for a credential. Each is checked here for the shape a wallet will check (see
+     * [RpTrustMark]), not for its signature: the relying party does not hold the issuer's keys,
+     * the wallet does. One that has expired is no longer published; a relying party that runs
+     * past its marks' `exp` gives a [trustMarkSource] instead.
+     */
+    val trustMarks: List<RpTrustMark> = emptyList(),
+    /** Supplies renewed trust marks for every entity configuration; the alternative to [trustMarks]. */
+    val trustMarkSource: TrustMarkSource? = null,
 ) {
     init {
         // The spec mandates HTTPS entity ids with a host; plain http is tolerated for the
@@ -77,7 +101,18 @@ data class RpFederationConfig(
         require(federationKey.isPrivate) { "federationKey must contain private key material" }
         require(federationKey.curve == Curve.P_256) { "federationKey must be a P-256 key (IT-Wallet profile)" }
         require(!federationKey.keyID.isNullOrBlank()) { "federationKey must carry a kid" }
+        // One key, one purpose, as for the protocol keys (RFC 7517 §4.2, §4.4).
+        require(federationKey.keyUse in setOf(null, KeyUse.SIGNATURE)) { "federationKey must not be marked use=enc" }
+        require(federationKey.algorithm in setOf(null, JWSAlgorithm.ES256)) { "federationKey must be for ES256" }
         require(authorityHints.isNotEmpty()) { "authorityHints must name at least one superior" }
+        require(contacts.isNotEmpty() && contacts.none { it.isBlank() }) {
+            "contacts must name at least one way to reach the operator (federation_entity.contacts is essential)"
+        }
+        require(trustChain.isEmpty() || trustChainSource == null) { "give either a trustChain or a trustChainSource" }
+        // Not checked for expiry: a restart with a stale chain still serves, without the header.
+        if (trustChain.isNotEmpty()) trustChainExpiryOf(trustChain, entityId)
+        require(trustMarks.isEmpty() || trustMarkSource == null) { "give either trustMarks or a trustMarkSource" }
+        trustMarks.forEach { trustMarkExpiryOf(it, entityId) }
         authorityHints.forEach { hint ->
             val hintUri = runCatching { java.net.URI(hint) }.getOrNull()
             require(
@@ -102,8 +137,10 @@ data class RpFederationConfig(
 /**
  * Builds the RP's signed Entity Configuration (IT-Wallet v1.4.6 §10.3.4): the JWS served
  * at `/.well-known/openid-federation`. Carries the `federation_entity` and
- * `openid_credential_verifier` metadata types; the protocol `jwks` publishes ONLY the
- * public halves of the request-signing and response-encryption keys.
+ * `openid_credential_verifier` metadata types; the protocol `jwks` publishes public halves
+ * only: the request-signing key's, and the static response-encryption key's when one is
+ * configured ([RpKeys.responseEncryptionKey]) — each transaction's own key travels in its
+ * request object instead.
  */
 object RpEntityConfiguration {
     /**
@@ -140,7 +177,12 @@ object RpEntityConfiguration {
                 .claim("jwks", publicJwks(federation.federationKey))
                 .claim("authority_hints", federation.authorityHints)
                 .claim("metadata", metadata(config, federation, entityId))
-                .build()
+                .apply {
+                    val marks = trustMarksToPublish(federation, now)
+                    if (marks.isNotEmpty()) {
+                        claim("trust_marks", marks.map { mapOf("trust_mark_type" to it.type, "trust_mark" to it.jwt) })
+                    }
+                }.build()
         val jwt =
             SignedJWT(
                 JWSHeader
@@ -164,7 +206,7 @@ object RpEntityConfiguration {
                 buildMap {
                     put("organization_name", federation.organizationName)
                     put("homepage_uri", entityId)
-                    if (federation.contacts.isNotEmpty()) put("contacts", federation.contacts)
+                    put("contacts", federation.contacts)
                 },
             "openid_credential_verifier" to
                 mapOf(
@@ -172,34 +214,68 @@ object RpEntityConfiguration {
                     "client_id" to entityId,
                     "client_name" to federation.organizationName,
                     // Published as the endpoint BASES while actual URIs append the
-                    // transaction id: whether wallets match these lists exactly or by
-                    // prefix is only observable against a real federation — tracked with
-                    // the onboarding work (docs/note-divergenze.md, gap 2).
+                    // transaction id (and, for the redirect, the response code): whether
+                    // wallets match these lists exactly or by prefix is only observable
+                    // against a real federation — tracked with the onboarding work
+                    // (docs/note-divergenze.md, gap 2).
                     "request_uris" to listOf(config.endpoints.requestUriBase),
                     "response_uris" to listOf(config.endpoints.responseUriBase),
-                    "vp_formats_supported" to
-                        mapOf(
-                            "dc+sd-jwt" to
-                                mapOf(
-                                    "sd-jwt_alg_values" to SUPPORTED_SD_JWT_ALGS,
-                                    "kb-jwt_alg_values" to SUPPORTED_KB_JWT_ALGS,
-                                ),
-                        ),
+                    "vp_formats_supported" to verifierFormats(),
+                    // The older name, which the production trust anchor's policy still marks
+                    // essential: both, until the policy catches up.
+                    "vp_formats" to verifierFormats(),
                     "authorization_encrypted_response_alg" to RESPONSE_ENCRYPTION_ALG,
+                    "authorization_encrypted_response_enc" to RESPONSE_ENCRYPTION_ENC,
                     "encrypted_response_enc_values_supported" to ACCEPTED_RESPONSE_ENCS,
-                    // The SAME published JWKs as the request object's client_metadata:
-                    // a wallet resolving us through the federation must find the very key
-                    // it is asked to encrypt to (matching kid, and use "enc").
+                    // Not `authorization_signed_response_alg`, although the same policy marks
+                    // it essential: under JARM it asks the wallet to SIGN the response and
+                    // nest the JWS in the JWE, a form this flow does not read (it takes the
+                    // JWE payload as the response object) — publishing it would turn every
+                    // wallet that honours it into a denied holder. A recorded divergence, the
+                    // one essential parameter a same-device RP leaves out; a cross-device-only
+                    // RP leaves out `redirect_uris` too (see redirectUrisOf).
+                    //
+                    // The static encryption key only when the RP accepts it: publishing a key the
+                    // response endpoint then refuses would deny every wallet that used it. The
+                    // request object publishes each transaction's own key instead.
                     "jwks" to
                         mapOf(
                             "keys" to
-                                listOf(
-                                    config.keys.requestSigningKey
-                                        .toPublicJWK()
+                                listOfNotNull(
+                                    // Published with its use and alg, as the encryption key is:
+                                    // a key without `use` is a key for anything.
+                                    ECKey
+                                        .Builder(config.keys.requestSigningKey.toPublicJWK())
+                                        .keyUse(KeyUse.SIGNATURE)
+                                        .algorithm(JWSAlgorithm.ES256)
+                                        .build()
                                         .toJSONObject(),
-                                    publicEncryptionJwk(config).toJSONObject(),
+                                    config.keys.responseEncryptionKey?.let { publicEncryptionJwk(it).toJSONObject() },
                                 ),
                         ),
+                ) + redirectUrisOf(config),
+        )
+
+    /**
+     * IT-Wallet 1.4.6 WP_094a: a same-device `redirect_uri` MUST be one the RP's trust chain
+     * attests, and the chain's `openid_credential_verifier` metadata is where a wallet looks.
+     * Before the fourth internal review it was never published, so a wallet applying the rule
+     * refused to send the holder back.
+     *
+     * Only the same-device callback base is published: a cross-device-only RP has no redirect,
+     * and publishes none. The production anchor's policy marks `redirect_uris` essential, so
+     * such an RP cannot satisfy it; a URI nobody serves would satisfy the letter of the policy
+     * and attest a redirect that does not exist, so none is invented.
+     */
+    private fun redirectUrisOf(config: RelyingPartyConfiguration): Map<String, Any> =
+        config.endpoints.sameDeviceCallbackBase?.let { mapOf("redirect_uris" to listOf(it)) } ?: emptyMap()
+
+    private fun verifierFormats(): Map<String, Any> =
+        mapOf(
+            "dc+sd-jwt" to
+                mapOf(
+                    "sd-jwt_alg_values" to SUPPORTED_SD_JWT_ALGS,
+                    "kb-jwt_alg_values" to SUPPORTED_KB_JWT_ALGS,
                 ),
         )
 
