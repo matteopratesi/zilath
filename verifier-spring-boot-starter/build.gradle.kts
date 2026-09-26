@@ -16,6 +16,10 @@ dependencies {
     runtimeOnly(libs.kotlin.reflect)
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.starter.webmvc.test)
+    // Spring Security itself, not Spring Boot's security auto-configuration: the README's chain
+    // is tested alone, and the other tests keep an unsecured application.
+    testImplementation(libs.spring.security.config)
+    testImplementation(libs.spring.security.web)
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
     testRuntimeOnly(libs.junit.platform.launcher)
