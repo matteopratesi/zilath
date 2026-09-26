@@ -44,9 +44,12 @@ gone when that call returns.
 in the DCQL query; the wallet discloses those and withholds the rest. What comes back is
 those claims plus `iss` and `vct`, which name the issuer and the credential type and are
 the same for every holder of it — not the whole credential. Ask for a boolean
-entitlement and an expiry date, and a boolean and a date are what you get — the diagnosis,
-the percentage of invalidity and the medical record are not withheld by our good manners,
-they are never transmitted. And if a wallet discloses more than the query asked for, the
+entitlement and an expiry date, and a boolean and a date are what you get. A claim the
+issuer made selectively disclosable and the query did not ask for — a diagnosis, a
+percentage of invalidity — is not withheld by our good manners: a conformant wallet does
+not transmit it. A claim the issuer put in the credential's plaintext travels with every
+presentation, whatever the query asks; the verifier leaves it out of the outcome, but
+cannot stop it arriving. And if a wallet discloses more than the query asked for, the
 surplus is dropped before the outcome is returned: what reaches you is what you asked
 for, whatever the wallet sent.
 
