@@ -24,6 +24,7 @@ import dev.zilath.verifier.openid4vp.RelyingPartyConfiguration
 import dev.zilath.verifier.openid4vp.RpEndpoints
 import dev.zilath.verifier.openid4vp.RpFederationConfig
 import dev.zilath.verifier.openid4vp.RpKeys
+import dev.zilath.verifier.openid4vp.RpTrustMark
 import dev.zilath.verifier.openid4vp.TrustChainSource
 import dev.zilath.verifier.openid4vp.WalletProfile
 import java.time.Duration
@@ -111,6 +112,7 @@ private fun federationOf(
             contacts = federation.contacts,
             trustChain = federation.trustChain,
             trustChainSource = trustChainSource,
+            trustMarks = federation.trustMarks.map { RpTrustMark(it.type, it.jwt) },
         )
     } catch (invalid: IllegalArgumentException) {
         // The library's message says what is wrong; here it gains the properties it is about.

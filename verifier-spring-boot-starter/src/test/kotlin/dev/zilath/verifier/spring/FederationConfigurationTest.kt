@@ -164,6 +164,42 @@ class FederationConfigurationTest {
     }
 
     @Test
+    fun `trust marks given as properties are published in the entity configuration`() {
+        val type = "https://trust-anchor.example/trust_marks/federation-entity/openid_credential_verifier"
+        val issuer = ECKeyGenerator(Curve.P_256).keyID("ta-marks").generate()
+        val mark =
+            SignedJWT(
+                com.nimbusds.jose.JWSHeader
+                    .Builder(com.nimbusds.jose.JWSAlgorithm.ES256)
+                    .keyID(issuer.keyID)
+                    .build(),
+                com.nimbusds.jwt.JWTClaimsSet
+                    .Builder()
+                    .issuer("https://trust-anchor.example")
+                    .subject("https://rp.example")
+                    .claim("trust_mark_type", type)
+                    .build(),
+            ).apply { sign(com.nimbusds.jose.crypto.ECDSASigner(issuer)) }.serialize()
+        webStarterRunner(signingKey)
+            .withPropertyValues(
+                *federation,
+                "zilath.openid4vp.federation.trust-marks[0].type=$type",
+                "zilath.openid4vp.federation.trust-marks[0].jwt=$mark",
+            ).run { context ->
+                val body =
+                    MockMvcBuilders
+                        .webAppContextSetup(context)
+                        .build()
+                        .perform(get("/.well-known/openid-federation"))
+                        .andExpect(status().isOk)
+                        .andReturn()
+                        .response.contentAsString
+                assertThat(SignedJWT.parse(body).jwtClaimsSet.getListClaim("trust_marks"))
+                    .containsExactly(mapOf("trust_mark_type" to type, "trust_mark" to mark))
+            }
+    }
+
+    @Test
     fun `without a federation there is no entity configuration endpoint`() {
         webStarterRunner(signingKey).withPropertyValues("zilath.openid4vp.federation.entity-id=").run { context ->
             assertThat(context).hasNotFailed().doesNotHaveBean(OpenId4VpFederationController::class.java)

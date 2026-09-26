@@ -121,12 +121,24 @@ data class OpenId4VpProperties(
          * wallets resolve the relying party online.
          */
         val trustChain: List<String> = emptyList(),
+        /**
+         * The trust marks the federation issued to the relying party, published in its entity
+         * configuration: `trust-marks[0].type` and `trust-marks[0].jwt`, and so on.
+         */
+        val trustMarks: List<TrustMark> = emptyList(),
     ) {
         /** The federation key carries private key material: never let it reach a log. */
         override fun toString(): String =
             "Federation(entityId=$entityId, federationKeyJwk=[REDACTED], authorityHints=$authorityHints, " +
-                "organizationName=$organizationName, contacts=$contacts, trustChain=${trustChain.size} statements)"
+                "organizationName=$organizationName, contacts=$contacts, trustChain=${trustChain.size} statements, " +
+                "trustMarks=${trustMarks.map { it.type }})"
     }
+
+    /** One trust mark: its type identifier and the signed JWT its issuer returned. */
+    data class TrustMark(
+        val type: String = "",
+        val jwt: String = "",
+    )
 
     /** The JWK properties carry private key material: never let them reach a log. */
     override fun toString(): String =
