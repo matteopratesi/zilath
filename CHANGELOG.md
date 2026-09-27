@@ -277,8 +277,9 @@ fetchers of its own, for the network boundary it used to leave to each applicati
   to the application. The host must resolve only to globally routable addresses — a single
   private, loopback, link-local or otherwise special-purpose one and nothing is sent;
   `allowLoopback` admits loopback for local development — no redirect is followed, and
-  connect time (5 s), total time (10 s) and response size (1 MiB, refused as it arrives) are
-  bounded. A 404 or 410 is `DocumentNotFoundException`, and through `HttpFederationFetcher`
+  connect time (5 s), the whole fetch with its name lookup (10 s) and response size (1 MiB,
+  refused as it arrives) are bounded, as are the name lookups one fetcher runs at once (16),
+  since a lookup outlives the fetch that gave up on it. A 404 or 410 is `DocumentNotFoundException`, and through `HttpFederationFetcher`
   `FederationDocumentNotFoundException`, which now takes a `cause`. Not closed: DNS rebinding
   between the check and the connection, and a proxy's own resolution (SECURITY.md boundary
   1). Until now every application wrote its own fetcher, and the only HTTP one in the

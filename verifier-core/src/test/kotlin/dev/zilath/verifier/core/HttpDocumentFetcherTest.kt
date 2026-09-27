@@ -29,7 +29,9 @@ import java.net.UnknownHostException
 import java.net.http.HttpTimeoutException
 import java.time.Duration
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class HttpDocumentFetcherTest {
     /** Every path the server was asked for, in order. */
@@ -56,8 +58,15 @@ class HttpDocumentFetcherTest {
             "metadata.example" to listOf("169.254.169.254"),
             "mixed.example" to listOf("93.184.215.14", "192.168.1.10"),
             "nothing.example" to emptyList(),
+            // Answered late or held shut below; never reached, whatever they answer.
+            "slow.example" to listOf("10.0.0.6"),
+            "blocked.example" to listOf("10.0.0.7"),
         )
     private val resolved = ConcurrentLinkedQueue<String>()
+
+    /** Held shut, it keeps every lookup of `blocked.example` from answering; counts them in. */
+    private val release = CountDownLatch(1)
+    private val blockedLookups = CountDownLatch(HttpDocumentFetcher.MAX_CONCURRENT_LOOKUPS)
 
     private fun fetcher(allowLoopback: Boolean = true) =
         HttpDocumentFetcher(
@@ -68,12 +77,22 @@ class HttpDocumentFetcherTest {
             sslContext = null,
             resolve = { host ->
                 resolved += host
+                when (host) {
+                    "slow.example" -> Thread.sleep(STALL.toMillis())
+                    "blocked.example" -> {
+                        blockedLookups.countDown()
+                        release.await()
+                    }
+                }
                 names[host]?.map(InetAddress::getByName) ?: InetAddress.getAllByName(host).toList()
             },
         )
 
     @AfterEach
-    fun stop() = server.stop(0)
+    fun stop() {
+        release.countDown()
+        server.stop(0)
+    }
 
     @Test
     fun `a 200 is the document`() {
@@ -135,6 +154,68 @@ class HttpDocumentFetcherTest {
                 .describedAs(path)
                 .isInstanceOf(HttpTimeoutException::class.java)
             assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(STALL)
+        }
+    }
+
+    @Test
+    fun `a name lookup that does not answer counts against the same deadline`() {
+        val started = System.nanoTime()
+        assertThatThrownBy { fetcher().fetch("https://slow.example/status/1") }
+            .isInstanceOf(HttpTimeoutException::class.java)
+            .hasMessageStartingWith("the name lookup did not complete within")
+        assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(STALL)
+    }
+
+    @Test
+    fun `the lookup and the exchange share one deadline`() {
+        // A lookup that takes most of the second, then a server that never answers: the fetch
+        // gives up once the second is over, not a second after the lookup.
+        val lateLookup =
+            HttpDocumentFetcher(
+                Duration.ofSeconds(2),
+                Duration.ofSeconds(1),
+                LIMIT,
+                allowLoopback = true,
+                sslContext = null,
+                resolve = { host ->
+                    Thread.sleep(LATE_LOOKUP.toMillis())
+                    InetAddress.getAllByName(host).toList()
+                },
+            )
+        val started = System.nanoTime()
+        assertThatThrownBy { lateLookup.fetch("$base/slow-headers") }
+            .isInstanceOf(HttpTimeoutException::class.java)
+        assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofMillis(1600))
+    }
+
+    @Test
+    fun `lookups that outlive their fetches are bounded, and a fetch past the bound is refused`() {
+        val fetcher = fetcher()
+        val callers = Executors.newFixedThreadPool(HttpDocumentFetcher.MAX_CONCURRENT_LOOKUPS)
+        try {
+            repeat(HttpDocumentFetcher.MAX_CONCURRENT_LOOKUPS) {
+                callers.submit { runCatching { fetcher.fetch("https://blocked.example/status/1") } }
+            }
+            assertThat(blockedLookups.await(STALL.toMillis(), TimeUnit.MILLISECONDS)).isTrue()
+            assertThatThrownBy { fetcher.fetch("$base/document") }
+                .isInstanceOf(IOException::class.java)
+                .hasMessage(
+                    "refused: ${HttpDocumentFetcher.MAX_CONCURRENT_LOOKUPS} name lookups already in progress",
+                )
+            assertThat(requested).isEmpty()
+            release.countDown()
+            // Once the lookups return, their threads are free again.
+            awaitCondition { runCatching { fetcher.fetch("$base/document") }.isSuccess }
+        } finally {
+            callers.shutdownNow()
+        }
+    }
+
+    private fun awaitCondition(condition: () -> Boolean) {
+        val until = System.nanoTime() + STALL.toNanos()
+        while (!condition()) {
+            check(System.nanoTime() < until) { "condition not met within $STALL" }
+            Thread.sleep(POLL_MILLIS)
         }
     }
 
@@ -250,6 +331,8 @@ class HttpDocumentFetcherTest {
         const val LOOPBACK = "127.0.0.1"
         const val LIMIT = 1024
         const val PARTIAL = 16
+        const val POLL_MILLIS = 20L
+        val LATE_LOOKUP: Duration = Duration.ofMillis(900)
         val TOTAL_TIMEOUT: Duration = Duration.ofMillis(500)
 
         /** How long the slow handlers stall: well past the timeout. */

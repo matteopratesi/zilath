@@ -82,6 +82,12 @@ class HttpFetcherTest {
         assertThatThrownBy { httpFetcher(insecureTls = true, LOCAL_ANCHOR).fetch("https://ta.example/.well-known") }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessage("insecure TLS is restricted to loopback, refused for ta.example")
+        // A loopback name is not enough: every address it resolves to must be loopback too.
+        val publicLocalhost = { _: String -> listOf(InetAddress.getByName("93.184.215.14")) }
+        assertThatThrownBy {
+            httpFetcher(insecureTls = true, LOCAL_ANCHOR, publicLocalhost).fetch("https://localhost:3001/.well-known")
+        }.isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("insecure TLS is restricted to loopback, refused for localhost")
     }
 
     private companion object {

@@ -276,7 +276,9 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   review kept in its security architecture review of #40.
 - **Model**: Anthropic Claude Opus 5.5.
 - **Assistance**: the two classes and the address classification, their tests, one mutation
-  check per protection (fourteen), the documentation changes and the issue's text.
+  check per protection (eighteen), the documentation changes, the issue's text, and the fixes
+  of the automated review's findings: the name lookup inside the fetch's deadline, with a bound
+  on lookups at once, and the demo's trust-all TLS held to addresses that are loopback too.
 - **Human contribution**: the decision to ship a fetcher in the library instead of leaving the
   boundary documented only, and the choice of the JDK's client with no new dependency, accepting
   the DNS rebinding window that a dependency could have closed.
