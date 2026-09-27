@@ -171,10 +171,11 @@ object TestVectors {
     fun vectorWith(
         disclose: (JsonArray) -> Boolean = { true },
         plaintextEnvelope: Boolean = true,
+        issuerTyp: String? = null,
         claims: DisclosableObjectSpecBuilder.() -> Unit,
     ): String {
         val envelope = Envelope(holder = holderKey).takeIf { plaintextEnvelope } ?: Envelope(written = false)
-        return present(Issuance(), envelope, Binding(), disclose, claims)
+        return present(Issuance(typ = issuerTyp), envelope, Binding(), disclose, claims)
     }
 
     /**

@@ -57,7 +57,12 @@ internal class TofuFederationTrustEvaluator(
         // The anchor may serve on localhost while identifying itself with its real entity id
         // (the conformance tool does): the chain must be validated against the latter.
         val entityId = claims.subject ?: anchorId
-        val evaluator = FederationTrustEvaluator(TrustAnchorConfig(entityId, keys), fetcher, clock)
+        // With the offline fallback, because that entity id is one nothing can fetch — the
+        // insecure-TLS fetcher refuses every host but loopback — and the tool's mock PID
+        // carries its whole chain in the header: an online refresh can never succeed here,
+        // and the documents the chain carries have to decide. Conformance runs only.
+        val evaluator =
+            FederationTrustEvaluator(TrustAnchorConfig(entityId, keys), fetcher, clock, offlineFallback = true)
         delegate = evaluator
         return evaluator
     }

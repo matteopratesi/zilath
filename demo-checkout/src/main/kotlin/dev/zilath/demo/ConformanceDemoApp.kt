@@ -19,6 +19,7 @@ package dev.zilath.demo
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
+import dev.zilath.demo.cedsim.CedSim
 import dev.zilath.verifier.core.CredentialStatus
 import dev.zilath.verifier.core.CredentialVerifier
 import dev.zilath.verifier.core.StatusChecker
@@ -93,7 +94,17 @@ class ConformanceDemoApp {
                 "ZILATH_TRUST_ANCHOR_JWKS_PATH points at $jwksPath, which contains no usable keys. " +
                     ACCEPTED_KEY_SHAPES
             }
-            return FederationTrustEvaluator(TrustAnchorConfig(anchorId, keys), fetcher, clock)
+            // The simulated CED federation lives under .invalid and is never reachable: its
+            // chain travels in the credential header, which the evaluator accepts on its own
+            // only with the offline fallback, and only when the federation cannot be reached.
+            // Every real anchor keeps the default: the chain is refreshed online.
+            val simulated = anchorId == CedSim.ANCHOR_ID
+            return FederationTrustEvaluator(
+                TrustAnchorConfig(anchorId, keys),
+                fetcher,
+                clock,
+                offlineFallback = simulated,
+            )
         }
         require(tofu) {
             "No trust anchor keys configured. Either set ZILATH_TRUST_ANCHOR_JWKS_PATH to a file " +

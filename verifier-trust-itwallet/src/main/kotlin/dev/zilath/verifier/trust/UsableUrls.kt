@@ -39,7 +39,7 @@ import dev.zilath.verifier.core.usableHttpsUriOrNull
 internal fun requireUsableEntityId(entityId: String) {
     val uri = usableFetchUrlOrNull(entityId)
     if (uri == null || uri.query != null) {
-        trustFail("entity id is not a usable https identifier: $entityId")
+        trustFail("an entity id is not a usable https identifier")
     }
 }
 
@@ -52,12 +52,9 @@ internal fun requireUsableEntityId(entityId: String) {
  * fetcher unchecked: anyone able to serve one federation document could otherwise point
  * the integrator's HTTP client at `file:`, at an internal address, at anything.
  */
-internal fun requireUsableFetchEndpoint(
-    endpoint: String,
-    superior: String,
-) {
+internal fun requireUsableFetchEndpoint(endpoint: String) {
     if (usableFetchUrlOrNull(endpoint) == null) {
-        trustFail("federation_fetch_endpoint of $superior is not a usable https url")
+        trustFail("a federation_fetch_endpoint is not a usable https url")
     }
 }
 

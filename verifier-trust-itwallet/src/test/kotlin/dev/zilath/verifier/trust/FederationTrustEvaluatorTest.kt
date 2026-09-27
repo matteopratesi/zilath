@@ -77,7 +77,7 @@ class FederationTrustEvaluatorTest {
                 },
             )
         val decision =
-            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Trusted::class.java)
         assertThat((decision as TrustDecision.Trusted).issuerKeys.map { it.keyID })
             .containsExactly("policy-forced")
@@ -104,7 +104,7 @@ class FederationTrustEvaluatorTest {
                 },
             )
         val decision =
-            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
         assertThat((decision as TrustDecision.Untrusted).reason).contains("no credential signing keys")
     }
@@ -135,7 +135,7 @@ class FederationTrustEvaluatorTest {
                 },
             )
         val decision =
-            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Trusted::class.java)
         assertThat((decision as TrustDecision.Trusted).issuerKeys.map { it.keyID })
             .containsExactly("superior-imposed")
@@ -145,53 +145,213 @@ class FederationTrustEvaluatorTest {
     fun `an explicit null metadata_policy on a signed statement fails the chain`() {
         // Built from a raw JSON payload: the claims-set builder may drop null members,
         // and the whole point is a PRESENT "metadata_policy": null.
-        val now = dev.zilath.verifier.core.TestVectors.NOW
         val payload =
             """{"iss":"${FederationFixtures.ANCHOR_ID}","sub":"${FederationFixtures.LEAF_ID}",""" +
-                """"iat":${now.minusSeconds(600).epochSecond},"exp":${now.plusSeconds(3600).epochSecond},""" +
+                FederationFixtures.rawValidityWindow() + "," +
                 """"jwks":{"keys":[${FederationFixtures.leafFederationKey.toPublicJWK().toJSONString()}]},""" +
                 """"metadata_policy":null}"""
-        val jws =
-            com.nimbusds.jose.JWSObject(
-                com.nimbusds.jose.JWSHeader
-                    .Builder(com.nimbusds.jose.JWSAlgorithm.ES256)
-                    .keyID(FederationFixtures.anchorKey.keyID)
-                    .type(com.nimbusds.jose.JOSEObjectType("entity-statement+jwt"))
-                    .build(),
-                com.nimbusds.jose.Payload(payload),
+        val chain =
+            listOf(
+                FederationFixtures.leafConfiguration(),
+                FederationFixtures.signedRawStatement(FederationFixtures.anchorKey, payload),
             )
-        jws.sign(
-            com.nimbusds.jose.crypto
-                .ECDSASigner(FederationFixtures.anchorKey),
-        )
-        val chain = listOf(FederationFixtures.leafConfiguration(), jws.serialize())
         val decision =
-            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
         assertThat((decision as TrustDecision.Untrusted).reason).contains("malformed")
     }
 
     @Test
     fun `a violated metadata_policy makes the chain untrusted`() {
+        // The leaf IS a credential issuer and publishes its keys: the only thing wrong is
+        // the parameter the anchor's policy makes essential. This test used to use a leaf
+        // with no metadata at all, and passed only because policies were applied to entity
+        // types the leaf does not publish — the very defect that rejected the production
+        // IT-Wallet issuer.
         val chain =
             listOf(
-                FederationFixtures.leafConfiguration(includeCredentialKeys = false),
-                FederationFixtures.signedStatement(
-                    FederationFixtures.anchorKey,
-                    FederationFixtures.ANCHOR_ID,
-                    FederationFixtures.LEAF_ID,
-                ) {
-                    claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey))
+                FederationFixtures.leafConfiguration(),
+                FederationFixtures.anchorStatementAboutLeaf {
                     claim(
                         "metadata_policy",
-                        mapOf("openid_credential_issuer" to mapOf("jwks" to mapOf("essential" to true))),
+                        mapOf("openid_credential_issuer" to mapOf("credential_endpoint" to mapOf("essential" to true))),
                     )
                 },
             )
         val decision =
-            evaluator(FederationFixtures.fetcherOf(emptyMap())).evaluate(inputFor(trustChain = chain))
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
         assertThat((decision as TrustDecision.Untrusted).reason).contains("essential")
+    }
+
+    @Test
+    fun `a policy for an entity type the leaf does not publish is not applied to it`() {
+        // The shape of the production anchor's statement: one policy for several entity
+        // types, some essential parameters under a type this leaf is not.
+        val chain =
+            listOf(
+                FederationFixtures.leafConfiguration(),
+                FederationFixtures.anchorStatementAboutLeaf {
+                    claim(
+                        "metadata_policy",
+                        mapOf(
+                            "openid_credential_issuer" to mapOf("jwks" to mapOf("essential" to true)),
+                            "wallet_provider" to mapOf("jwks" to mapOf("essential" to true)),
+                        ),
+                    )
+                },
+            )
+        val decision =
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
+        assertTrustedWithIssuerKey(decision)
+    }
+
+    @Test
+    fun `a superior cannot graft a credential issuer section onto a leaf that never claimed one`() {
+        val grafted = ECKeyGenerator(Curve.P_256).keyID("grafted").generate()
+        val chain =
+            listOf(
+                FederationFixtures.leafConfiguration(
+                    metadata = mapOf("federation_entity" to mapOf("organization_name" to "Not an issuer")),
+                ),
+                FederationFixtures.anchorStatementAboutLeaf {
+                    claim(
+                        "metadata",
+                        mapOf("openid_credential_issuer" to mapOf("jwks" to FederationFixtures.jwksClaim(grafted))),
+                    )
+                },
+            )
+        val decision =
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
+        assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+        assertThat((decision as TrustDecision.Untrusted).reason).contains("no credential signing keys")
+    }
+
+    @Test
+    fun `a leaf publishing a null parameter does not slip past its superior's policy`() {
+        // One of the anchor's policy says the endpoint must be one value, and essential; the
+        // leaf publishes an explicit null, which used to count as present for essential and
+        // as absent for one_of.
+        val leafKeys = FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey)
+        val issuerKeys = FederationFixtures.jwksClaim(TestVectors.issuerEcKey)
+        val payload =
+            """{"iss":"${FederationFixtures.LEAF_ID}","sub":"${FederationFixtures.LEAF_ID}",""" +
+                FederationFixtures.rawValidityWindow() + "," +
+                """"jwks":${com.nimbusds.jose.util.JSONObjectUtils.toJSONString(leafKeys)},""" +
+                """"authority_hints":["${FederationFixtures.ANCHOR_ID}"],""" +
+                """"metadata":{"openid_credential_issuer":{"credential_endpoint":null,""" +
+                """"jwks":${com.nimbusds.jose.util.JSONObjectUtils.toJSONString(issuerKeys)}}}}"""
+        val chain =
+            listOf(
+                FederationFixtures.signedRawStatement(FederationFixtures.leafFederationKey, payload),
+                FederationFixtures.anchorStatementAboutLeaf {
+                    claim(
+                        "metadata_policy",
+                        mapOf(
+                            "openid_credential_issuer" to
+                                mapOf(
+                                    "credential_endpoint" to
+                                        mapOf(
+                                            "one_of" to listOf("https://issuer.example/credential"),
+                                            "essential" to true,
+                                        ),
+                                ),
+                        ),
+                    )
+                },
+            )
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
+        assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+        assertThat((decision as TrustDecision.Untrusted).reason).contains("is null")
+    }
+
+    @Test
+    fun `an operator nobody declared critical does not deny the chain`() {
+        val chain =
+            listOf(
+                FederationFixtures.leafConfiguration(),
+                FederationFixtures.anchorStatementAboutLeaf {
+                    claim(
+                        "metadata_policy",
+                        mapOf(
+                            "openid_credential_issuer" to
+                                mapOf("credential_endpoint" to mapOf("regexp" to "^https://")),
+                            // The IT-Wallet 1.4.6 §6.9 example statement, for a type this leaf is not.
+                            "openid_credential_verifier" to
+                                mapOf(
+                                    "vp_formats" to
+                                        mapOf(
+                                            "dc+sd-jwt" to
+                                                mapOf(
+                                                    "sd-jwt_alg_values" to listOf("ES256"),
+                                                    "kb-jwt_alg_values" to listOf("ES256"),
+                                                ),
+                                        ),
+                                ),
+                        ),
+                    )
+                },
+            )
+        assertTrustedWithIssuerKey(
+            FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain)),
+        )
+    }
+
+    @Test
+    fun `metadata_policy_crit naming an operator the library does not implement fails the chain`() {
+        for (crit in listOf(listOf("regexp"), emptyList<String>(), "regexp")) {
+            val chain =
+                listOf(
+                    FederationFixtures.leafConfiguration(),
+                    FederationFixtures.anchorStatementAboutLeaf {
+                        claim(
+                            "metadata_policy",
+                            mapOf(
+                                "openid_credential_issuer" to mapOf("credential_endpoint" to mapOf("regexp" to ".*")),
+                            ),
+                        )
+                        claim("metadata_policy_crit", crit)
+                    },
+                )
+            val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
+            assertThat(decision)
+                .describedAs("metadata_policy_crit %s", crit)
+                .isInstanceOf(TrustDecision.Untrusted::class.java)
+            assertThat((decision as TrustDecision.Untrusted).reason).contains("metadata_policy")
+        }
+    }
+
+    @Test
+    fun `a statement listing critical claims fails the chain, whoever issued it`() {
+        // OID-FED §3.2: each claim in crit MUST be understood, and this library
+        // understands no extension. A superior making one mandatory must not be ignored.
+        val criticalSubordinate =
+            listOf(
+                FederationFixtures.leafConfiguration(),
+                FederationFixtures.anchorStatementAboutLeaf {
+                    claim("crit", listOf("revocation_flag"))
+                    claim("revocation_flag", true)
+                },
+            )
+        val criticalLeaf =
+            listOf(
+                FederationFixtures.signedStatement(
+                    FederationFixtures.leafFederationKey,
+                    FederationFixtures.LEAF_ID,
+                    FederationFixtures.LEAF_ID,
+                ) {
+                    claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey))
+                    claim("metadata", mapOf("openid_credential_issuer" to FederationFixtures.credentialIssuerSection()))
+                    claim("crit", listOf("some_extension"))
+                    claim("some_extension", "x")
+                },
+                FederationFixtures.anchorStatementAboutLeaf(),
+            )
+        for (chain in listOf(criticalSubordinate, criticalLeaf)) {
+            val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
+            assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
+            assertThat((decision as TrustDecision.Untrusted).reason).contains("critical claims")
+        }
     }
 
     @Test
@@ -203,13 +363,6 @@ class FederationTrustEvaluatorTest {
     @Test
     fun `resolves and trusts a leaf through an intermediate`() {
         val decision = evaluator(FederationFixtures.intermediatedFederation()).evaluate(inputFor())
-        assertTrustedWithIssuerKey(decision)
-    }
-
-    @Test
-    fun `a provided trust_chain is validated without any network access`() {
-        val offlineEvaluator = evaluator(FederationFetcher { error("network must not be used") })
-        val decision = offlineEvaluator.evaluate(inputFor(trustChain = FederationFixtures.offlineChain()))
         assertTrustedWithIssuerKey(decision)
     }
 
@@ -233,7 +386,7 @@ class FederationTrustEvaluatorTest {
                     expiresInSeconds = -60,
                 ) { claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey)) },
             )
-        val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = chain))
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
     }
 
@@ -248,7 +401,7 @@ class FederationTrustEvaluatorTest {
                     "https://someone-else.example",
                 ) { claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey)) },
             )
-        val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = chain))
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
     }
 
@@ -265,14 +418,15 @@ class FederationTrustEvaluatorTest {
                     // The anchor vouches for the honest federation key, not the rogue one.
                 ) { claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey)) },
             )
-        val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = chain))
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
     }
 
     @Test
     fun `a chain whose leaf does not match the credential issuer is untrusted`() {
         val decision =
-            evaluator(FederationFetcher { error("offline") })
+            FederationFixtures
+                .chainEvaluator()
                 .evaluate(inputFor(issuer = "https://impostor.example", trustChain = FederationFixtures.offlineChain()))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
     }
@@ -280,7 +434,7 @@ class FederationTrustEvaluatorTest {
     @Test
     fun `an oversized provided chain is rejected before any signature work`() {
         val padded = List(10) { FederationFixtures.leafConfiguration() } + FederationFixtures.offlineChain()
-        val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = padded))
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = padded))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
         assertThat((decision as TrustDecision.Untrusted).reason).contains("longer than")
     }
@@ -303,7 +457,7 @@ class FederationTrustEvaluatorTest {
                 ) { claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.leafFederationKey)) },
                 FederationFixtures.offlineChain()[1],
             )
-        val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = chain))
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
     }
 
@@ -319,7 +473,7 @@ class FederationTrustEvaluatorTest {
                 FederationFixtures.leafConfiguration(includeCredentialKeys = false),
                 FederationFixtures.offlineChain()[1],
             )
-        val decision = evaluator(FederationFetcher { error("offline") }).evaluate(inputFor(trustChain = chain))
+        val decision = FederationFixtures.chainEvaluator().evaluate(inputFor(trustChain = chain))
         assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
     }
 
@@ -388,6 +542,71 @@ class FederationTrustEvaluatorTest {
             assertThat(decision).isInstanceOf(TrustDecision.Untrusted::class.java)
             assertThat(fetched).noneMatch { it.startsWith(bad) }
         }
+    }
+
+    @Test
+    fun `the anchor's entity configuration is verified before its fetch endpoint is used`() {
+        // Whoever answers for the anchor's well-known URL used to choose where the library
+        // fetched the anchor's statement from: the configuration was never verified, and
+        // the forgery surfaced only after the request to the attacker's host was made.
+        val attacker = ECKeyGenerator(Curve.P_256).keyID(FederationFixtures.anchorKey.keyID).generate()
+        val forgedEndpoint =
+            FederationFixtures.signedStatement(attacker, FederationFixtures.ANCHOR_ID, FederationFixtures.ANCHOR_ID) {
+                claim("jwks", FederationFixtures.jwksClaim(attacker))
+                claim(
+                    "metadata",
+                    mapOf(
+                        "federation_entity" to mapOf("federation_fetch_endpoint" to "https://attacker.example/fetch"),
+                    ),
+                )
+            }
+        // Forged even with the genuine endpoint: nothing in it is used unverified.
+        val forgedGenuineEndpoint =
+            FederationFixtures.signedStatement(attacker, FederationFixtures.ANCHOR_ID, FederationFixtures.ANCHOR_ID) {
+                claim("jwks", FederationFixtures.jwksClaim(attacker))
+                claim(
+                    "metadata",
+                    mapOf(
+                        "federation_entity" to
+                            mapOf("federation_fetch_endpoint" to "${FederationFixtures.ANCHOR_ID}/fetch"),
+                    ),
+                )
+            }
+        val expired =
+            FederationFixtures.signedStatement(
+                FederationFixtures.anchorKey,
+                FederationFixtures.ANCHOR_ID,
+                FederationFixtures.ANCHOR_ID,
+                expiresInSeconds = -120,
+            ) { claim("jwks", FederationFixtures.jwksClaim(FederationFixtures.anchorKey)) }
+        for (anchorConfiguration in listOf(forgedEndpoint, forgedGenuineEndpoint)) {
+            val fetched = mutableListOf<String>()
+            val fetcher =
+                FederationFetcher { url ->
+                    fetched += url
+                    when (url) {
+                        "${FederationFixtures.LEAF_ID}/.well-known/openid-federation" ->
+                            FederationFixtures
+                                .leafConfiguration()
+                        "${FederationFixtures.ANCHOR_ID}/.well-known/openid-federation" -> anchorConfiguration
+                        else -> FederationFixtures.anchorStatementAboutLeaf()
+                    }
+                }
+            val decision = evaluator(fetcher).evaluate(inputFor())
+            assertThat(FederationFixtures.untrustedReason(decision)).contains("anchor's entity configuration")
+            assertThat(fetched).hasSize(2).noneMatch { it.contains("attacker") || it.contains("sub=") }
+        }
+        val expiredFetcher =
+            FederationFixtures.fetcherOf(
+                mapOf(
+                    "${FederationFixtures.LEAF_ID}/.well-known/openid-federation" to
+                        FederationFixtures.leafConfiguration(),
+                    "${FederationFixtures.ANCHOR_ID}/.well-known/openid-federation" to expired,
+                ),
+            )
+        assertThat(
+            FederationFixtures.untrustedReason(evaluator(expiredFetcher).evaluate(inputFor())),
+        ).contains("expired")
     }
 
     @Test

@@ -69,6 +69,7 @@ class CedSimFlowTest {
                     TrustAnchorConfig(CedSim.ANCHOR_ID, listOf(keys.anchor.toPublicJWK())),
                     FederationFetcher { error("offline: the simulated chain travels in the header") },
                     clock,
+                    offlineFallback = true,
                 ),
             statusChecker = StatusChecker { _, _ -> CredentialStatus.VALID },
         )

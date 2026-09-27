@@ -22,6 +22,7 @@ import dev.zilath.verifier.openid4vp.RelyingPartyConfiguration
 import dev.zilath.verifier.openid4vp.RpEntityConfiguration
 import dev.zilath.verifier.openid4vp.TransactionId
 import dev.zilath.verifier.openid4vp.VerificationFlow
+import dev.zilath.verifier.trust.FederationDocumentNotFoundException
 import dev.zilath.verifier.trust.FederationFetcher
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.MediaType
@@ -135,6 +136,12 @@ internal fun httpFetcher(insecureTls: Boolean): FederationFetcher {
                 .GET()
                 .build()
         val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+        // The federation's answer that the document does not exist — how a superior withdraws
+        // an entity — must reach the evaluator as such: any other failure counts as an outage,
+        // which the offline fallback answers from the credential's own header.
+        if (response.statusCode() in NOT_FOUND_STATUSES) {
+            throw FederationDocumentNotFoundException("GET $url returned ${response.statusCode()}")
+        }
         check(response.statusCode() in HTTP_OK_MIN..HTTP_OK_MAX) { "GET $url returned ${response.statusCode()}" }
         check(
             response.body().length <= MAX_RESPONSE_CHARS,
@@ -143,6 +150,9 @@ internal fun httpFetcher(insecureTls: Boolean): FederationFetcher {
     }
 }
 
+private const val HTTP_NOT_FOUND = 404
+private const val HTTP_GONE = 410
+private val NOT_FOUND_STATUSES = setOf(HTTP_NOT_FOUND, HTTP_GONE)
 private const val HTTP_OK_MIN = 200
 private const val HTTP_OK_MAX = 299
 private const val CONNECT_TIMEOUT_SECONDS = 5L
