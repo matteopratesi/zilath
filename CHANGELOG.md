@@ -8,6 +8,109 @@ Until 1.0.0 the public API may change between minor versions. Anything that chan
 verifier accepts or rejects is called out explicitly, because that is the kind of change
 that can silently let something through.
 
+## [Unreleased]
+
+The fixes of the fourth internal review (2026-09-04 to 2026-09-24), landing in parts. Headed
+for 0.4.0, not a patch: many items change what a verifier accepts or rejects, and the API
+moves with them. This part covers `verifier-core` and the build.
+
+### Security — what the verifier now accepts that it refused
+
+- **Status list tokens without `iss` are believed.** Neither draft-ietf-oauth-status-list
+  nor IT-Wallet 1.4.6 requires `iss`, and the IT-Wallet example has none; every credential
+  whose issuer followed it ended `STATUS_CHECK_FAILED`. The signature under the issuer's own
+  keys binds the token to it; an `iss` that is present must still name the credential's
+  issuer.
+- **Credentials whose `_sd_alg` is `sha-384` or `sha-512` verify.** The key binding's
+  `sd_hash` was recomputed in SHA-256 whatever `_sd_alg` said, on top of the EUDI library's
+  own, correct check; the recomputation is gone.
+- **`typ` values compare as RFC 7515 §4.1.9 says**: case-insensitively, with `application/`
+  implied — `application/statuslist+jwt`, `DC+SD-JWT`, `application/kb+jwt` are the types
+  they name. A different type, or one with parameters, is still refused.
+
+### Security — what the verifier now refuses that it accepted
+
+- **Weak keys verify nothing.** RSA keys below 2048 bits (RFC 7518 §3.3) and EC keys on any
+  curve but P-256, P-384 and P-521 are skipped, for issuer, holder, status list and
+  federation signatures alike: Nimbus enforces a minimum only when generating a key.
+- **The status list URI is held to the URL rule** SECURITY.md already claimed for it: https
+  with a hostname, no userinfo, no IP literals except loopback, plain http only to the
+  loopback names, for local development. A credential pointing anywhere else is
+  `STATUS_CHECK_FAILED` before the status checker is called.
+- **`Verified` means the query was answered.** With `VerificationContext.requestedClaims`, a
+  presentation that does not disclose what was asked is `QUERY_NOT_SATISFIED` (OpenID4VP 1.0
+  §6.3, §6.4.1, §7 claims path pointers); before, one disclosing nothing at all was
+  verified.
+- **Selective disclosure cannot hide the envelope.** A disclosure for `iss`, `nbf`, `exp`,
+  `cnf`, `vct`, `vct#integrity`, `status` or `_sd_alg` is `MALFORMED` (SD-JWT VC §3.2.2.2):
+  a `status` behind a disclosure used to skip revocation, an `exp` behind one never expired.
+  Disclosures naming `_sd`, `...` or a non-string claim are `DISCLOSURE_TAMPERED` (RFC 9901
+  §4.2.1).
+- **A credential needs an `exp`**, and a plausible one: absent, in milliseconds, negative or
+  more than fifty years ahead is `MALFORMED`. IT-Wallet 1.4.6 makes `exp` mandatory. Every
+  date the verifier checks is read as a number and range-checked, since Nimbus's conversion
+  to `Date` overflowed silently: an `iat` of 18446745861275152 passed the freshness window.
+- **A key binding names exactly one audience**, ours. A list with another verifier beside us
+  is `AUDIENCE_MISMATCH`; a one-element array naming us is accepted as the string.
+- **A presentation is bounded before it is parsed** (`PresentationLimits`: 1 MiB, 256
+  disclosures, nesting depth 32). Twelve megabytes of decoys used to verify, and a deeply
+  nested disclosure under a trusted issuer's digest exhausted the heap.
+- **An issuer is trusted for the types its trust decision names.** `TrustDecision.Trusted`
+  gains `credentialTypes`; a credential whose `vct` is outside a non-null set is
+  `UNTRUSTED_ISSUER`. Null restricts nothing, for pinned-key evaluators.
+
+### Changed
+
+- **`Verified.claims` is an allowlist.** Without a request: the claims the holder disclosed
+  (a disclosed member of a plaintext object keeps its container, not its plaintext
+  siblings), plus `iss` and `vct`. With a request: the requested claims that are present,
+  plus `iss` and `vct`. **Issuer plaintext nobody asked for — `issuing_authority`,
+  `issuing_country`, `verification`, `vct#integrity` on the disability card — is no longer
+  returned: request it to receive it.** The envelope blocklist of 0.3.0 stays as a second
+  filter, and the known limit it came with is gone.
+- Status list values are reported as what they are: `0x02` is `CredentialStatus.SUSPENDED`
+  (`RejectionReason.SUSPENDED`), any other non-zero value `APPLICATION_SPECIFIC`
+  (`STATUS_NOT_VALID`), IT-Wallet's UPDATE and ATTRIBUTE_UPDATE among them. All of them still
+  deny; only `0x01` is `REVOKED`.
+- The status list's inflation cap is a constructor parameter, `maxInflatedBytes`, 16 MiB by
+  default (134 million entries at `bits` 1, 16.7 million at `bits` 8). It was 1 MiB, a
+  little over a million entries at `bits` 8. A token too long for any list under the cap is
+  refused before it is parsed.
+- A credential carrying only `status_assertion` or `status_attestation` is still rejected —
+  only Token Status List is evaluated — but with its own detail, "status mechanism not
+  supported".
+- An issuer JWT header over Nimbus's 20,000-character limit is rejected with its own detail,
+  "issuer JWT header exceeds the parser limit". The production disability card issuer's
+  entity configuration alone is 39,668 characters: a credential of that issuer embedding its
+  `trust_chain` in the header cannot be verified with Nimbus 10.3.
+- The `detail` of an `UNTRUSTED_ISSUER` rejection, the one detail a `TrustEvaluator` writes,
+  is cut to 200 characters with control characters and line separators replaced.
+- Exceptions the EUDI library throws while rebuilding claims (`_sd` not an array, a
+  disclosure colliding with a plaintext claim) no longer escape `verify()`: they are
+  `DISCLOSURE_TAMPERED`.
+
+### Added
+
+- `RequestedClaims`, `RequestedClaim`, `ClaimPathSegment`, and
+  `VerificationContext.requestedClaims`; `PresentationLimits` and
+  `VerificationContext.presentationLimits`. Both are new constructor parameters with
+  defaults: source-compatible, not binary-compatible.
+- The production IT-Wallet federation documents, as served on 2026-09-24, in the test
+  fixtures, with their provenance: the tests replay them with a fixed clock.
+
+### Build
+
+- The EUDI SD-JWT library's ktor HTTP client stack, 27 `io.ktor` modules Zilath never runs,
+  is excluded from every published module and from the POMs; a check task fails the build
+  if it comes back.
+- CI actions are pinned by commit SHA, and a step refuses any that is not; Dependabot
+  proposes updates for them. Not for the Gradle dependencies: it cannot regenerate the
+  verification metadata below, so every pull request it opened would fail the build.
+- The Gradle wrapper verifies the distribution's SHA-256.
+- Every dependency and plugin is checked against the SHA-256 recorded in
+  `gradle/verification-metadata.xml`: a changed or unknown artifact fails the build. The
+  plugin repository is declared explicitly in `settings.gradle.kts`.
+
 ## [0.3.0] — 2026-09-02
 
 A minor, not a patch: the first item below **removes claims that 0.2.0 returned**, and this

@@ -57,10 +57,28 @@ data class StatusReference(
     val index: Int,
 )
 
-/** The revocation state of a credential. Only [VALID] lets a verification succeed. */
+/**
+ * The revocation state of a credential. Only [VALID] lets a verification succeed.
+ *
+ * The non-valid states are kept apart because they mean different things to the person at
+ * the other end, and the rejection, the log and the receipt should say which: a suspended
+ * credential is not a revoked one, and IT-Wallet's UPDATE and ATTRIBUTE_UPDATE mean
+ * "reissue me", not "I was withdrawn" (1.4.6 §11.4.3.3). Every one of them still denies.
+ */
 enum class CredentialStatus {
     VALID,
+
+    /** Status list value 0x01, INVALID: revoked for good. */
     REVOKED,
+
+    /** Status list value 0x02, SUSPENDED: temporarily not valid. */
+    SUSPENDED,
+
+    /**
+     * Any other non-zero status list value: application-specific in the Token Status List
+     * draft, and in IT-Wallet 1.4.6 the UPDATE (0x03) and ATTRIBUTE_UPDATE (0x0F) states.
+     */
+    APPLICATION_SPECIFIC,
 
     /** The status could not be determined (fetch failed, malformed list, ...). */
     UNKNOWN,

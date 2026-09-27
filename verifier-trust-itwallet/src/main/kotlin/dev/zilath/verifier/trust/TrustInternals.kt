@@ -16,13 +16,12 @@
  */
 package dev.zilath.verifier.trust
 
-import com.nimbusds.jose.JWSVerifier
-import com.nimbusds.jose.crypto.ECDSAVerifier
-import com.nimbusds.jose.crypto.RSASSAVerifier
 import com.nimbusds.jose.jwk.JWK
-import com.nimbusds.jose.jwk.KeyType
 import com.nimbusds.jose.util.JSONObjectUtils
 import com.nimbusds.jwt.SignedJWT
+import dev.zilath.verifier.core.InternalZilathApi
+import dev.zilath.verifier.core.mediaTypeMatches
+import dev.zilath.verifier.core.verifiesWithAnyAcceptableKey
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.time.Clock
@@ -87,11 +86,15 @@ internal class EntityStatement(
     }
 }
 
+@OptIn(InternalZilathApi::class)
+private fun typIsEntityStatement(jwt: SignedJWT): Boolean =
+    mediaTypeMatches(jwt.header.type?.toString(), ENTITY_STATEMENT_TYP)
+
 internal fun parseStatement(serialized: String): EntityStatement {
     val jwt =
         runCatching { SignedJWT.parse(serialized) }
             .getOrElse { trustFail("entity statement does not parse as a JWT") }
-    if (jwt.header.type?.toString() != ENTITY_STATEMENT_TYP) {
+    if (!typIsEntityStatement(jwt)) {
         trustFail("entity statement typ is not $ENTITY_STATEMENT_TYP")
     }
     return EntityStatement(serialized, jwt)
@@ -233,17 +236,8 @@ private fun checkChainShape(
     }
 }
 
+@OptIn(InternalZilathApi::class)
 private fun verifiesWithAny(
     jwt: SignedJWT,
     keys: List<JWK>,
-): Boolean =
-    keys.any { key ->
-        runCatching { jwsVerifierFor(key)?.let(jwt::verify) == true }.getOrDefault(false)
-    }
-
-private fun jwsVerifierFor(key: JWK): JWSVerifier? =
-    when (key.keyType) {
-        KeyType.EC -> ECDSAVerifier(key.toECKey())
-        KeyType.RSA -> RSASSAVerifier(key.toRSAKey())
-        else -> null
-    }
+): Boolean = verifiesWithAnyAcceptableKey(jwt, keys)

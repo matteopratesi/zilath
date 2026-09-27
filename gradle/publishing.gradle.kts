@@ -50,6 +50,12 @@ val moduleAutomaticNames =
         "verifier-spring-boot-starter" to "dev.zilath.verifier.spring",
     )
 
+/**
+ * Dependency groups no published module may carry at runtime. `io.ktor` arrives with the EUDI
+ * SD-JWT library for HTTP helpers Zilath never uses (see verifier-core/build.gradle.kts).
+ */
+val bannedRuntimeGroups = listOf("io.ktor")
+
 /** Where every module stages its artifacts, so one bundle can carry them all. */
 val stagingDir = rootProject.layout.buildDirectory.dir("staging-deploy")
 
@@ -170,6 +176,37 @@ configure(subprojects.filter { it.name in publishedModules }) {
         tasks.named("publishMavenPublicationToStagingRepository") {
             dependsOn(cleanStagingRepository)
         }
+
+        // What a published module drags into its consumers' runtime is part of what we
+        // publish. A dependency declared by a dependency, for code Zilath never runs, still
+        // has to be patched by every integrator and still lights up their scanners: the
+        // fourth internal review found a full ktor client stack arriving that way.
+        val runtimeRoot =
+            configurations.named("runtimeClasspath").flatMap { it.incoming.resolutionResult.rootComponent }
+        val checkPublishedRuntimeClasspath =
+            tasks.register("checkPublishedRuntimeClasspath") {
+                description = "Fails if the runtime classpath of a published module carries a banned group."
+                inputs.property("bannedGroups", bannedRuntimeGroups)
+                doLast {
+                    val seen = mutableSetOf<org.gradle.api.artifacts.result.ResolvedComponentResult>()
+                    val pending = ArrayDeque(listOf(runtimeRoot.get()))
+                    while (pending.isNotEmpty()) {
+                        val component = pending.removeFirst()
+                        if (!seen.add(component)) continue
+                        component.dependencies
+                            .filterIsInstance<org.gradle.api.artifacts.result.ResolvedDependencyResult>()
+                            .forEach { pending.add(it.selected) }
+                    }
+                    val banned =
+                        seen
+                            .mapNotNull { it.moduleVersion }
+                            .filter { module -> bannedRuntimeGroups.any { module.group.startsWith(it) } }
+                    check(banned.isEmpty()) {
+                        "${project.name} would ship ${banned.joinToString()} to its consumers"
+                    }
+                }
+            }
+        tasks.named("check") { dependsOn(checkPublishedRuntimeClasspath) }
 
         extensions.configure<SigningExtension> {
             // Signing is required by Central and irrelevant to everyday development, so the
