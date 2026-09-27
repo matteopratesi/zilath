@@ -112,8 +112,9 @@ it needs from the application is a `StatusListFetcher`, the network access: decl
 `OAuthStatusListChecker` around it. What the checker validates, and what the fetcher must
 enforce on its own — timeouts, response size, redirects, private address ranges — is in
 [SECURITY.md](SECURITY.md) and [docs/privacy-by-design.md](docs/privacy-by-design.md) §5.
-`HttpDocumentFetcher` enforces all of it over the JDK's HTTP client, within the limits
-SECURITY.md states; `HttpFederationFetcher` does the same for a `FederationTrustEvaluator`:
+`HttpDocumentFetcher` enforces all of it over the JDK's sockets and TLS, connecting only
+to the addresses it checked — through no proxy, as SECURITY.md says; `HttpFederationFetcher`
+does the same for a `FederationTrustEvaluator`:
 
 ```kotlin
 @Bean

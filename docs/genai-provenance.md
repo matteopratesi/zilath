@@ -285,3 +285,24 @@ reconstructed here; naming the three is accurate, apportioning them would not be
 - **Verification**: every protection has a test that fails once that protection is removed;
   `clean build` green, with dependency verification.
 - **Funding status**: pre-existing.
+
+### 2026-09-27 — Connecting only to the checked addresses
+
+- **What**: `HttpDocumentFetcher` moved off the JDK's HTTP client onto a minimal HTTP/1.1
+  exchange over the JDK's sockets and TLS, so that the connection goes to an address the check
+  approved and to no other: the name is resolved once, and DNS rebinding has nothing to change.
+  TLS keeps the name for SNI and for the certificate's verification. The reader holds a response
+  to bounded lines, head and body, and refuses what it would have to guess at. `allowLoopback`
+  became `destinations`, whose `LOOPBACK` keeps the demo's trust-all TLS on this machine by the
+  same single lookup. Prompted by the concern the automated review kept, as High, on the
+  previous deliverable's pull request.
+- **Model**: Anthropic Claude Opus 5.5.
+- **Assistance**: the exchange and the response reader, their tests — among them a TLS test
+  against names no resolver knows, which only a pinned connection can pass — one mutation check
+  per protection (twenty-one), and the documentation changes.
+- **Human contribution**: the choice, among three options laid out, of a minimal HTTP/1.1 client
+  on the JDK's sockets over a new dependency and over leaving the window documented, accepting
+  that the JVM's proxy settings are no longer used.
+- **Verification**: every protection has a test that fails once that protection is removed;
+  `clean build` green, with dependency verification.
+- **Funding status**: pre-existing.

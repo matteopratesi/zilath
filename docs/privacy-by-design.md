@@ -265,7 +265,7 @@ Zilath handles the cryptography and the minimisation. It does not handle your ob
 | Nothing is handed out past expiry | `verifier-openid4vp/.../Expiry.kt` |
 | Detail is kept server-side | `verifier-spring-boot-starter/.../OpenId4VpController.kt` |
 | Nonce single use, replay rejected | `verifier-openid4vp/.../OpenId4VpVerificationFlow.kt` |
-| No outbound calls to the project | grep the four library modules for an HTTP client: the one there is, `verifier-core/.../HttpDocumentFetcher.kt`, requests only the URL it is handed. Every network access goes through `FederationFetcher` and `StatusListFetcher`, interfaces you inject — that class, `HttpFederationFetcher` over it, or your own. (The `demo-checkout` app makes HTTP calls of its own too — its federation documents through `HttpFederationFetcher`, and its simulated wallet's to the verifier; it is an example, not a published artifact.) |
+| No outbound calls to the project | grep the four library modules for sockets and HTTP clients: the only connection they open is `HttpDocumentFetcher`'s (`verifier-core/.../PinnedTarget.kt`), to the URL it is handed. Every network access goes through `FederationFetcher` and `StatusListFetcher`, interfaces you inject — that class, `HttpFederationFetcher` over it, or your own. (The `demo-checkout` app makes HTTP calls of its own too — its federation documents through `HttpFederationFetcher`, and its simulated wallet's to the verifier; it is an example, not a published artifact.) |
 
 ## References
 
