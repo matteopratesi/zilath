@@ -280,11 +280,11 @@ fetchers of its own, for the network boundary it used to leave to each applicati
   development, `LOOPBACK` for a federation entirely on this machine — and the connection
   goes to one of those addresses and to no other: the name is resolved once, and DNS
   rebinding has nothing to change. TLS is opened for the name, and the certificate verified
-  against it. The request is one HTTP/1.1 GET: no redirect is followed, a response it would
-  have to guess how to read is refused, and connect time (5 s), the whole fetch with its
-  name lookup (10 s) and response size (1 MiB, refused as it arrives) are bounded, as are
-  the name lookups one fetcher runs at once (16), since a lookup outlives the fetch that
-  gave up on it. A 404 or 410 is `DocumentNotFoundException`, and through
+  against it. The request is one HTTP/1.1 GET of at most 8 KiB: no redirect is followed, a
+  response it would have to guess how to read is refused, and connect time (5 s), the whole
+  fetch with its name lookup (10 s) and response size (1 MiB, refused as it arrives) are
+  bounded, as are the name lookups one fetcher runs at once (16), since a lookup outlives
+  the fetch that gave up on it. A 404 or 410 is `DocumentNotFoundException`, and through
   `HttpFederationFetcher` `FederationDocumentNotFoundException`, which now takes a `cause`.
   The JVM's proxy settings are not used: a deployment that must go through a proxy needs a
   fetcher of its own (SECURITY.md boundary 1). Until now every application wrote its own

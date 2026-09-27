@@ -241,6 +241,14 @@ class HttpDocumentFetcherTest {
     }
 
     @Test
+    fun `a request longer than the bound is refused before anything connects`() {
+        assertThatThrownBy { fetcher().fetch("$base/" + "a".repeat(9 * 1024)) }
+            .isInstanceOf(IOException::class.java)
+            .hasMessage("refused: a request longer than 8192 bytes")
+        assertThat(requested).isEmpty()
+    }
+
+    @Test
     fun `loopback alone refuses a name that resolves anywhere else`() {
         val loopbackOnly = fetcher(destinations = HttpDocumentFetcher.Destinations.LOOPBACK)
         assertThat(loopbackOnly.fetch("$base/document")).isEqualTo("the document")

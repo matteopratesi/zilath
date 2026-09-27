@@ -49,31 +49,46 @@ internal fun pinnedGet(
     connectTimeout: Duration,
     deadline: FetchDeadline,
     maxBodyBytes: Int,
-): PinnedResponse =
-    connect(pinned, tls, connectTimeout, deadline).use { socket ->
+): PinnedResponse {
+    // Built, and bounded, before anything connects.
+    val request = requestFor(pinned.target)
+    return connect(pinned, tls, connectTimeout, deadline).use { socket ->
         socket.getOutputStream().apply {
-            write(requestFor(pinned.target))
+            write(request)
             flush()
         }
         Http1ResponseReader(BufferedInputStream(DeadlineInput(socket, deadline)), maxBodyBytes).read()
     }
+}
 
-/** The request: a GET that asks for the body as it is, and for the connection to close after. */
+/**
+ * The request: a GET that asks for the body as it is, and for the connection to close after.
+ *
+ * At most [MAX_REQUEST_BYTES], and every socket's send buffer holds [SEND_BUFFER_BYTES]: the
+ * request is written into the buffer whole, so writing it cannot block on a peer that stops
+ * reading. A write, unlike a read, has no timeout to bound it.
+ */
 private fun requestFor(target: URI): ByteArray {
-    val requestTarget = (target.rawPath?.ifEmpty { null } ?: "/") + (target.rawQuery?.let { "?$it" } ?: "")
+    // java.net.URI accepts non-ASCII characters in a path or a query; the request line
+    // carries them percent-encoded as UTF-8, as the URI's ASCII form writes them.
+    val ascii = URI(target.toASCIIString())
+    val requestTarget = (ascii.rawPath?.ifEmpty { null } ?: "/") + (ascii.rawQuery?.let { "?$it" } ?: "")
     val host = if (target.port == -1) target.host else "${target.host}:${target.port}"
     // java.net.URI refuses whitespace and control characters, so none can reach the request
     // line; the check keeps that true whatever produced the URI.
     if ("$requestTarget$host".any { it.isWhitespace() || it.isISOControl() }) {
         throw IOException("refused: the URL cannot be written into a request")
     }
-    return (
-        "GET $requestTarget HTTP/1.1\r\n" +
-            "Host: $host\r\n" +
-            "Accept-Encoding: identity\r\n" +
-            "Connection: close\r\n" +
-            "\r\n"
-    ).toByteArray(Charsets.US_ASCII)
+    val request =
+        (
+            "GET $requestTarget HTTP/1.1\r\n" +
+                "Host: $host\r\n" +
+                "Accept-Encoding: identity\r\n" +
+                "Connection: close\r\n" +
+                "\r\n"
+        ).toByteArray(Charsets.US_ASCII)
+    if (request.size > MAX_REQUEST_BYTES) throw IOException("refused: a request longer than $MAX_REQUEST_BYTES bytes")
+    return request
 }
 
 /**
@@ -100,14 +115,18 @@ private fun connect(
                 .coerceIn(1L, Int.MAX_VALUE.toLong())
                 .toInt()
         // Proxy.NO_PROXY: a SOCKS proxy the JVM is configured with would otherwise carry it.
-        val socket = Socket(Proxy.NO_PROXY)
+        val socket = Socket(Proxy.NO_PROXY).apply { sendBufferSize = SEND_BUFFER_BYTES }
+        var opened: Socket? = null
         try {
             socket.connect(InetSocketAddress(address, port), timeout)
-            return if (target.scheme == "https") secured(socket, target, port, tls, deadline) else socket
+            opened = if (target.scheme == "https") secured(socket, target, port, tls, deadline) else socket
         } catch (refused: IOException) {
-            socket.close()
             failure?.addSuppressed(refused) ?: run { failure = refused }
+        } finally {
+            // Closed on every path that does not hand it over, an unexpected exception included.
+            if (opened == null) socket.close()
         }
+        if (opened != null) return opened
     }
     throw failure ?: IOException("no address to connect to")
 }
@@ -120,10 +139,21 @@ private fun secured(
     tls: SSLSocketFactory,
     deadline: FetchDeadline,
 ): Socket {
-    val secure = tls.createSocket(plain, target.host.removeSurrounding("[", "]"), port, true) as SSLSocket
-    secure.sslParameters = secure.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
-    secure.soTimeout = deadline.remainingMillis()
-    secure.startHandshake()
+    val created = tls.createSocket(plain, target.host.removeSurrounding("[", "]"), port, true)
+    val secure =
+        created as? SSLSocket ?: run {
+            created.close()
+            throw IOException("the TLS socket factory returned a socket without TLS")
+        }
+    var ready = false
+    try {
+        secure.sslParameters = secure.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
+        secure.soTimeout = deadline.remainingMillis()
+        secure.startHandshake()
+        ready = true
+    } finally {
+        if (!ready) secure.close()
+    }
     return secure
 }
 
@@ -154,3 +184,9 @@ private class DeadlineInput(
 
 private const val HTTP_PORT = 80
 private const val HTTPS_PORT = 443
+
+/** Far more than a federation or status list URL needs, and far less than [SEND_BUFFER_BYTES]. */
+private const val MAX_REQUEST_BYTES = 8 * 1024
+
+/** Room for a whole request, TLS record overhead included, in the socket's send buffer. */
+private const val SEND_BUFFER_BYTES = 32 * 1024

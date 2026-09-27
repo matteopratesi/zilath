@@ -17,15 +17,26 @@
 package dev.zilath.verifier.core
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
+import java.net.Socket
+import java.security.SecureRandom
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.KeyManager
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLContextSpi
+import javax.net.ssl.SSLEngine
+import javax.net.ssl.SSLServerSocketFactory
+import javax.net.ssl.SSLSessionContext
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.TrustManager
 
 /** What goes on the wire: one GET, for the URL's path and query, and nothing to negotiate. */
 class PinnedRequestTest {
@@ -84,6 +95,101 @@ class PinnedRequestTest {
     }
 
     @Test
+    fun `non-ASCII in the path and query goes out percent-encoded as UTF-8`() {
+        val request = nextRequest()
+        assertThat(fetcher(LOOPBACK).fetch("http://localhost:$port/café?q=è")).isEqualTo("ok")
+        assertThat(request.get(WAIT_SECONDS, TimeUnit.SECONDS)).startsWith("GET /caf%C3%A9?q=%C3%A8 HTTP/1.1\r\n")
+    }
+
+    @Test
+    fun `a socket is closed however opening TLS on it fails`() {
+        val closedByClient =
+            CompletableFuture.supplyAsync {
+                server.accept().use { connection ->
+                    connection.soTimeout = WAIT_SECONDS.toInt() * 1000
+                    connection.getInputStream().read()
+                }
+            }
+        val failingTls =
+            HttpDocumentFetcher(
+                Duration.ofSeconds(2),
+                Duration.ofSeconds(5),
+                HttpDocumentFetcher.DEFAULT_MAX_RESPONSE_BYTES,
+                destinations = HttpDocumentFetcher.Destinations.LOOPBACK,
+                sslContext = FailingTlsContext(),
+                resolve = { listOf(InetAddress.getByName(LOOPBACK)) },
+            )
+        assertThatThrownBy { failingTls.fetch("https://localhost:$port/document") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("the factory failed")
+        // End of stream: the client closed the connection it could not secure.
+        assertThat(closedByClient.get(WAIT_SECONDS * 2, TimeUnit.SECONDS)).isEqualTo(-1)
+    }
+
+    /** A TLS context whose socket factory fails with something other than an IOException. */
+    private class FailingTlsContext : SSLContext(FailingSpi(), null, "TLS")
+
+    private class FailingSpi : SSLContextSpi() {
+        override fun engineInit(
+            keys: Array<out KeyManager>?,
+            trust: Array<out TrustManager>?,
+            random: SecureRandom?,
+        ) = Unit
+
+        override fun engineGetSocketFactory(): SSLSocketFactory = FailingFactory()
+
+        override fun engineGetServerSocketFactory(): SSLServerSocketFactory = unused()
+
+        override fun engineCreateSSLEngine(): SSLEngine = unused()
+
+        override fun engineCreateSSLEngine(
+            host: String?,
+            port: Int,
+        ): SSLEngine = unused()
+
+        override fun engineGetServerSessionContext(): SSLSessionContext = unused()
+
+        override fun engineGetClientSessionContext(): SSLSessionContext = unused()
+    }
+
+    private class FailingFactory : SSLSocketFactory() {
+        override fun createSocket(
+            socket: Socket?,
+            host: String?,
+            port: Int,
+            autoClose: Boolean,
+        ): Socket = error("the factory failed")
+
+        override fun getDefaultCipherSuites(): Array<String> = unused()
+
+        override fun getSupportedCipherSuites(): Array<String> = unused()
+
+        override fun createSocket(
+            host: String?,
+            port: Int,
+        ): Socket = unused()
+
+        override fun createSocket(
+            host: String?,
+            port: Int,
+            localHost: InetAddress?,
+            localPort: Int,
+        ): Socket = unused()
+
+        override fun createSocket(
+            host: InetAddress?,
+            port: Int,
+        ): Socket = unused()
+
+        override fun createSocket(
+            address: InetAddress?,
+            port: Int,
+            localAddress: InetAddress?,
+            localPort: Int,
+        ): Socket = unused()
+    }
+
+    @Test
     fun `an address that does not accept gives way to the next one checked`() {
         val request = nextRequest()
         // Nothing listens on the IPv6 loopback at this port: the connection fails there first.
@@ -94,5 +200,7 @@ class PinnedRequestTest {
     private companion object {
         const val LOOPBACK = "127.0.0.1"
         const val WAIT_SECONDS = 5L
+
+        fun unused(): Nothing = throw UnsupportedOperationException("not used by the fetcher")
     }
 }

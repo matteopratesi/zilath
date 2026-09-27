@@ -50,10 +50,10 @@ import javax.net.ssl.SSLSocketFactory
  * connection (DNS rebinding) has nothing to change. Over https the TLS session is still opened
  * for the name — its SNI, and the certificate verified against it.
  *
- * The request is one HTTP/1.1 GET, and no redirect is followed: a redirect is a failure. The
- * connection must be made within [connectTimeout], and the whole fetch — the name lookup,
- * the connection, the response — must complete within [totalTimeout]; a body longer than
- * [maxResponseBytes] is refused as it arrives, before it is held whole. Only a 200 is a
+ * The request is one HTTP/1.1 GET of at most 8 KiB, and no redirect is followed: a redirect is
+ * a failure. The connection must be made within [connectTimeout], and the whole fetch — the
+ * name lookup, the connection, the response — must complete within [totalTimeout]; a body
+ * longer than [maxResponseBytes] is refused as it arrives, before it is held whole. Only a 200 is a
  * document: 404 and 410 throw [DocumentNotFoundException], the server's answer that there is
  * no such document, and anything else throws an [IOException], as does a response this
  * fetcher would have to guess how to read.

@@ -299,7 +299,9 @@ reconstructed here; naming the three is accurate, apportioning them would not be
 - **Model**: Anthropic Claude Opus 5.5.
 - **Assistance**: the exchange and the response reader, their tests — among them a TLS test
   against names no resolver knows, which only a pinned connection can pass — one mutation check
-  per protection (twenty-one), and the documentation changes.
+  per protection (twenty-four), the documentation changes, and the fixes of the automated
+  review's findings: non-ASCII paths percent-encoded, the request bounded so that writing it
+  cannot block, and a socket closed however opening TLS on it fails.
 - **Human contribution**: the choice, among three options laid out, of a minimal HTTP/1.1 client
   on the JDK's sockets over a new dependency and over leaving the window documented, accepting
   that the JVM's proxy settings are no longer used.
