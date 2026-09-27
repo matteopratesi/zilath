@@ -54,14 +54,23 @@ import java.time.Clock
  */
 @SpringBootApplication
 class ConformanceDemoApp {
+    /** The demo's example status checker: it cannot check revocation, and says so. */
     @Bean
     fun statusChecker(): StatusChecker =
         StatusChecker { _, _ ->
-            // Status list checks are exercised in unit tests; the conformance PID carries
-            // no status reference, so a static VALID keeps the demo deterministic.
-            CredentialStatus.VALID
+            // The verifier asks only about a credential that carries a status reference — the
+            // conformance PID and the simulated card carry none — so this answers exactly for
+            // the credentials that could be revoked, and must not call them valid. A constant
+            // VALID here was the shortest way to switch revocation off in a copy of this code.
+            // A real deployment declares a StatusListFetcher and the starter wires
+            // OAuthStatusListChecker to it.
+            CredentialStatus.UNKNOWN
         }
 
+    /**
+     * The federation trust evaluator: against the configured anchor keys, or, with
+     * `trust-anchor-tofu`, against keys taken from the conformance tool's local anchor.
+     */
     @Bean
     fun trustEvaluator(
         @Value("\${zilath.demo.trust-anchor-id}") anchorId: String,
@@ -120,9 +129,14 @@ class ConformanceDemoApp {
         return TofuFederationTrustEvaluator(anchorId, fetcher, clock)
     }
 
+    /** The clock of every check the demo makes. */
     @Bean
     fun demoClock(): Clock = Clock.systemUTC()
 
+    /**
+     * The demo relying party: its signing key from the PEM when one is given, the endpoints
+     * under the public base URL, and a federation identity of its own.
+     */
     @Bean
     @Suppress("LongParameterList") // Spring bean wiring: every parameter is an injected dependency
     fun relyingPartyConfiguration(
@@ -162,6 +176,7 @@ class ConformanceDemoApp {
                         federationKey = ECKeyGenerator(Curve.P_256).keyID("demo-rp-fed").generate(),
                         authorityHints = listOf(anchorId),
                         organizationName = "Zilath demo checkout",
+                        contacts = listOf("demo@zilath.example"),
                     ),
             )
         // The demo is its own federation: it travels with its self-signed entity
@@ -173,6 +188,7 @@ class ConformanceDemoApp {
         )
     }
 
+    /** The flow, on the in-memory store. */
     @Bean
     fun verificationFlow(
         config: RelyingPartyConfiguration,
@@ -180,6 +196,7 @@ class ConformanceDemoApp {
         clock: Clock,
     ): VerificationFlow = OpenId4VpVerificationFlow.withInMemoryStore(config, verifier, clock)
 
+    /** The signer of the demo's verification receipts. */
     @Bean
     fun verificationReceipts(
         config: RelyingPartyConfiguration,
@@ -260,6 +277,7 @@ internal fun parseJwks(document: String): List<JWK> =
             .keys
     }.getOrElse { listOf(JWK.parse(document)) }
 
+/** Starts the demo application. */
 @Suppress("SpreadOperator") // canonical Spring Boot Kotlin entry point
 fun main(args: Array<String>) {
     runApplication<ConformanceDemoApp>(*args)

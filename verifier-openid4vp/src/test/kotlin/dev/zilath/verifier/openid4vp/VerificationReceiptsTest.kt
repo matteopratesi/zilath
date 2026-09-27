@@ -47,7 +47,7 @@ class VerificationReceiptsTest {
 
     @Test
     fun `a receipt proves the outcome without carrying any claim value`() {
-        val receipt = receipts.issue(TransactionId("tx-1"), request, verified = true)
+        val receipt = receipts.issue(TransactionId("tx-1"), request, ReceiptOutcome.VERIFIED_ENTITLED)
         val jwt = SignedJWT.parse(receipt)
         assertThat(jwt.verify(ECDSAVerifier(signingKey.toPublicJWK()))).isTrue()
         assertThat(jwt.header.type.toString()).isEqualTo("zilath-receipt+jwt")
@@ -69,15 +69,24 @@ class VerificationReceiptsTest {
 
     @Test
     fun `a rejected outcome is recorded as not entitled`() {
-        val jwt = SignedJWT.parse(receipts.issue(TransactionId("tx-2"), request, verified = false))
+        val jwt = SignedJWT.parse(receipts.issue(TransactionId("tx-2"), request, ReceiptOutcome.REJECTED))
         assertThat(jwt.jwtClaimsSet.getStringClaim("outcome")).isEqualTo("rejected")
         assertThat(jwt.jwtClaimsSet.getBooleanClaim("entitled")).isFalse()
     }
 
     @Test
+    fun `a verified card that grants nothing is recorded as verified and not entitled`() {
+        // entitled was a copy of outcome: a card that verified but carried no entitlement
+        // was archived, signed, as one.
+        val jwt = SignedJWT.parse(receipts.issue(TransactionId("tx-3"), request, ReceiptOutcome.VERIFIED_NOT_ENTITLED))
+        assertThat(jwt.jwtClaimsSet.getStringClaim("outcome")).isEqualTo("verified")
+        assertThat(jwt.jwtClaimsSet.getBooleanClaim("entitled")).isFalse()
+    }
+
+    @Test
     fun `the request hash is stable for the same query`() {
-        val first = SignedJWT.parse(receipts.issue(TransactionId("a"), request, verified = true))
-        val second = SignedJWT.parse(receipts.issue(TransactionId("b"), request, verified = true))
+        val first = SignedJWT.parse(receipts.issue(TransactionId("a"), request, ReceiptOutcome.VERIFIED_ENTITLED))
+        val second = SignedJWT.parse(receipts.issue(TransactionId("b"), request, ReceiptOutcome.VERIFIED_ENTITLED))
         assertThat(first.jwtClaimsSet.getStringClaim("request_hash"))
             .isEqualTo(second.jwtClaimsSet.getStringClaim("request_hash"))
     }

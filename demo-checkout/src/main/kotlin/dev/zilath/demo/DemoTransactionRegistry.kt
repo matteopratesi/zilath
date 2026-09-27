@@ -16,8 +16,10 @@
  */
 package dev.zilath.demo
 
+import dev.zilath.verifier.openid4vp.PollToken
 import dev.zilath.verifier.openid4vp.PresentationRequest
 import dev.zilath.verifier.openid4vp.StartedTransaction
+import java.security.MessageDigest
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -37,21 +39,42 @@ internal class DemoTransactionRegistry(
         val transaction: StartedTransaction,
         val request: PresentationRequest,
         val createdAt: Instant,
+        /** The secret of the browser session that started the transaction. */
+        private val sessionSecret: String,
     ) {
         val receipt: AtomicReference<String?> = AtomicReference(null)
+
+        /**
+         * The token that reads the outcome: the start token, replaced by the one the flow
+         * issues when a same-device user-agent comes back with its response code.
+         */
+        val readToken: AtomicReference<PollToken> = AtomicReference(transaction.pollToken)
+
+        /** Whether [secret] is this transaction's session secret, compared in constant time. */
+        fun ownedBy(secret: String?): Boolean =
+            secret != null && MessageDigest.isEqual(sessionSecret.toByteArray(), secret.toByteArray())
     }
 
     private val entries = ConcurrentHashMap<String, Entry>()
 
+    /** Registers [transaction], started for [request] by the browser holding [sessionSecret]. */
     fun register(
         transaction: StartedTransaction,
         request: PresentationRequest,
+        sessionSecret: String,
     ) {
         sweep()
-        entries[transaction.id.value] = Entry(transaction, request, clock.instant())
+        entries[transaction.id.value] = Entry(transaction, request, clock.instant(), sessionSecret)
     }
 
+    /** The entry for [txId], whoever started it: for telling an unknown transaction from another browser's. */
     fun get(txId: String): Entry? = entries[txId]
+
+    /** The entry for [txId] if the browser holding [sessionSecret] started it; null otherwise. */
+    fun ownedEntry(
+        txId: String,
+        sessionSecret: String?,
+    ): Entry? = entries[txId]?.takeIf { it.ownedBy(sessionSecret) }
 
     /**
      * Issues the receipt at most once per transaction; later calls return the same JWS.

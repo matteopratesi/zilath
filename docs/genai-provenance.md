@@ -216,3 +216,52 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   twelve artifacts. `clean build` green, 174 tests.
 - **Funding status**: pre-existing.
 
+### 2026-09-04 → 2026-09-24 — Fourth internal review
+
+- **What**: an adversarial review of 0.3.0 (commit `4a90ef0`): nineteen lenses, each with its
+  own mandate and free to execute probes, every finding put to an adversarial judge, and the
+  critical and high ones reproduced by an independent probe. 83 findings confirmed — 64 on an
+  execution with its log, 19 on reasoning — and 4 refuted. For the first time the production
+  IT-Wallet federation documents were fetched, read-only, and replayed unmodified. The report is
+  the maintainer's working notes and is not published.
+- **Model**: Anthropic Claude Fable 5.1 (search, deduplication and the first seven chunks of
+  verification), Claude Opus 5.5 (the remaining verification chunks, the completeness critic and
+  the synthesis).
+- **Assistance**: the whole review: the probes, the judgements, the reproductions, the
+  synthesis.
+- **Human contribution**: commissioning a fourth review of code already reviewed three times,
+  and against real documents rather than fixtures; the decision to finish the run with the
+  second model once one chunk, judged again blind with the same prompt, gave the same verdicts
+  and severities four times out of four.
+- **Verification**: every confirmed finding either rests on an execution with its log or has
+  judge and reproducer agreeing; the report's opening was re-read against the data before it was
+  closed, which removed three sentences the data did not support.
+- **Funding status**: pre-existing.
+
+### 2026-09-25 → 2026-09-27 — The fourth review's fixes
+
+- **What**: the fixes of the review's findings in three stacked pull requests — #39 shared
+  rules, `verifier-core` and the build; #40 `verifier-trust-itwallet`; #41 `verifier-openid4vp`,
+  the Spring starter, the demo and the documentation — with `CHANGELOG.md`. Among them: a card
+  shaped as IT-Wallet 1.4.6 writes it now verifies against the production federation's
+  documents, re-signed with substitute keys under their real `kid`s; the demo's transactions are
+  bound to the browser that started them; the receipt records the caller's verdict; the Spring
+  Security guide is tested; the relying party publishes its trust marks; the documentation says
+  what the code does.
+- **Model**: Anthropic Claude Opus 5.5, as a coordinator and as sub-agents working in parallel,
+  each on one module, or on the documentation, in its own worktree.
+- **Assistance**: the fixes and their tests, the mutation checks, the merges between the stacked
+  branches, the coordinator's re-run of each commit's tests and of at least one of its mutations
+  in a separate checkout, a read-only pre-review of #41 by a sub-agent ahead of the automated
+  review, the fixes of the automated review's findings, and the KDoc of every non-private
+  function the review touched that had none.
+- **Human contribution**: the scope — every finding, LOW and INFO included; the rule that work
+  runs in parallel only where it cannot conflict; the decision, midway, to stop at the issues
+  already started and put the demo and the documentation on hold, and the later one to close
+  every remaining finding before the merge; one pull request per area, to stay under the
+  automated reviewer's file limit, each merged only once that review found nothing more.
+- **Verification**: every behaviour fix has a test that fails against the previous code; the
+  trust decision on the production documents, untouched, has a test of its own; `clean build`
+  green on each pull request, with dependency verification, CI green, and the automated review
+  repeated until the head drew no actionable comment.
+- **Funding status**: pre-existing.

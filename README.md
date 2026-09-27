@@ -6,9 +6,11 @@ A Kotlin/JVM library that lets any JVM application act as an **OpenID4VP relying
 for European digital identity wallets: request a credential from the user's wallet
 (cross-device QR or same-device link), receive and cryptographically verify it
 (SD-JWT VC), and get back a minimal yes/no outcome — **without ever storing the
-credential**. What a verification leaves behind is the transaction's own bookkeeping
-(nonce, outcome, expiry) and the signed receipt: never the presented document, never a
-claim value.
+credential**. The presented document is never kept. The claims a verification hands over
+wait in the transaction store for the application to read them: no read returns them past
+the transaction's time to live (five minutes by default), and the default store drops them
+within half a minute of it. The signed receipt a venue may keep carries no claim value
+([docs/privacy-by-design.md](docs/privacy-by-design.md), §3).
 
 Wallet behavior is a pluggable **profile**: the Italian **IT-Wallet** profile is the
 default and the most complete (signed JAR, encrypted `direct_post.jwt`, OpenID
@@ -28,6 +30,12 @@ Born for accessibility rights: letting a person with a disability prove an entit
 > PagoPA conformance tool (see [docs/conformance](docs/conformance/)), and the API is
 > not frozen yet.
 > Target spec: IT-Wallet v1.4.6 — see [docs/spec-version.md](docs/spec-version.md).
+>
+> **0.3.0 cannot verify a genuine European Disability Card in the production IT-Wallet
+> configuration.** The code on `main`, not released yet, verifies a card shaped as
+> IT-Wallet 1.4.6 writes it against the production federation's own documents, in a test;
+> no card actually issued has been through it. What that test shows and what it does not:
+> [SECURITY.md](SECURITY.md#production-readiness).
 >
 > What this library does with the data it touches, what it keeps and what it cannot
 > promise: [docs/privacy-by-design.md](docs/privacy-by-design.md).
@@ -66,6 +74,90 @@ Coming from **0.2.0**: `Verified.claims` no longer carries the issuer envelope. 
 so passing them on would let anything downstream link two verifications of the same person.
 Code that read `iat` or `exp` from the claims must stop.
 
+The rest of this section describes `main`, which is ahead of 0.3.0 and breaks its API in
+places: the changelog's *Unreleased* section lists every difference.
+
+### Reading the outcome
+
+`start()` returns a `StartedTransaction`. Its id travels in the QR code, in `state` and in
+the request and response URIs, so it is **public**: anyone who sees the checkout's screen,
+or the link a same-device user was sent, has it. It lets a wallet post a response; it never
+reads an outcome. `awaitOutcome(txId, pollToken)` does, with the `PollToken` that `start()`
+returned to the checkout alone or, same-device, the one `consumeResponseCode` hands the
+user-agent that came back with the response code. Keep the token in a server-side session
+or an HttpOnly cookie, never in a URL or a log.
+
+`FlowOutcome.Verified` means that the issuer is trusted — under a federation, for the
+credential type presented — and that type is the one requested; that the signature, the
+key binding and the validity window check out; that the credential is not revoked, when it
+carries a status reference; and that the claims the query asked for are present (all of
+them, or one combination its `claim_sets` allows), each equal to one of its `values` when
+the query names any. A presentation that falls short is rejected, `QUERY_NOT_SATISFIED`.
+Without `values`, judging the value is the application's job: a card disclosing
+`constant_attendance_allowance: false` is verified, and is not an entitlement — the demo
+checks the value itself.
+
+`Verified.claims` holds the requested claims that are present, plus `iss` and `vct`; for a
+query without `claims`, what the holder disclosed, plus `iss` and `vct`. Nothing else: not
+what a wallet disclosed beyond the request, not an issuer's plaintext claim nobody asked for,
+never the issuer envelope (`iat`, `exp`, `cnf`, `status` and the rest).
+
+### Revocation
+
+A credential that carries a `status` reference is checked by the application's
+`StatusChecker`; one without it is not revocable, and the checker is never called for it.
+The library's checker for Token Status Lists is `OAuthStatusListChecker`, and the only piece
+it needs from the application is a `StatusListFetcher`, the network access: declare a
+`StatusListFetcher` bean and no `StatusChecker`, and the starter configures an
+`OAuthStatusListChecker` around it. What the checker validates, and what the fetcher must
+enforce on its own — timeouts, response size, redirects, private address ranges — is in
+[SECURITY.md](SECURITY.md) and [docs/privacy-by-design.md](docs/privacy-by-design.md) §5.
+
+**A `StatusChecker` that always answers `VALID` switches revocation off.** It is only ever
+called for a credential that carries a status reference, so a constant `VALID` is the wrong
+answer for every revoked one. The demo's example checker answers `UNKNOWN` instead, which
+rejects every credential that carries a status reference.
+
+### With Spring Security
+
+With `spring-boot-starter-security` on the classpath, the default configuration asks every
+request for a login and every POST for a CSRF token. A wallet has neither, and every holder
+would be turned away. Give the wallet-facing paths a chain of their own, ahead of the
+application's:
+
+```kotlin
+@Bean
+@Order(1)
+fun walletEndpoints(http: HttpSecurity): SecurityFilterChain =
+    http
+        .securityMatcher("/openid4vp/request/**", "/openid4vp/response/**", "/.well-known/openid-federation")
+        .authorizeHttpRequests { it.anyRequest().permitAll() }
+        .csrf { it.ignoringRequestMatchers("/openid4vp/request/**", "/openid4vp/response/**") }
+        .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+        .build()
+```
+
+Why this shape:
+
+- The wallet holds no session and no CSRF token. Its requests are authorised by the
+  transaction id, the nonce and the encrypted response, not by an ambient credential such as
+  a session cookie, which is what CSRF protection guards; so these paths go without it, and
+  no session is created for them.
+- **Never `csrf.disable()` or `permitAll()` on the whole application** to make the wallet
+  work: that strips the protection from every page that does rely on a session. Declaring
+  a `SecurityFilterChain` bean also replaces Spring Boot's default one, so the rest of the
+  application needs a chain of its own, at a later order.
+- `securityMatcher` keeps Spring Security's default response headers on these paths, where
+  `web.ignoring()` would take the paths out of Spring Security altogether, and the
+  `Cache-Control: no-store` the endpoints set stays.
+- The request object is fetched by GET or by POST: the starter announces
+  `request_uri_method=post`, so a wallet may POST to `/openid4vp/request/{txId}`, and that
+  path is exempt from CSRF as the response path is.
+- `/.well-known/openid-federation` is the relying party's entity configuration, which the
+  starter serves when `zilath.openid4vp.federation.entity-id` is set (and refuses to start
+  if the relying party configuration then has no federation identity). Federations and
+  wallets read it anonymously.
+
 ## Build
 
 Requires JDK 21 (a Gradle toolchain will pick it up).
@@ -102,12 +194,14 @@ from that same shell. The script checks this for you before doing anything else.
    ./gradlew :demo-checkout:bootRun
    ```
 
-3. Open <http://localhost:8080/demo>, click "Ho diritto al biglietto accompagnatore" and
-   copy the transaction id shown on the QR page.
-4. Let the test wallet present the PID (transactions live 5 minutes, so use a fresh id):
+3. Open <http://localhost:8080/demo> and click "Ho diritto al biglietto accompagnatore". The
+   QR page shows, under the QR, the command for the test wallet with the QR's authorize URL
+   filled in: a wallet starts from that URL, and the transaction id alone opens nothing on
+   the demo pages to anyone but the browser that started the purchase.
+4. Let the test wallet present the PID (transactions live 5 minutes, so use a fresh page):
 
    ```sh
-   ./scripts/run-demo-wallet.sh <transactionId>
+   ./scripts/run-demo-wallet.sh '<authorize URL>'
    ```
 
    The script runs only the conformance tool's happy-flow tests, and there is a reason:
@@ -119,35 +213,55 @@ from that same shell. The script checks this for you before doing anything else.
 
    Some conformance assertions fail even in the happy flow: they are the known gaps in
    [docs/note-divergenze.md](docs/note-divergenze.md), not regressions. What decides
-   whether the presentation went through is the transaction status, which the script
-   reports at the end.
+   whether the presentation went through is the transaction itself: the QR page in the
+   browser that started it moves on to the ticket once the presentation is verified.
 
 5. The page turns into a nominative companion ticket; the "ricevuta di verifica" link is
-   the signed receipt a venue would keep — outcome and timestamp, never a document.
+   the signed receipt a venue would keep — outcome, the venue's entitlement verdict and the
+   time, never a document or a claim value. The demo signs it from the ticket page, once its
+   entitlement rule has been applied.
+
+   The demo pages answer only the browser that started the transaction, which holds its
+   session cookie: open the ticket and the receipt there.
 
 ### Simulated CED mode
 
 The same checkout can ask for a **simulated European Disability Card** instead of the PID —
 the ticket then unlocks on the *entitlement*, not on identity. The real CED has been a
 production IT-Wallet credential on app IO since December 2024: configuration
-`dc_sd_jwt_EuropeanDisabilityCard`, whose issuer metadata advertises
-`vct: https://ta.wallet.ipzs.it/vct/v1.0.0/europeandisabilitycard` (verified against the
-production entity statement on 2026-08-25; the same URL serves the credential type metadata —
-newer issuer versions may adopt the spec's `urn:eudi:<type>:it:1` vct convention instead).
-What does not exist yet is production verification by private relying parties. The simulation therefore mirrors the real
-claim names (`given_name`, `family_name`, `constant_attendance_allowance`, `expiry_date`) under
-an openly fake vct and federation — it never impersonates the real issuer — and discloses only
-that minimized subset (never portrait, birth date or document number). Note the semantic limit
-of the real claim: `constant_attendance_allowance` covers the attendance allowance, not every
-card printed with the companion "A".
+`dc_sd_jwt_EuropeanDisabilityCard` of the issuer `https://eaa.wallet.ipzs.it/1-0`, whose
+metadata advertises `vct: https://ta.wallet.ipzs.it/vct/v1.0.0/europeandisabilitycard`
+(verified against the production entity statement on 2026-08-25, and present in the one
+served on 2026-09-24 that the tests replay; the same URL serves the credential type
+metadata — newer issuer versions may adopt the spec's `urn:eudi:<type>:it:1` vct convention
+instead, and since the vct is compared exactly, `vct_values` must name the one the cards
+carry).
+
+Two things stand between that card and a private relying party. Production verification by
+private relying parties does not exist yet. And the library was not ready for it either:
+**0.3.0 cannot verify any genuine card of that issuer**, even once verification is allowed
+— the production federation's trust chain ended untrusted, and past that a status list
+token in the IT-Wallet form was refused. The code on `main`, not released yet, verifies a
+card shaped as IT-Wallet 1.4.6 writes it against the production federation's documents, in
+a test with a synthetic card; but the issuer advertises status assertion and attestation
+endpoints rather than a status list, and a card whose status carries only an assertion or
+an attestation is still rejected. The details, and what else the test does not show, are
+in [SECURITY.md](SECURITY.md#production-readiness).
+
+The simulation therefore mirrors the real claim names (`given_name`, `family_name`,
+`constant_attendance_allowance`, `expiry_date`) under an openly fake vct and federation — it
+never impersonates the real issuer — and discloses only that minimized subset (never
+portrait, birth date or document number). Note the semantic limit of the real claim:
+`constant_attendance_allowance` covers the attendance allowance, not every card printed with
+the companion "A".
 
 ```sh
 ./scripts/run-ced-wallet.sh init
 ZILATH_TRUST_ANCHOR_ID=https://anchor.ced-sim.zilath.invalid \
 ZILATH_TRUST_ANCHOR_JWKS_PATH=$PWD/demo-keys/ced-sim/anchor-jwks.json \
 ZILATH_DEMO_CREDENTIAL_MODE=ced-sim ./gradlew :demo-checkout:bootRun
-# then, with the transaction id from the QR page:
-./scripts/run-ced-wallet.sh <transactionId>
+# then, with the command the QR page shows:
+./scripts/run-ced-wallet.sh '<authorize URL>'
 ```
 
 For the full conformance run against this RP, see [docs/conformance](docs/conformance/).

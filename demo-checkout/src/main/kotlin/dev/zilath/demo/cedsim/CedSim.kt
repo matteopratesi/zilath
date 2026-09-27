@@ -75,6 +75,7 @@ object CedSim {
         val holder: ECKey,
     )
 
+    /** Fresh keys for the whole simulated federation. */
     fun generateKeys(): Keys =
         Keys(
             anchor = ECKeyGenerator(Curve.P_256).keyID("ced-sim-anchor").generate(),
@@ -83,6 +84,7 @@ object CedSim {
             holder = ECKeyGenerator(Curve.P_256).keyID("ced-sim-holder").generate(),
         )
 
+    /** Writes [keys] to [directory], with the anchor's public JWK Set the app is started with. */
     fun writeKeys(
         directory: Path,
         keys: Keys,
@@ -100,6 +102,7 @@ object CedSim {
         Files.writeString(directory.resolve("anchor-jwks.json"), anchorJwks)
     }
 
+    /** Reads back the keys [writeKeys] wrote to [directory]. */
     fun readKeys(directory: Path): Keys {
         val bundle = JSONObjectUtils.parse(Files.readString(directory.resolve("ced-sim-keys.json")))
 

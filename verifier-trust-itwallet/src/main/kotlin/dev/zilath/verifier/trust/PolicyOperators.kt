@@ -162,11 +162,13 @@ internal fun requireArrayIfPresent(
     }
 }
 
+/** The values of both, as lists, without repeats: how `add` and `superset_of` merge down a chain. */
 internal fun unionOf(
     superior: Any?,
     subordinate: Any?,
 ): List<Any?> = (asList(superior) + asList(subordinate)).distinct()
 
+/** [value] as a list: empty for null, itself for a list, a list of one otherwise. */
 internal fun asList(value: Any?): List<Any?> =
     when (value) {
         null -> emptyList()

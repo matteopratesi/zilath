@@ -31,6 +31,10 @@ internal fun providedChainOf(
     return ProvidedChain(statements.first(), subordinateStatementsOf(statements, expectedIssuer, rules.anchor))
 }
 
+/**
+ * Parses [chain], bounded before anything is parsed: at most [ChainRules.maxChainLength]
+ * statements, not counting the anchor's own configuration that may close it.
+ */
 internal fun parseChain(
     chain: List<String>,
     rules: ChainRules,

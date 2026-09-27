@@ -38,6 +38,10 @@ internal class SdJwtRejection(
     val detail: String?,
 ) : RuntimeException(detail ?: reason.name)
 
+/**
+ * Ends a verification with [reason]: `verify` returns the [SdJwtRejection] as a rejection,
+ * [detail] one of its fixed phrases.
+ */
 internal fun reject(
     reason: RejectionReason,
     detail: String? = null,
@@ -67,6 +71,10 @@ internal fun parseIssuerJwt(compact: String): SignedJWT {
         .getOrElse { reject(RejectionReason.MALFORMED, "issuer JWT does not parse") }
 }
 
+/**
+ * What the [TrustEvaluator] is asked about the issuer of [issuerJwt]: its `iss`, and the
+ * header's `kid`, `x5c` and `trust_chain` — all read before any signature is checked.
+ */
 internal fun trustInputOf(issuerJwt: SignedJWT): IssuerTrustInput =
     IssuerTrustInput(
         issuer = runCatching { issuerJwt.jwtClaimsSet.issuer }.getOrNull(),

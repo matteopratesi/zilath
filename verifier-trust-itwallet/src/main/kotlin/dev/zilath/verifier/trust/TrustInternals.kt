@@ -52,6 +52,10 @@ internal class FederationUnreachable(
     message: String,
 ) : TrustFailure(message)
 
+/**
+ * Ends a trust evaluation: the evaluator answers
+ * [dev.zilath.verifier.core.TrustDecision.Untrusted] with [message], a fixed phrase.
+ */
 internal fun trustFail(message: String): Nothing = throw TrustFailure(message)
 
 /** A parsed (not yet signature-verified) federation entity statement. */
@@ -140,6 +144,10 @@ internal class EntityStatement(
 private fun typIsEntityStatement(jwt: SignedJWT): Boolean =
     mediaTypeMatches(jwt.header.type?.toString(), ENTITY_STATEMENT_TYP)
 
+/**
+ * Parses [serialized] as an entity statement — a JWT typed `entity-statement+jwt` whose
+ * payload is a JSON object listing no `crit` claim — without verifying its signature.
+ */
 internal fun parseStatement(serialized: String): EntityStatement {
     val jwt =
         runCatching { SignedJWT.parse(serialized) }
@@ -164,6 +172,7 @@ internal fun parseStatement(serialized: String): EntityStatement {
     return EntityStatement(serialized, jwt)
 }
 
+/** The keys of the JWK Set [container] that parse; an entry that does not is left out. */
 internal fun jwksOf(container: Map<*, *>?): List<JWK> {
     val keys = container?.get("keys") as? List<*> ?: return emptyList()
     return keys.mapNotNull { key ->

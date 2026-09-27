@@ -168,6 +168,7 @@ private fun checkLifetime(
     }
 }
 
+/** Whether [jwt] verifies with one of [keys] that the shared key policy accepts. */
 @OptIn(InternalZilathApi::class)
 internal fun verifiesWithAny(
     jwt: SignedJWT,
