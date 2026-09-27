@@ -150,6 +150,18 @@ class RpTrustMarksTest {
     }
 
     @Test
+    fun `a trust mark issued ahead of the clock is published only within the skew a wallet allows`() {
+        // §7.3: the current time MUST be after iat, with only a small leeway for clock skew.
+        val slightlyAhead = RpTrustMark(VERIFIER_MARK, trustMark(issuedAt = clock.instant().plusSeconds(30)))
+        val farAhead = RpTrustMark(VERIFIER_MARK, trustMark(issuedAt = clock.instant().plus(Duration.ofHours(1))))
+        assertThat(entityConfigurationOf(federation(listOf(slightlyAhead))).getListClaim("trust_marks")).hasSize(1)
+        assertThat(entityConfigurationOf(federation(listOf(farAhead))).claims).doesNotContainKey("trust_marks")
+        // ...until its time comes.
+        val later = Clock.offset(clock, Duration.ofHours(1))
+        assertThat(entityConfigurationOf(federation(listOf(farAhead)), later).getListClaim("trust_marks")).hasSize(1)
+    }
+
+    @Test
     fun `a trust mark source renews the marks, and what it gives is checked as configured ones are`() {
         val fresh = RpTrustMark(VERIFIER_MARK, trustMark())
         val expired = RpTrustMark(VERIFIER_MARK, trustMark(expiresAt = clock.instant().minusSeconds(1)))

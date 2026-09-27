@@ -112,7 +112,7 @@ data class RpFederationConfig(
         // Not checked for expiry: a restart with a stale chain still serves, without the header.
         if (trustChain.isNotEmpty()) trustChainExpiryOf(trustChain, entityId)
         require(trustMarks.isEmpty() || trustMarkSource == null) { "give either trustMarks or a trustMarkSource" }
-        trustMarks.forEach { trustMarkExpiryOf(it, entityId) }
+        trustMarks.forEach { trustMarkValidityOf(it, entityId) }
         authorityHints.forEach { hint ->
             val hintUri = runCatching { java.net.URI(hint) }.getOrNull()
             require(

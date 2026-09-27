@@ -19,6 +19,7 @@ package dev.zilath.verifier.openid4vp
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.InternalZilathApi
 import dev.zilath.verifier.core.mediaTypeMatches
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicReference
 
@@ -51,8 +52,9 @@ fun interface TrustMarkSource {
 
 /**
  * The trust marks to publish in an entity configuration built at [now]: the source's, or the
- * configured ones. Never one that has expired, nor, from a source, one that is not this
- * relying party's: a wallet must reject either, so it is left out, and logged once.
+ * configured ones. Never one that has expired or is not yet valid — `iat` more than
+ * [CLOCK_SKEW] ahead — nor, from a source, one that is not this relying party's: a wallet
+ * must reject each (OpenID Federation 1.0 §7.3), so it is left out, and logged once.
  */
 internal fun trustMarksToPublish(
     federation: RpFederationConfig,
@@ -65,30 +67,35 @@ internal fun trustMarksToPublish(
                 .getOrNull()
         } ?: federation.trustMarks
     return marks.filter { mark ->
-        val expiresAt = runCatching { trustMarkExpiryOf(mark, federation.entityId) }.getOrNull()
-        when {
-            expiresAt == null ->
-                false.also {
-                    warnOnce(
-                        "a trust mark of type ${mark.type} is not a valid mark for this RP",
-                    )
-                }
-            !now.isBefore(expiresAt) -> false.also { warnOnce("the trust mark of type ${mark.type} has expired") }
-            else -> true
-        }
+        val validity = runCatching { trustMarkValidityOf(mark, federation.entityId) }.getOrNull()
+        val problem =
+            when {
+                validity == null -> "is not a valid mark for this RP"
+                now.plus(CLOCK_SKEW).isBefore(validity.issuedAt) -> "is not valid yet"
+                !now.isBefore(validity.expiresAt) -> "has expired"
+                else -> null
+            }
+        if (problem != null) warnOnce("the trust mark of type ${mark.type} $problem")
+        problem == null
     }
 }
 
+/** When a trust mark was issued and when it expires. */
+internal class TrustMarkValidity(
+    val issuedAt: Instant,
+    val expiresAt: Instant,
+)
+
 /**
  * Checks [mark] for the shape a wallet checks (OpenID Federation 1.0 §7.1 and §7.3, IT-Wallet
- * 1.4.6 table 8.7) and returns when it expires. Its signature is the wallet's to verify: the
+ * 1.4.6 table 8.7) and returns when it is valid. Its signature is the wallet's to verify: the
  * relying party does not hold the issuer's keys.
  */
 @OptIn(InternalZilathApi::class)
-internal fun trustMarkExpiryOf(
+internal fun trustMarkValidityOf(
     mark: RpTrustMark,
     entityId: String,
-): Instant {
+): TrustMarkValidity {
     require(mark.type.isNotBlank()) { "a trust mark needs its type" }
     val jwt =
         requireNotNull(
@@ -105,9 +112,16 @@ internal fun trustMarkExpiryOf(
     }
     require(claims.subject == entityId) { "trust mark ${mark.type} was issued to another entity" }
     require(!claims.issuer.isNullOrBlank()) { "trust mark ${mark.type} names no issuer" }
-    requireNotNull(claims.issueTime) { "trust mark ${mark.type} has no iat" }
-    return requireNotNull(claims.expirationTime) { "trust mark ${mark.type} has no exp" }.toInstant()
+    val issuedAt = requireNotNull(claims.issueTime) { "trust mark ${mark.type} has no iat" }
+    val expiresAt = requireNotNull(claims.expirationTime) { "trust mark ${mark.type} has no exp" }
+    return TrustMarkValidity(issuedAt.toInstant(), expiresAt.toInstant())
 }
+
+/**
+ * The leeway §7.3 allows a wallet for clock skew, the minute the verifier grants issuers and
+ * statements: a mark issued further ahead than that may be refused as not yet valid.
+ */
+private val CLOCK_SKEW: Duration = Duration.ofMinutes(1)
 
 private const val TRUST_MARK_TYP = "trust-mark+jwt"
 
