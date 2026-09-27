@@ -139,6 +139,17 @@ class InMemoryTransactionStoreTest {
     }
 
     @Test
+    fun `a closed store takes no new transaction`() {
+        val closed = InMemoryTransactionStore(clock, 10, ManualScheduler())
+        closed.close()
+        // It would be held with no background sweep left to redact it at its expiry.
+        assertThatThrownBy { closed.put(transaction("late")) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("the transaction store is closed")
+        assertThat(closed.size).isZero()
+    }
+
+    @Test
     fun `a full store refuses a new transaction until room is made`() {
         val small = InMemoryTransactionStore(clock, 2, ManualScheduler())
         small.put(transaction("a"))

@@ -43,7 +43,8 @@ import kotlin.concurrent.withLock
  * expired, and the entry at most [EXPIRED_RETENTION] plus [SWEEP_PERIOD] after it. The
  * background sweep runs on one daemon thread shared by every store in the process, which
  * exists only while some store is open. [close] stops this store's sweep and drops what it
- * holds; a store nobody closes stops being swept once it is garbage.
+ * holds, and from then on [put] refuses; a store nobody closes stops being swept once it is
+ * garbage.
  *
  * Each [VerificationFlow.start] allocates an entry here, on behalf of whoever reaches the
  * page that calls it: at most [maxTransactions] are held (expired ones included, until
@@ -81,8 +82,15 @@ class InMemoryTransactionStore internal constructor(
     private val removals = PriorityBlockingQueue<Due>(INITIAL_QUEUE_CAPACITY, compareBy(Due::at))
     private val sweeping = ReentrantLock()
 
-    /** Held from the capacity check to the insert: only [put] adds entries. */
+    /**
+     * Held from the capacity check to the insert, and by [close]: only [put] adds entries, so
+     * none can land in a store that [close] has emptied.
+     */
     private val admitting = ReentrantLock()
+
+    /** Set by [close], read and written under [admitting]. */
+    private var closed = false
+
     private val backgroundSweep: AutoCloseable = WeakSweep(this).let { it.start(scheduler) }
 
     override fun put(transaction: Transaction) {
@@ -90,12 +98,13 @@ class InMemoryTransactionStore internal constructor(
         // One check and insert at a time: concurrent starts could otherwise all pass the check
         // together and take the store past its bound.
         admitting.withLock {
+            check(!closed) { "the transaction store is closed" }
             if (transactions.size >= maxTransactions && !transactions.containsKey(transaction.id)) {
                 throw TooManyTransactionsException(maxTransactions)
             }
             transactions[transaction.id] = transaction
+            schedule(transaction)
         }
-        schedule(transaction)
     }
 
     override fun get(id: TransactionId): Transaction? {
@@ -122,12 +131,18 @@ class InMemoryTransactionStore internal constructor(
         transactions.remove(id)
     }
 
-    /** Stops the background sweep and drops every entry: nothing held here outlives the store. */
+    /**
+     * Stops the background sweep and drops every entry, and [put] refuses from then on: nothing
+     * held here outlives the store, not even a transaction started while it was closing.
+     */
     override fun close() {
         backgroundSweep.close()
-        transactions.clear()
-        redactions.clear()
-        removals.clear()
+        admitting.withLock {
+            closed = true
+            transactions.clear()
+            redactions.clear()
+            removals.clear()
+        }
     }
 
     /** How many entries the store holds, expired ones included. */
