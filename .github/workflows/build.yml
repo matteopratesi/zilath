@@ -24,7 +24,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       # Keeps the rule above true: a step referring to an action by anything but a full commit
       # SHA fails the build. The value of each uses: is checked, not the line, so a SHA in a
       # trailing comment does not excuse a tag. References to this repository need none:
