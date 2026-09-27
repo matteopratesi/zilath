@@ -45,7 +45,7 @@ fun interface StatusListFetcher {
      * no userinfo, no fragment, no IP literal other than loopback), but it never resolves
      * names, so a hostname pointing inside your network still reaches you. Treat it as remote input: cap the response
      * size, refuse or re-validate redirects, and refuse destinations inside a network the
-     * deployment must protect.
+     * deployment must protect. [HttpDocumentFetcher] does, within the limit it states.
      */
     fun fetch(uri: String): String
 }

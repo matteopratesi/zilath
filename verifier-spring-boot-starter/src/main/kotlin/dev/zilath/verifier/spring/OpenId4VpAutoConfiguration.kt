@@ -74,7 +74,8 @@ class OpenId4VpAutoConfiguration {
     /**
      * Token Status List revocation checking, once the application declares the one piece that
      * is its own: the [StatusListFetcher], which decides how a list is fetched — timeouts, size
-     * cap, the network boundary its KDoc describes. Declare a [StatusChecker] to replace it.
+     * cap, the network boundary its KDoc describes; [dev.zilath.verifier.core.HttpDocumentFetcher]
+     * holds all of it. Declare a [StatusChecker] to replace it.
      *
      * Declared before the relying party, which is conditional on a [StatusChecker] bean. The
      * starter used to build no checker at all, and the only examples in the repository
