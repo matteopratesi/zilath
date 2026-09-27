@@ -21,11 +21,11 @@ import dev.zilath.verifier.core.HttpDocumentFetcher
 
 /**
  * A [FederationFetcher] over [documents]: the network boundary of [HttpDocumentFetcher] —
- * the library's URL shape rule, hosts that resolve only to globally routable addresses, no
- * redirects, bounded time and size — with the server's 404 or 410 passed on as
- * [FederationDocumentNotFoundException], the federation's answer that it does not publish
- * the document. Every other failure, a refused destination among them, counts as the
- * federation not reached.
+ * the library's URL shape rule, hosts that resolve only to globally routable addresses and a
+ * connection to those alone, no redirects, bounded time and size — with the server's 404 or
+ * 410 passed on as [FederationDocumentNotFoundException], the federation's answer that it
+ * does not publish the document. Every other failure, a refused destination among them,
+ * counts as the federation not reached.
  */
 class HttpFederationFetcher(
     private val documents: HttpDocumentFetcher = HttpDocumentFetcher(),

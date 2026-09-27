@@ -17,6 +17,7 @@
 package dev.zilath.demo
 
 import com.sun.net.httpserver.HttpServer
+import dev.zilath.verifier.core.HttpDocumentFetcher.Destinations
 import dev.zilath.verifier.trust.FederationDocumentNotFoundException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -82,12 +83,14 @@ class HttpFetcherTest {
         assertThatThrownBy { httpFetcher(insecureTls = true, LOCAL_ANCHOR).fetch("https://ta.example/.well-known") }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessage("insecure TLS is restricted to loopback, refused for ta.example")
-        // A loopback name is not enough: every address it resolves to must be loopback too.
-        val publicLocalhost = { _: String -> listOf(InetAddress.getByName("93.184.215.14")) }
-        assertThatThrownBy {
-            httpFetcher(insecureTls = true, LOCAL_ANCHOR, publicLocalhost).fetch("https://localhost:3001/.well-known")
-        }.isInstanceOf(IllegalStateException::class.java)
-            .hasMessage("insecure TLS is restricted to loopback, refused for localhost")
+    }
+
+    @Test
+    fun `trust-all TLS connects to loopback alone, a local federation adds it, a real one never`() {
+        assertThat(destinationsFor(insecureTls = true, LOCAL_ANCHOR)).isEqualTo(Destinations.LOOPBACK)
+        assertThat(destinationsFor(insecureTls = true, REMOTE_ANCHOR)).isEqualTo(Destinations.LOOPBACK)
+        assertThat(destinationsFor(insecureTls = false, LOCAL_ANCHOR)).isEqualTo(Destinations.PUBLIC_AND_LOOPBACK)
+        assertThat(destinationsFor(insecureTls = false, REMOTE_ANCHOR)).isEqualTo(Destinations.PUBLIC)
     }
 
     private companion object {

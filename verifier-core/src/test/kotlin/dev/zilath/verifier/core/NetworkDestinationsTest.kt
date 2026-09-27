@@ -16,6 +16,8 @@
  */
 package dev.zilath.verifier.core
 
+import dev.zilath.verifier.core.HttpDocumentFetcher.Destinations.LOOPBACK
+import dev.zilath.verifier.core.HttpDocumentFetcher.Destinations.PUBLIC_AND_LOOPBACK
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.net.InetAddress
@@ -23,8 +25,8 @@ import java.net.InetAddress
 class NetworkDestinationsTest {
     private fun reachable(
         literal: String,
-        allowLoopback: Boolean = false,
-    ) = isReachableDestination(InetAddress.getByName(literal), allowLoopback)
+        destinations: HttpDocumentFetcher.Destinations = HttpDocumentFetcher.Destinations.PUBLIC,
+    ) = isReachableDestination(InetAddress.getByName(literal), destinations)
 
     @Test
     fun `globally routable addresses are reached`() {
@@ -100,13 +102,23 @@ class NetworkDestinationsTest {
     }
 
     @Test
-    fun `loopback is reached only when allowed, and allowing it opens nothing else`() {
+    fun `loopback is reached only when admitted, and admitting it opens nothing else`() {
         listOf("127.0.0.1", "127.1.2.3", "::1").forEach {
             assertThat(reachable(it)).`as`(it).isFalse()
-            assertThat(reachable(it, allowLoopback = true)).`as`(it).isTrue()
+            assertThat(reachable(it, PUBLIC_AND_LOOPBACK)).`as`(it).isTrue()
+            assertThat(reachable(it, LOOPBACK)).`as`(it).isTrue()
         }
         listOf("10.0.0.1", "169.254.169.254", "fe80::1", "64:ff9b::7f00:1").forEach {
-            assertThat(reachable(it, allowLoopback = true)).`as`(it).isFalse()
+            assertThat(reachable(it, PUBLIC_AND_LOOPBACK)).`as`(it).isFalse()
+            assertThat(reachable(it, LOOPBACK)).`as`(it).isFalse()
+        }
+    }
+
+    @Test
+    fun `loopback alone reaches nothing public`() {
+        listOf("8.8.8.8", "2606:4700:4700::1111", "64:ff9b::808:808").forEach {
+            assertThat(reachable(it, PUBLIC_AND_LOOPBACK)).`as`(it).isTrue()
+            assertThat(reachable(it, LOOPBACK)).`as`(it).isFalse()
         }
     }
 }

@@ -16,22 +16,14 @@
  */
 package dev.zilath.verifier.core
 
-import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.InetAddress
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.net.http.HttpTimeoutException
-import java.nio.ByteBuffer
 import java.time.Duration
-import java.util.OptionalLong
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletionStage
 import java.util.concurrent.ExecutionException
-import java.util.concurrent.Flow
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.ThreadFactory
@@ -39,36 +31,41 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocketFactory
 
 /**
- * A [StatusListFetcher] over the JDK's HTTP client that holds the network boundary the
- * fetcher contracts leave to their implementation. `HttpFederationFetcher`, in
+ * A [StatusListFetcher] that holds the network boundary the fetcher contracts leave to their
+ * implementation, over the JDK's sockets and TLS. `HttpFederationFetcher`, in
  * `verifier-trust-itwallet`, puts the same boundary in front of a federation's documents.
  *
  * Before anything is sent, the URL must pass the library's shape rule
  * ([usableHttpsUriOrNull]) and its host must resolve only to globally routable addresses:
  * a single private, loopback or link-local address among them — link-local is where cloud
- * metadata services answer — and the fetch is refused. [allowLoopback] admits loopback, for
- * a federation or a status list served on the same machine in development; a process that
- * shares its host with services of its own should not set it.
+ * metadata services answer — and the fetch is refused. [destinations] can admit loopback as
+ * well, for a federation or a status list served on the same machine in development, or admit
+ * loopback alone; see [Destinations].
  *
- * Then no redirect is followed: a redirect is a failure. The connection must be made within
- * [connectTimeout], and the whole fetch — the name lookup, the connection, the response —
- * must complete within [totalTimeout]; a body longer than [maxResponseBytes] is refused as it
- * arrives, before it is held whole. Only a 200 is a document: 404 and 410 throw
- * [DocumentNotFoundException], the server's answer that there is no such document, and
- * anything else throws an [IOException].
+ * The connection then goes to one of the addresses that were checked, and to nothing else:
+ * the name is resolved once, so a resolver that changes its answer between the check and the
+ * connection (DNS rebinding) has nothing to change. Over https the TLS session is still opened
+ * for the name — its SNI, and the certificate verified against it.
+ *
+ * The request is one HTTP/1.1 GET, and no redirect is followed: a redirect is a failure. The
+ * connection must be made within [connectTimeout], and the whole fetch — the name lookup,
+ * the connection, the response — must complete within [totalTimeout]; a body longer than
+ * [maxResponseBytes] is refused as it arrives, before it is held whole. Only a 200 is a
+ * document: 404 and 410 throw [DocumentNotFoundException], the server's answer that there is
+ * no such document, and anything else throws an [IOException], as does a response this
+ * fetcher would have to guess how to read.
  *
  * A lookup is not stopped when its fetch gives up on it: one that does not answer keeps its
  * thread until the resolver returns, whatever the fetch's deadline. So each fetcher runs at most
  * [MAX_CONCURRENT_LOOKUPS] of them at once, and a fetch that finds them all taken is refused
  * rather than queued behind lookups that have outlived their fetches.
  *
- * What this does NOT close: the name is resolved twice, once here to check it and once by
- * the HTTP client to connect, and a resolver that changes its answer in between (DNS
- * rebinding) can still lead the connection elsewhere. Where the deployment has an internal
- * network to protect, an egress rule at the network boundary is what closes that. Through a
- * proxy the JVM is set up to use, the proxy resolves the name again, and its rules decide.
+ * It connects directly and uses none of the JVM's proxy settings: a deployment that must
+ * reach the internet through a proxy needs a fetcher of its own, and then the proxy's rules
+ * are the boundary.
  *
  * [sslContext] replaces the JVM's default TLS trust, for a deployment whose documents are
  * served under a private CA.
@@ -77,28 +74,49 @@ class HttpDocumentFetcher internal constructor(
     private val connectTimeout: Duration,
     private val totalTimeout: Duration,
     private val maxResponseBytes: Int,
-    private val allowLoopback: Boolean,
+    private val destinations: Destinations,
     sslContext: SSLContext?,
     private val resolve: (String) -> List<InetAddress>,
 ) : StatusListFetcher {
     /**
      * A fetcher with the given bounds: by default [DEFAULT_CONNECT_TIMEOUT],
-     * [DEFAULT_TOTAL_TIMEOUT], [DEFAULT_MAX_RESPONSE_BYTES], loopback refused and the JVM's
-     * TLS trust.
+     * [DEFAULT_TOTAL_TIMEOUT], [DEFAULT_MAX_RESPONSE_BYTES], [Destinations.PUBLIC] and the
+     * JVM's TLS trust.
      */
     constructor(
         connectTimeout: Duration = DEFAULT_CONNECT_TIMEOUT,
         totalTimeout: Duration = DEFAULT_TOTAL_TIMEOUT,
         maxResponseBytes: Int = DEFAULT_MAX_RESPONSE_BYTES,
-        allowLoopback: Boolean = false,
+        destinations: Destinations = Destinations.PUBLIC,
         sslContext: SSLContext? = null,
-    ) : this(connectTimeout, totalTimeout, maxResponseBytes, allowLoopback, sslContext, ::resolveAll)
+    ) : this(connectTimeout, totalTimeout, maxResponseBytes, destinations, sslContext, ::resolveAll)
+
+    /** The addresses a fetch may connect to; the name of the URL must resolve only to these. */
+    enum class Destinations {
+        /** Globally routable addresses only: the default, and the setting for production. */
+        PUBLIC,
+
+        /**
+         * Loopback as well, for documents served on the same machine in development. A process
+         * that shares its host with services of its own should not use it.
+         */
+        PUBLIC_AND_LOOPBACK,
+
+        /**
+         * Loopback only, for a federation that runs entirely on this machine — and the one
+         * setting under which an `sslContext` that trusts every certificate still reaches
+         * nothing beyond it.
+         */
+        LOOPBACK,
+    }
 
     init {
         require(connectTimeout > Duration.ZERO) { "connectTimeout must be positive" }
         require(totalTimeout > Duration.ZERO) { "totalTimeout must be positive" }
         require(maxResponseBytes > 0) { "maxResponseBytes must be positive" }
     }
+
+    private val tls: SSLSocketFactory = (sslContext ?: SSLContext.getDefault()).socketFactory
 
     private val lookups =
         ThreadPoolExecutor(
@@ -110,55 +128,41 @@ class HttpDocumentFetcher internal constructor(
             ThreadFactory { task -> Thread(task, "zilath-name-lookup").apply { isDaemon = true } },
         )
 
-    private val client: HttpClient =
-        HttpClient
-            .newBuilder()
-            .connectTimeout(connectTimeout)
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .apply { if (sslContext != null) sslContext(sslContext) }
-            .build()
-
     /**
      * The body served at [uri], decoded as UTF-8. Throws [DocumentNotFoundException] on a 404
      * or a 410, and an [IOException] on any other failure — a refused destination among them.
      */
+    @OptIn(InternalZilathApi::class)
     override fun fetch(uri: String): String {
-        val deadline = System.nanoTime() + totalTimeout.toNanos()
-        val target = acceptedTarget(uri, deadline)
-        val remaining = remainingUntil(deadline)
-        val request =
-            HttpRequest
-                .newBuilder(target)
-                .timeout(remaining)
-                .GET()
-                .build()
-        val response = awaitWithin(client.sendAsync(request, ::bodyFor), remaining, "the response")
-        return when (val status = response.statusCode()) {
-            HTTP_OK -> String(response.body() ?: ByteArray(0), Charsets.UTF_8)
+        val deadline = FetchDeadline(totalTimeout)
+        val target = usableHttpsUriOrNull(uri) ?: throw IOException("refused: not a URL this fetcher dereferences")
+        val pinned = PinnedTarget(target, acceptedAddresses(target, deadline))
+        val response = pinnedGet(pinned, tls, connectTimeout, deadline, maxResponseBytes)
+        return when (val status = response.status) {
+            HTTP_OK -> String(response.body ?: ByteArray(0), Charsets.UTF_8)
             HTTP_NOT_FOUND, HTTP_GONE -> throw DocumentNotFoundException("the server answered $status")
             else -> throw IOException("the server answered $status")
         }
     }
 
-    /** [uri] once its shape passes and every address its host resolves to may be reached. */
+    /** The addresses [target]'s host resolves to, once every one of them may be reached. */
     @OptIn(InternalZilathApi::class)
-    private fun acceptedTarget(
-        uri: String,
-        deadline: Long,
-    ): URI {
-        val target = usableHttpsUriOrNull(uri) ?: throw IOException("refused: not a URL this fetcher dereferences")
+    private fun acceptedAddresses(
+        target: URI,
+        deadline: FetchDeadline,
+    ): List<InetAddress> {
         val host = target.host.removeSurrounding("[", "]")
         val addresses = lookUp(host, deadline)
-        if (addresses.isEmpty() || !addresses.all { isReachableDestination(it, allowLoopback) }) {
+        if (addresses.isEmpty() || !addresses.all { isReachableDestination(it, destinations) }) {
             throw IOException("refused: ${boundedPrintable(host)} resolves to an address this fetcher does not reach")
         }
-        return target
+        return addresses
     }
 
     /** The addresses [host] resolves to, looked up on [lookups] and within [deadline]. */
     private fun lookUp(
         host: String,
-        deadline: Long,
+        deadline: FetchDeadline,
     ): List<InetAddress> {
         val lookup =
             try {
@@ -166,23 +170,8 @@ class HttpDocumentFetcher internal constructor(
             } catch (busy: RejectedExecutionException) {
                 throw IOException("refused: $MAX_CONCURRENT_LOOKUPS name lookups already in progress", busy)
             }
-        return awaitWithin(lookup, remainingUntil(deadline), "the name lookup")
+        return awaitWithin(lookup, deadline.remaining(), "the name lookup")
     }
-
-    /** What is left of the fetch's time until [deadline]; a timeout once nothing is. */
-    private fun remainingUntil(deadline: Long): Duration {
-        val left = deadline - System.nanoTime()
-        if (left <= 0) throw HttpTimeoutException("the fetch did not complete within $totalTimeout")
-        return Duration.ofNanos(left)
-    }
-
-    /** A 200's body, bounded; any other status's body is read and dropped. */
-    private fun bodyFor(info: HttpResponse.ResponseInfo): HttpResponse.BodySubscriber<ByteArray?> =
-        if (info.statusCode() == HTTP_OK) {
-            BoundedBody(maxResponseBytes, info.headers().firstValueAsLong("content-length"))
-        } else {
-            HttpResponse.BodySubscribers.replacing(null)
-        }
 
     companion object {
         /** Five seconds to connect: the documents come from hosts the credential names. */
@@ -214,7 +203,7 @@ private fun resolveAll(host: String): List<InetAddress> = InetAddress.getAllByNa
 
 /**
  * The result of [work] — [what], for the messages — within [timeout], or an [IOException];
- * on failure [work] is cancelled, so that nothing keeps reading from the server.
+ * on failure [work] is cancelled.
  */
 private fun <T> awaitWithin(
     work: CompletableFuture<T>,
@@ -235,51 +224,6 @@ private fun <T> awaitWithin(
     work.cancel(true)
     throw failure
 }
-
-/**
- * Collects a body of at most [limit] bytes, refusing it as soon as it — or the length its
- * headers declare — goes past that, instead of after holding it whole.
- */
-private class BoundedBody(
-    private val limit: Int,
-    declaredLength: OptionalLong,
-) : HttpResponse.BodySubscriber<ByteArray?> {
-    private val body = CompletableFuture<ByteArray?>()
-    private val collected = ByteArrayOutputStream()
-    private val declaredTooLong = declaredLength.isPresent && declaredLength.asLong > limit
-    private lateinit var subscription: Flow.Subscription
-
-    override fun getBody(): CompletionStage<ByteArray?> = body
-
-    override fun onSubscribe(subscription: Flow.Subscription) {
-        this.subscription = subscription
-        if (declaredTooLong) refuse() else subscription.request(Long.MAX_VALUE)
-    }
-
-    override fun onNext(item: List<ByteBuffer>) {
-        val incoming = item.sumOf { it.remaining().toLong() }
-        when {
-            body.isDone -> Unit
-            collected.size() + incoming > limit -> refuse()
-            else -> item.forEach { buffer -> collected.writeBytes(buffer.toByteArray()) }
-        }
-    }
-
-    override fun onError(throwable: Throwable) {
-        body.completeExceptionally(throwable)
-    }
-
-    override fun onComplete() {
-        body.complete(collected.toByteArray())
-    }
-
-    private fun refuse() {
-        subscription.cancel()
-        body.completeExceptionally(IOException("response larger than $limit bytes"))
-    }
-}
-
-private fun ByteBuffer.toByteArray(): ByteArray = ByteArray(remaining()).also { get(it) }
 
 private const val HTTP_OK = 200
 private const val HTTP_NOT_FOUND = 404

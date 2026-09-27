@@ -32,7 +32,6 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RestController
-import java.net.InetAddress
 import java.net.URI
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
@@ -114,47 +113,48 @@ class ConformanceController(
 
 /**
  * The demo's federation fetcher: the library's [HttpFederationFetcher], whose network
- * boundary it keeps. Loopback is reached only when [anchorId] is itself on this machine —
- * the conformance tool's local federation — so that a demo pointed at a real federation
- * still refuses every internal destination.
+ * boundary it keeps, reaching what [destinationsFor] says.
  *
  * With [insecureTls] the TLS trust checks are DISABLED: acceptable only against the
- * conformance tool's self-signed anchor server, and so then nothing but loopback is reached —
- * by the name in the URL and by every address [resolve] gives for it. The HTTP client resolves
- * the name again to connect: what that leaves open is in SECURITY.md, boundary 1.
+ * conformance tool's self-signed anchor server, and so then nothing but loopback is reached.
+ * A URL naming another host is refused outright; and the fetcher connects only to loopback
+ * addresses, the very ones it checked, so a loopback name that resolves elsewhere is refused
+ * too.
  */
 internal fun httpFetcher(
     insecureTls: Boolean,
     anchorId: String,
-    resolve: (String) -> List<InetAddress> = { InetAddress.getAllByName(it).toList() },
 ): FederationFetcher {
-    val localFederation = runCatching { URI(anchorId).host }.getOrNull() in LOOPBACK_HOSTS
     val federation =
         HttpFederationFetcher(
             HttpDocumentFetcher(
-                allowLoopback = insecureTls || localFederation,
+                destinations = destinationsFor(insecureTls, anchorId),
                 sslContext = if (insecureTls) trustAllTls() else null,
             ),
         )
     if (!insecureTls) return federation
     return FederationFetcher { url ->
-        // The documented restriction, enforced: trust-all TLS never leaves this machine.
         val host = runCatching { URI(url).host }.getOrNull()
-        check(host in LOOPBACK_HOSTS && resolvesOnlyToLoopback(host, resolve)) {
-            "insecure TLS is restricted to loopback, refused for $host"
-        }
+        check(host in LOOPBACK_HOSTS) { "insecure TLS is restricted to loopback, refused for $host" }
         federation.fetch(url)
     }
 }
 
-/** Whether every address [host] resolves to is a loopback one; false when it does not resolve. */
-private fun resolvesOnlyToLoopback(
-    host: String?,
-    resolve: (String) -> List<InetAddress>,
-): Boolean {
-    val addresses = host?.let { runCatching { resolve(it.removeSurrounding("[", "]")) }.getOrNull() }
-    return !addresses.isNullOrEmpty() && addresses.all(InetAddress::isLoopbackAddress)
-}
+/**
+ * Loopback alone under [insecureTls]; loopback beside the public internet when [anchorId] is
+ * itself on this machine — the conformance tool's local federation; otherwise, as for a real
+ * federation, the public internet only.
+ */
+internal fun destinationsFor(
+    insecureTls: Boolean,
+    anchorId: String,
+): HttpDocumentFetcher.Destinations =
+    when {
+        insecureTls -> HttpDocumentFetcher.Destinations.LOOPBACK
+        runCatching { URI(anchorId).host }.getOrNull() in LOOPBACK_HOSTS ->
+            HttpDocumentFetcher.Destinations.PUBLIC_AND_LOOPBACK
+        else -> HttpDocumentFetcher.Destinations.PUBLIC
+    }
 
 /** A TLS context that trusts every certificate: see [httpFetcher] for where it may be used. */
 private fun trustAllTls(): SSLContext {
