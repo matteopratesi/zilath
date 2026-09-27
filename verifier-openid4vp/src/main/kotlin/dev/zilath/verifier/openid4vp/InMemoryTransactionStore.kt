@@ -23,6 +23,7 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.PriorityBlockingQueue
 import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * Thread-safe in-memory [TransactionStore], suitable for a single-node deployment.
@@ -79,16 +80,21 @@ class InMemoryTransactionStore internal constructor(
     private val redactions = PriorityBlockingQueue<Due>(INITIAL_QUEUE_CAPACITY, compareBy(Due::at))
     private val removals = PriorityBlockingQueue<Due>(INITIAL_QUEUE_CAPACITY, compareBy(Due::at))
     private val sweeping = ReentrantLock()
+
+    /** Held from the capacity check to the insert: only [put] adds entries. */
+    private val admitting = ReentrantLock()
     private val backgroundSweep: AutoCloseable = WeakSweep(this).let { it.start(scheduler) }
 
     override fun put(transaction: Transaction) {
         sweepExpired()
-        // Checked before the insert, so under concurrent starts the bound can be passed by
-        // as many entries as there are threads inserting at that instant — not more.
-        if (transactions.size >= maxTransactions && !transactions.containsKey(transaction.id)) {
-            throw TooManyTransactionsException(maxTransactions)
+        // One check and insert at a time: concurrent starts could otherwise all pass the check
+        // together and take the store past its bound.
+        admitting.withLock {
+            if (transactions.size >= maxTransactions && !transactions.containsKey(transaction.id)) {
+                throw TooManyTransactionsException(maxTransactions)
+            }
+            transactions[transaction.id] = transaction
         }
-        transactions[transaction.id] = transaction
         schedule(transaction)
     }
 

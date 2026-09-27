@@ -24,6 +24,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.time.Duration
+import java.util.concurrent.CyclicBarrier
+import java.util.concurrent.Executors
 
 class InMemoryTransactionStoreTest {
     private val clock = SteppingClock(TestVectors.NOW)
@@ -152,6 +154,30 @@ class InMemoryTransactionStoreTest {
     }
 
     @Test
+    fun `concurrent starts cannot take a full store past its bound`() {
+        val pool = Executors.newFixedThreadPool(RACERS)
+        try {
+            repeat(RACE_ROUNDS) { round ->
+                val bounded = InMemoryTransactionStore(clock, 1, ManualScheduler())
+                val barrier = CyclicBarrier(RACERS)
+                val refused =
+                    (1..RACERS)
+                        .map { racer ->
+                            pool.submit<Boolean> {
+                                barrier.await()
+                                runCatching { bounded.put(transaction("race-$round-$racer")) }
+                                    .exceptionOrNull() is TooManyTransactionsException
+                            }
+                        }.count { it.get() }
+                assertThat(bounded.size).isEqualTo(1)
+                assertThat(refused).isEqualTo(RACERS - 1)
+            }
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun `a read costs the same with twenty thousand live transactions as with a thousand`() {
         // Every put and get used to scan the whole map: a cost linear in the live
         // transactions on requests no one authenticates for, and quadratic to fill.
@@ -190,5 +216,7 @@ class InMemoryTransactionStoreTest {
     private companion object {
         const val READS = 500
         const val RUNS = 5
+        const val RACERS = 8
+        const val RACE_ROUNDS = 300
     }
 }
