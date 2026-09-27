@@ -61,13 +61,17 @@ class ConformanceController(
             .body(RpEntityConfiguration.build(config, federation, clock))
     }
 
+    /**
+     * Starts a same-device transaction for the conformance tool and returns its id, the
+     * authorize URL, the request URI and the poll token that reads it until the return.
+     */
     @GetMapping("/conformance/start")
     fun start(): Map<String, String> {
         // The conformance wallet POSTs the response and then expects to be handed a
         // redirect back: that IS the same-device flow, whatever the QR suggests.
-        // Not registered with the demo pages, which still read a transaction by its id alone:
-        // /demo/cb completes its return all the same, since the flow checks the code, and
-        // hands the returning user-agent the token that reads the outcome afterwards.
+        // Not registered with the demo pages, which answer only the browser that started a
+        // purchase there: /demo/cb completes its return all the same, since the flow checks
+        // the code, and hands the returning user-agent the token that reads the outcome.
         val started =
             flow.start(PresentationRequest.forTestPid(pidVct), dev.zilath.verifier.openid4vp.FlowMode.SAME_DEVICE)
         return mapOf(

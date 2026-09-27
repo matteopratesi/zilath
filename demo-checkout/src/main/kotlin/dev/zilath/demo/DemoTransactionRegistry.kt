@@ -57,6 +57,7 @@ internal class DemoTransactionRegistry(
 
     private val entries = ConcurrentHashMap<String, Entry>()
 
+    /** Registers [transaction], started for [request] by the browser holding [sessionSecret]. */
     fun register(
         transaction: StartedTransaction,
         request: PresentationRequest,
@@ -66,6 +67,7 @@ internal class DemoTransactionRegistry(
         entries[transaction.id.value] = Entry(transaction, request, clock.instant(), sessionSecret)
     }
 
+    /** The entry for [txId], whoever started it: for telling an unknown transaction from another browser's. */
     fun get(txId: String): Entry? = entries[txId]
 
     /** The entry for [txId] if the browser holding [sessionSecret] started it; null otherwise. */

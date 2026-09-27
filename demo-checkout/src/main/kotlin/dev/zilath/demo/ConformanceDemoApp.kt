@@ -54,6 +54,7 @@ import java.time.Clock
  */
 @SpringBootApplication
 class ConformanceDemoApp {
+    /** The demo's example status checker: it cannot check revocation, and says so. */
     @Bean
     fun statusChecker(): StatusChecker =
         StatusChecker { _, _ ->
@@ -66,6 +67,10 @@ class ConformanceDemoApp {
             CredentialStatus.UNKNOWN
         }
 
+    /**
+     * The federation trust evaluator: against the configured anchor keys, or, with
+     * `trust-anchor-tofu`, against keys taken from the conformance tool's local anchor.
+     */
     @Bean
     fun trustEvaluator(
         @Value("\${zilath.demo.trust-anchor-id}") anchorId: String,
@@ -124,9 +129,14 @@ class ConformanceDemoApp {
         return TofuFederationTrustEvaluator(anchorId, fetcher, clock)
     }
 
+    /** The clock of every check the demo makes. */
     @Bean
     fun demoClock(): Clock = Clock.systemUTC()
 
+    /**
+     * The demo relying party: its signing key from the PEM when one is given, the endpoints
+     * under the public base URL, and a federation identity of its own.
+     */
     @Bean
     @Suppress("LongParameterList") // Spring bean wiring: every parameter is an injected dependency
     fun relyingPartyConfiguration(
@@ -178,6 +188,7 @@ class ConformanceDemoApp {
         )
     }
 
+    /** The flow, on the in-memory store. */
     @Bean
     fun verificationFlow(
         config: RelyingPartyConfiguration,
@@ -185,6 +196,7 @@ class ConformanceDemoApp {
         clock: Clock,
     ): VerificationFlow = OpenId4VpVerificationFlow.withInMemoryStore(config, verifier, clock)
 
+    /** The signer of the demo's verification receipts. */
     @Bean
     fun verificationReceipts(
         config: RelyingPartyConfiguration,
@@ -265,6 +277,7 @@ internal fun parseJwks(document: String): List<JWK> =
             .keys
     }.getOrElse { listOf(JWK.parse(document)) }
 
+/** Starts the demo application. */
 @Suppress("SpreadOperator") // canonical Spring Boot Kotlin entry point
 fun main(args: Array<String>) {
     runApplication<ConformanceDemoApp>(*args)

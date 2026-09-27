@@ -82,6 +82,10 @@ internal class FlowRejection(
     val detail: String?,
 ) : RuntimeException(detail ?: reason.name)
 
+/**
+ * Ends a wallet response with [reason]: the flow records the [FlowRejection] as a rejection,
+ * [detail] one of its fixed phrases.
+ */
 internal fun flowReject(
     reason: RejectionReason,
     detail: String? = null,
@@ -105,12 +109,17 @@ internal fun secretHashOf(token: String): String =
                 .digest(token.toByteArray()),
         ).toString()
 
+/** [bytes] random bytes, base64url: transaction ids, nonces, poll tokens, response codes and key ids. */
 internal fun randomToken(bytes: Int): String {
     val buffer = ByteArray(bytes)
     secureRandom.nextBytes(buffer)
     return Base64URL.encode(buffer).toString()
 }
 
+/**
+ * The authorize URL the QR code carries: the wallet scheme, `client_id` and `request_uri`,
+ * and `request_uri_method=post` where the request endpoint answers POST.
+ */
 internal fun qrPayloadOf(
     config: RelyingPartyConfiguration,
     requestUri: String,

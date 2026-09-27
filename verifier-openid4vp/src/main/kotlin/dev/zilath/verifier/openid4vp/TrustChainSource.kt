@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicReference
  * the federation serves, refresh it ahead of the earliest `exp`).
  */
 fun interface TrustChainSource {
+    /** The chain as it stands now, the relying party's entity configuration first; empty for none. */
     fun currentTrustChain(): List<String>
 }
 

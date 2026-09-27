@@ -115,6 +115,11 @@ private fun hop(
     return Hop(configuration, fetchSubordinateStatement(fetcher, configuration, subject))
 }
 
+/**
+ * Fetches the entity configuration of [entityId] from its well-known URL, once the id has the
+ * shape an entity id must have, and requires its `iss` and `sub` to be [entityId]. Its
+ * signature is verified with the rest of the chain.
+ */
 internal fun fetchEntityConfiguration(
     fetcher: FederationFetcher,
     entityId: String,
@@ -128,6 +133,11 @@ internal fun fetchEntityConfiguration(
     return statement
 }
 
+/**
+ * Fetches the statement the entity of [superiorConfiguration] issues about [subject], from
+ * its `federation_fetch_endpoint` once that has the shape a fetch endpoint must have. Its
+ * signature is verified with the rest of the chain.
+ */
 internal fun fetchSubordinateStatement(
     fetcher: FederationFetcher,
     superiorConfiguration: EntityStatement,

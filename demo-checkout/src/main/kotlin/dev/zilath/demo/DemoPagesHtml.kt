@@ -67,6 +67,7 @@ private fun page(
     </html>
     """.trimIndent()
 
+/** The event page. */
 internal fun eventPageHtml(): String =
     page(
         "Concerto — Teatro di Prova",
@@ -84,6 +85,7 @@ internal fun eventPageHtml(): String =
         """.trimIndent(),
     )
 
+/** The waiting page of [txId]: its QR, [walletCommand] for the test wallet, and the status poll. */
 internal fun waitPageHtml(
     txId: String,
     qrPayload: String,
@@ -133,6 +135,7 @@ internal fun verifiedTicketHtml(
     return ticketHtml(txId, holder, entitledLine)
 }
 
+/** The companion ticket in the name of [holder], with [entitledLine] as its heading when given. */
 internal fun ticketHtml(
     txId: String,
     holder: String,
@@ -156,6 +159,7 @@ internal fun ticketHtml(
         """.trimIndent(),
     )
 
+/** The page for a transaction that did not end verified. */
 internal fun notVerifiedHtml(txId: String): String =
     page(
         "Verifica non completata",
@@ -166,6 +170,7 @@ internal fun notVerifiedHtml(txId: String): String =
         """.trimIndent(),
     )
 
+/** The page for a verified card that does not grant the entitlement. */
 internal fun notEntitledHtml(txId: String): String =
     page(
         "Diritto non presente",
@@ -189,6 +194,7 @@ internal fun callbackErrorHtml(reason: String): String =
         """.trimIndent(),
     )
 
+/** The page for a transaction this browser did not start, or that does not exist. */
 internal fun notFoundHtml(): String =
     page(
         "Transazione sconosciuta",

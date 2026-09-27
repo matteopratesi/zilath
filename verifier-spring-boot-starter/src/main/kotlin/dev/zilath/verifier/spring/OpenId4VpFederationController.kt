@@ -41,6 +41,7 @@ class OpenId4VpFederationController(
     private val federation =
         checkNotNull(config.federation) { "the relying party configuration has no federation identity to publish" }
 
+    /** The entity configuration, signed anew for this request. */
     @GetMapping(RpEntityConfiguration.WELL_KNOWN_PATH)
     fun entityConfiguration(): ResponseEntity<String> =
         ResponseEntity

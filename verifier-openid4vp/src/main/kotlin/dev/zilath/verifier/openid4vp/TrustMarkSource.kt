@@ -47,6 +47,7 @@ data class RpTrustMark(
  * configuration built; keep it cheap.
  */
 fun interface TrustMarkSource {
+    /** The trust marks as they stand now; empty for none. One that is not fit to publish is left out. */
     fun currentTrustMarks(): List<RpTrustMark>
 }
 

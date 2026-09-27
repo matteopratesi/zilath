@@ -70,9 +70,14 @@ class DemoCheckoutController(
     /** Started transactions, kept a bit longer than the flow TTL so receipts stay downloadable. */
     private val registry = DemoTransactionRegistry(clock, REGISTRY_TIME_TO_LIVE)
 
+    /** The event page, with the companion ticket offer. */
     @GetMapping("/demo", produces = [MediaType.TEXT_HTML_VALUE])
     fun eventPage(): String = eventPageHtml()
 
+    /**
+     * Starts a verification, cross-device or same-device, binds it to this browser with the
+     * session cookie, and sends the browser to the waiting page.
+     */
     @GetMapping("/demo/entitled")
     fun startEntitledPurchase(
         @RequestParam(defaultValue = "cross-device") flow: String,
@@ -97,6 +102,7 @@ class DemoCheckoutController(
             .build()
     }
 
+    /** The waiting page: the QR, the test wallet's command, and the status poll. */
     @GetMapping("/demo/wait/{txId}", produces = [MediaType.TEXT_HTML_VALUE])
     fun waitPage(
         @PathVariable txId: String,
@@ -115,6 +121,7 @@ class DemoCheckoutController(
         return ResponseEntity.ok(waitPageHtml(txId, qrPayload, walletCommand))
     }
 
+    /** The QR code of the transaction's authorize URL, as a PNG. */
     @GetMapping("/demo/qr/{txId}.png", produces = [MediaType.IMAGE_PNG_VALUE])
     fun qrCode(
         @PathVariable txId: String,
@@ -124,6 +131,7 @@ class DemoCheckoutController(
         return ResponseEntity.ok(qrPng(entry.transaction.qrPayload))
     }
 
+    /** The transaction's authorize URL as text. */
     @GetMapping("/demo/authorize-url/{txId}", produces = [MediaType.TEXT_PLAIN_VALUE])
     fun authorizeUrl(
         @PathVariable txId: String,
@@ -133,6 +141,7 @@ class DemoCheckoutController(
         return ResponseEntity.ok(entry.transaction.qrPayload)
     }
 
+    /** The transaction's status for the waiting page's poll: pending, verified, rejected, expired or unknown. */
     @GetMapping("/demo/status/{txId}", produces = [MediaType.APPLICATION_JSON_VALUE])
     fun status(
         @PathVariable txId: String,
@@ -152,6 +161,10 @@ class DemoCheckoutController(
         )
     }
 
+    /**
+     * The companion ticket once the credential is verified and grants the entitlement. The
+     * receipt is signed once that decision is made, here or on the receipt page.
+     */
     @GetMapping("/demo/ticket/{txId}", produces = [MediaType.TEXT_HTML_VALUE])
     fun ticket(
         @PathVariable txId: String,
@@ -221,6 +234,7 @@ class DemoCheckoutController(
         }
     }
 
+    /** The signed verification receipt, once the transaction has ended and the demo has decided. */
     @GetMapping("/demo/receipt/{txId}", produces = [MediaType.TEXT_PLAIN_VALUE])
     fun receipt(
         @PathVariable txId: String,

@@ -45,6 +45,7 @@ object DemoWalletSimulator {
     private const val HTTP_OK_MAX = 299
     private val http = HttpClient.newHttpClient()
 
+    /** `init <keysDir>` or `run <authorizeUrl> [keysDir]`, as the class KDoc describes. */
     @JvmStatic
     fun main(args: Array<String>) {
         when (args.firstOrNull()) {
