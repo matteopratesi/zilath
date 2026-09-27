@@ -180,6 +180,8 @@ An honest list is more useful than a short one.
    that stops republishing becomes denied entitlements within a day.
 7. **`StatusListFetcher` is yours, and this library cannot see past it.** Validation stops
    at the token; your fetcher enforces TLS and certificate validation, or nothing does.
+   `HttpDocumentFetcher` is the library's own, and gets right both things below, within the
+   limits SECURITY.md boundary 1 states; a fetcher you write yourself has to.
 
    Two things to get right in that fetcher. **Set
    aggressive connect and read timeouts**: the URI comes from the credential, so a slow or
@@ -263,7 +265,7 @@ Zilath handles the cryptography and the minimisation. It does not handle your ob
 | Nothing is handed out past expiry | `verifier-openid4vp/.../Expiry.kt` |
 | Detail is kept server-side | `verifier-spring-boot-starter/.../OpenId4VpController.kt` |
 | Nonce single use, replay rejected | `verifier-openid4vp/.../OpenId4VpVerificationFlow.kt` |
-| No outbound calls to the project | grep the four library modules for any HTTP client — there are none. Every network access goes through `FederationFetcher` and `StatusListFetcher`, interfaces you implement and inject. (The `demo-checkout` app does make HTTP calls; it is an example, not a published artifact.) |
+| No outbound calls to the project | grep the four library modules for an HTTP client: the one there is, `verifier-core/.../HttpDocumentFetcher.kt`, requests only the URL it is handed. Every network access goes through `FederationFetcher` and `StatusListFetcher`, interfaces you inject — that class, `HttpFederationFetcher` over it, or your own. (The `demo-checkout` app makes HTTP calls through them; it is an example, not a published artifact.) |
 
 ## References
 

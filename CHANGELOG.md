@@ -15,7 +15,8 @@ for 0.4.0, not a patch: many items change what a verifier accepts or rejects, an
 moves with them. In three parts: `verifier-core` and the build; `verifier-trust-itwallet`;
 `verifier-openid4vp`, the Spring starter, the demo application and the documentation. The
 demo binds each transaction to the browser that started it; the README gains a guide for
-Spring Security, tested by the starter.
+Spring Security, tested by the starter. After the review, the library also gains HTTP
+fetchers of its own, for the network boundary it used to leave to each application.
 
 ### Security — what the verifier now accepts that it refused
 
@@ -270,6 +271,20 @@ Spring Security, tested by the starter.
   `StatusListFetcher` and no `StatusChecker`. Before, it built no checker at all, and the
   only examples in the repository answered VALID to everything, which switches revocation
   off.
+- **`HttpDocumentFetcher`** (`verifier-core`, a `StatusListFetcher`) and
+  **`HttpFederationFetcher`** (`verifier-trust-itwallet`, a `FederationFetcher`), over the
+  JDK's HTTP client, with no new dependency: the network boundary the fetcher contracts left
+  to the application. The host must resolve only to globally routable addresses — a single
+  private, loopback, link-local or otherwise special-purpose one and nothing is sent;
+  `allowLoopback` admits loopback for local development — no redirect is followed, and
+  connect time (5 s), total time (10 s) and response size (1 MiB, refused as it arrives) are
+  bounded. A 404 or 410 is `DocumentNotFoundException`, and through `HttpFederationFetcher`
+  `FederationDocumentNotFoundException`, which now takes a `cause`. Not closed: DNS rebinding
+  between the check and the connection, and a proxy's own resolution (SECURITY.md boundary
+  1). Until now every application wrote its own fetcher, and the only HTTP one in the
+  repository, the demo's, refused no private address and read a whole body before measuring
+  it. The demo now uses `HttpFederationFetcher`, and reaches this machine only when its
+  anchor is on it.
 
 ### Build
 

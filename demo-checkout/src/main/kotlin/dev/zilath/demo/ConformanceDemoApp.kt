@@ -79,7 +79,7 @@ class ConformanceDemoApp {
         @Value("\${zilath.demo.insecure-tls:false}") insecureTls: Boolean,
         clock: Clock,
     ): TrustEvaluator {
-        val fetcher = httpFetcher(insecureTls)
+        val fetcher = httpFetcher(insecureTls, anchorId)
         // The messages below name the ZILATH_* environment variables, not the Spring
         // properties they feed: application.yml maps one to the other, and naming only the
         // property leaves the reader to work that out before they can act on it.

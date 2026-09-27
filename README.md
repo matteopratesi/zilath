@@ -44,7 +44,7 @@ Born for accessibility rights: letting a person with a disability prove an entit
 
 | Module | Purpose |
 |---|---|
-| `verifier-core` | Pure JVM credential verification (SD-JWT VC). No framework, no network I/O. |
+| `verifier-core` | Pure JVM credential verification (SD-JWT VC). No framework; network I/O only through the fetcher you inject. |
 | `verifier-openid4vp` | Relying-party flow: transactions, request JWT, `direct_post`, replay protection. |
 | `verifier-trust-itwallet` | OpenID Federation trust chain evaluation, `metadata_policy`. |
 | `verifier-spring-boot-starter` | Spring Boot auto-configuration and endpoints. |
@@ -54,7 +54,7 @@ Born for accessibility rights: letting a person with a disability prove an entit
 
 Published to Maven Central as `dev.zilath`. Take `verifier-spring-boot-starter` for a Spring
 Boot application — it brings the rest with it — or `verifier-core` alone to verify
-credentials with no framework and no network I/O.
+credentials with no framework, and no network I/O beyond the fetcher you give it.
 
 ```kotlin
 dependencies {
@@ -112,6 +112,13 @@ it needs from the application is a `StatusListFetcher`, the network access: decl
 `OAuthStatusListChecker` around it. What the checker validates, and what the fetcher must
 enforce on its own — timeouts, response size, redirects, private address ranges — is in
 [SECURITY.md](SECURITY.md) and [docs/privacy-by-design.md](docs/privacy-by-design.md) §5.
+`HttpDocumentFetcher` enforces all of it over the JDK's HTTP client, within the limits
+SECURITY.md states; `HttpFederationFetcher` does the same for a `FederationTrustEvaluator`:
+
+```kotlin
+@Bean
+fun statusListFetcher(): StatusListFetcher = HttpDocumentFetcher()
+```
 
 **A `StatusChecker` that always answers `VALID` switches revocation off.** It is only ever
 called for a credential that carries a status reference, so a constant `VALID` is the wrong

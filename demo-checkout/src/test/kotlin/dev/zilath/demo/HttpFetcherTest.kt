@@ -29,6 +29,7 @@ import java.net.InetSocketAddress
  * The demo's federation fetcher answers as the fetcher contract asks: a document the server
  * says does not exist is the federation's answer, anything else that fails is an outage.
  * The difference decides whether the offline fallback may stand in for a withdrawn statement.
+ * And it reaches this machine only for a federation that lives on it.
  */
 class HttpFetcherTest {
     private val server =
@@ -52,7 +53,7 @@ class HttpFetcherTest {
     @Test
     fun `a document the server says does not exist is the federation's answer`() {
         for (status in listOf(404, 410)) {
-            assertThatThrownBy { httpFetcher(insecureTls = false).fetch("$base/$status") }
+            assertThatThrownBy { httpFetcher(insecureTls = false, LOCAL_ANCHOR).fetch("$base/$status") }
                 .describedAs("HTTP $status")
                 .isInstanceOf(FederationDocumentNotFoundException::class.java)
         }
@@ -60,13 +61,32 @@ class HttpFetcherTest {
 
     @Test
     fun `any other failure is not taken for a withdrawal`() {
-        assertThatThrownBy { httpFetcher(insecureTls = false).fetch("$base/500") }
+        assertThatThrownBy { httpFetcher(insecureTls = false, LOCAL_ANCHOR).fetch("$base/500") }
             .isNotInstanceOf(FederationDocumentNotFoundException::class.java)
-            .hasMessageContaining("returned 500")
-        assertThat(httpFetcher(insecureTls = false).fetch("$base/200")).isEqualTo("status 200")
+            .hasMessage("the server answered 500")
+        assertThat(httpFetcher(insecureTls = false, LOCAL_ANCHOR).fetch("$base/200")).isEqualTo("status 200")
+    }
+
+    @Test
+    fun `a demo pointed at a remote federation reaches nothing on this machine`() {
+        for (path in listOf("200", "404")) {
+            assertThatThrownBy { httpFetcher(insecureTls = false, REMOTE_ANCHOR).fetch("$base/$path") }
+                .describedAs(path)
+                .isNotInstanceOf(FederationDocumentNotFoundException::class.java)
+                .hasMessageContaining("refused:")
+        }
+    }
+
+    @Test
+    fun `with trust-all TLS nothing but loopback is reached`() {
+        assertThatThrownBy { httpFetcher(insecureTls = true, LOCAL_ANCHOR).fetch("https://ta.example/.well-known") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("insecure TLS is restricted to loopback, refused for ta.example")
     }
 
     private companion object {
         const val LOOPBACK = "127.0.0.1"
+        const val LOCAL_ANCHOR = "https://localhost:3001"
+        const val REMOTE_ANCHOR = "https://ta.wallet.ipzs.it"
     }
 }

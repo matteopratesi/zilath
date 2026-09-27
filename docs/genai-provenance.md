@@ -265,3 +265,21 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   green on each pull request, with dependency verification, CI green, and the automated review
   repeated until the head drew no actionable comment.
 - **Funding status**: pre-existing.
+
+### 2026-09-27 — The library's own HTTP fetchers
+
+- **What**: `HttpDocumentFetcher` in `verifier-core` and `HttpFederationFetcher` in
+  `verifier-trust-itwallet`, over the JDK's HTTP client: a host is fetched from only when every
+  address it resolves to is globally routable, no redirect is followed, and time and response
+  size are bounded. The demo moved onto them; `SECURITY.md`, the README, privacy-by-design and
+  `CHANGELOG.md` say what they hold and what they leave open. Prompted by a concern the automated
+  review kept in its security architecture review of #40.
+- **Model**: Anthropic Claude Opus 5.5.
+- **Assistance**: the two classes and the address classification, their tests, one mutation
+  check per protection (fourteen), the documentation changes and the issue's text.
+- **Human contribution**: the decision to ship a fetcher in the library instead of leaving the
+  boundary documented only, and the choice of the JDK's client with no new dependency, accepting
+  the DNS rebinding window that a dependency could have closed.
+- **Verification**: every protection has a test that fails once that protection is removed;
+  `clean build` green, with dependency verification.
+- **Funding status**: pre-existing.
