@@ -273,19 +273,24 @@ fetchers of its own, for the network boundary it used to leave to each applicati
   off.
 - **`HttpDocumentFetcher`** (`verifier-core`, a `StatusListFetcher`) and
   **`HttpFederationFetcher`** (`verifier-trust-itwallet`, a `FederationFetcher`), over the
-  JDK's HTTP client, with no new dependency: the network boundary the fetcher contracts left
-  to the application. The host must resolve only to globally routable addresses — a single
-  private, loopback, link-local or otherwise special-purpose one and nothing is sent;
-  `allowLoopback` admits loopback for local development — no redirect is followed, and
-  connect time (5 s), the whole fetch with its name lookup (10 s) and response size (1 MiB,
-  refused as it arrives) are bounded, as are the name lookups one fetcher runs at once (16),
-  since a lookup outlives the fetch that gave up on it. A 404 or 410 is `DocumentNotFoundException`, and through `HttpFederationFetcher`
-  `FederationDocumentNotFoundException`, which now takes a `cause`. Not closed: DNS rebinding
-  between the check and the connection, and a proxy's own resolution (SECURITY.md boundary
-  1). Until now every application wrote its own fetcher, and the only HTTP one in the
-  repository, the demo's, refused no private address and read a whole body before measuring
-  it. The demo now uses `HttpFederationFetcher`, and reaches this machine only when its
-  anchor is on it.
+  JDK's sockets and TLS, with no new dependency: the network boundary the fetcher contracts
+  left to the application. The host must resolve only to addresses `destinations` admits —
+  globally routable ones by default, so that a single private, loopback, link-local or
+  otherwise special-purpose one and nothing is sent; `PUBLIC_AND_LOOPBACK` for local
+  development, `LOOPBACK` for a federation entirely on this machine — and the connection
+  goes to one of those addresses and to no other: the name is resolved once, and DNS
+  rebinding has nothing to change. TLS is opened for the name, and the certificate verified
+  against it. The request is one HTTP/1.1 GET of at most 8 KiB: no redirect is followed, a
+  response it would have to guess how to read is refused, and connect time (5 s), the whole
+  fetch with its name lookup (10 s) and response size (1 MiB, refused as it arrives) are
+  bounded, as are the name lookups one fetcher runs at once (16), since a lookup outlives
+  the fetch that gave up on it. A 404 or 410 is `DocumentNotFoundException`, and through
+  `HttpFederationFetcher` `FederationDocumentNotFoundException`, which now takes a `cause`.
+  The JVM's proxy settings are not used: a deployment that must go through a proxy needs a
+  fetcher of its own (SECURITY.md boundary 1). Until now every application wrote its own
+  fetcher, and the only HTTP one in the repository, the demo's, refused no private address
+  and read a whole body before measuring it. The demo now uses `HttpFederationFetcher`: it
+  reaches this machine only when its anchor is on it, and with trust-all TLS nothing else.
 
 ### Build
 

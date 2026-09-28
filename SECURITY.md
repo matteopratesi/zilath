@@ -82,13 +82,12 @@ are not bugs; a report about them will be closed with a pointer here.
    host from one pointing into your network, nor from a name that some resolvers read as an
    address (`0x7f000001`). The rest of the boundary is the fetcher's: `HttpDocumentFetcher`
    (a `StatusListFetcher`) and `HttpFederationFetcher` hold it — every address the host
-   resolves to must be globally routable, no redirect is followed, connect time, the whole
-   fetch with its name lookup, and response size are bounded — or write one of your own
-   that does. Two things they
-   leave open: the name is resolved once to check it and again to connect, so a resolver
-   that changes its answer in between (DNS rebinding) is not excluded; and through a proxy,
-   the proxy resolves the name and its rules decide. Where the deployment has an internal
-   network to protect, an egress rule at the network boundary closes both.
+   resolves to must be globally routable, and the connection goes to one of those addresses
+   and to no other, so a resolver that changes its answer after the check (DNS rebinding)
+   has nothing to change; no redirect is followed; connect time, the whole fetch with its
+   name lookup, and response size are bounded — or write one of your own that does. They
+   use none of the JVM's proxy settings: a deployment that must reach the internet through
+   a proxy needs a fetcher of its own, and then the proxy's rules are the boundary.
 2. **Transaction identifiers are public; poll tokens are not.** A transaction id is in the
    QR code, in `state`, in the request and response URIs and in the same-device link:
    anyone who sees the checkout's screen has it. It authorises posting to the OpenID4VP

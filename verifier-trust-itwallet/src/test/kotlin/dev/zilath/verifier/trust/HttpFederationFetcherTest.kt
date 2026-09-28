@@ -19,6 +19,7 @@ package dev.zilath.verifier.trust
 import com.sun.net.httpserver.HttpServer
 import dev.zilath.verifier.core.DocumentNotFoundException
 import dev.zilath.verifier.core.HttpDocumentFetcher
+import dev.zilath.verifier.core.HttpDocumentFetcher.Destinations
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
@@ -47,7 +48,7 @@ class HttpFederationFetcherTest {
 
     private val base = "http://$LOOPBACK:${server.address.port}"
 
-    private val local = HttpFederationFetcher(HttpDocumentFetcher(allowLoopback = true))
+    private val local = HttpFederationFetcher(HttpDocumentFetcher(destinations = Destinations.LOOPBACK))
 
     @AfterEach
     fun stop() = server.stop(0)

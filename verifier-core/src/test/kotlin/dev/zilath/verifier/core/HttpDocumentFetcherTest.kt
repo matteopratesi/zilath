@@ -18,6 +18,7 @@ package dev.zilath.verifier.core
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
+import dev.zilath.verifier.core.HttpDocumentFetcher.Destinations.PUBLIC_AND_LOOPBACK
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
@@ -68,12 +69,12 @@ class HttpDocumentFetcherTest {
     private val release = CountDownLatch(1)
     private val blockedLookups = CountDownLatch(HttpDocumentFetcher.MAX_CONCURRENT_LOOKUPS)
 
-    private fun fetcher(allowLoopback: Boolean = true) =
+    private fun fetcher(destinations: HttpDocumentFetcher.Destinations = PUBLIC_AND_LOOPBACK) =
         HttpDocumentFetcher(
             connectTimeout = Duration.ofSeconds(2),
             totalTimeout = TOTAL_TIMEOUT,
             maxResponseBytes = LIMIT,
-            allowLoopback = allowLoopback,
+            destinations = destinations,
             sslContext = null,
             resolve = { host ->
                 resolved += host
@@ -175,7 +176,7 @@ class HttpDocumentFetcherTest {
                 Duration.ofSeconds(2),
                 Duration.ofSeconds(1),
                 LIMIT,
-                allowLoopback = true,
+                destinations = PUBLIC_AND_LOOPBACK,
                 sslContext = null,
                 resolve = { host ->
                     Thread.sleep(LATE_LOOKUP.toMillis())
@@ -221,7 +222,7 @@ class HttpDocumentFetcherTest {
 
     @Test
     fun `a host that resolves to an internal address is refused before anything is sent`() {
-        val refusing = fetcher(allowLoopback = false)
+        val refusing = fetcher(destinations = HttpDocumentFetcher.Destinations.PUBLIC)
         for (url in listOf(
             "https://internal.example/.well-known/openid-federation",
             "https://metadata.example/latest/meta-data/",
@@ -237,6 +238,24 @@ class HttpDocumentFetcherTest {
                 .hasMessageContaining("resolves to an address this fetcher does not reach")
         }
         assertThat(requested).isEmpty()
+    }
+
+    @Test
+    fun `a request longer than the bound is refused before anything connects`() {
+        assertThatThrownBy { fetcher().fetch("$base/" + "a".repeat(9 * 1024)) }
+            .isInstanceOf(IOException::class.java)
+            .hasMessage("refused: a request longer than 8192 bytes")
+        assertThat(requested).isEmpty()
+    }
+
+    @Test
+    fun `loopback alone refuses a name that resolves anywhere else`() {
+        val loopbackOnly = fetcher(destinations = HttpDocumentFetcher.Destinations.LOOPBACK)
+        assertThat(loopbackOnly.fetch("$base/document")).isEqualTo("the document")
+        assertThatThrownBy { loopbackOnly.fetch("https://public.example/status/1") }
+            .isInstanceOf(IOException::class.java)
+            .hasMessage("refused: public.example resolves to an address this fetcher does not reach")
+        assertThat(requested).containsExactly("/document")
     }
 
     @Test
@@ -265,7 +284,7 @@ class HttpDocumentFetcherTest {
                 Duration.ofSeconds(2),
                 TOTAL_TIMEOUT,
                 LIMIT,
-                allowLoopback = false,
+                destinations = HttpDocumentFetcher.Destinations.PUBLIC,
                 sslContext = null,
                 resolve = { throw UnknownHostException(it) },
             )

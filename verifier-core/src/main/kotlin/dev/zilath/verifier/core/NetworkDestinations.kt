@@ -21,8 +21,10 @@ import java.net.Inet6Address
 import java.net.InetAddress
 
 /**
- * Whether a fetcher of remote documents may connect to [address]: a globally routable
- * unicast address, or with [allowLoopback] a loopback one too.
+ * Whether a fetcher of remote documents may connect to [address] under [destinations]: a
+ * globally routable unicast address, a loopback one, or either.
+ *
+ * Loopback is 127.0.0.0/8 and ::1. Globally routable is what follows.
  *
  * For IPv4, every block of the IANA special-purpose registry that is not globally reachable
  * is refused — "this network", the private ranges of RFC 1918, the shared range carriers
@@ -40,27 +42,28 @@ import java.net.InetAddress
  */
 internal fun isReachableDestination(
     address: InetAddress,
-    allowLoopback: Boolean,
+    destinations: HttpDocumentFetcher.Destinations,
 ): Boolean =
+    when (destinations) {
+        HttpDocumentFetcher.Destinations.PUBLIC -> isGloballyRoutable(address)
+        HttpDocumentFetcher.Destinations.PUBLIC_AND_LOOPBACK -> address.isLoopbackAddress || isGloballyRoutable(address)
+        HttpDocumentFetcher.Destinations.LOOPBACK -> address.isLoopbackAddress
+    }
+
+private fun isGloballyRoutable(address: InetAddress): Boolean =
     when (address) {
-        is Inet4Address -> isReachableV4(address.address, allowLoopback)
-        is Inet6Address -> isReachableV6(address.address, allowLoopback)
+        is Inet4Address -> isGloballyRoutableV4(address.address)
+        is Inet6Address -> isGloballyRoutableV6(address.address)
         else -> false
     }
 
-private fun isReachableV4(
-    address: ByteArray,
-    allowLoopback: Boolean,
-): Boolean = (allowLoopback && V4_LOOPBACK.contains(address)) || V4_REFUSED.none { it.contains(address) }
+private fun isGloballyRoutableV4(address: ByteArray): Boolean = V4_REFUSED.none { it.contains(address) }
 
-private fun isReachableV6(
-    address: ByteArray,
-    allowLoopback: Boolean,
-): Boolean =
-    when {
-        allowLoopback && V6_LOOPBACK.contains(address) -> true
-        NAT64.contains(address) -> isReachableV4(address.copyOfRange(NAT64_V4_OFFSET, address.size), false)
-        else -> V6_GLOBAL_UNICAST.contains(address) && V6_REFUSED.none { it.contains(address) }
+private fun isGloballyRoutableV6(address: ByteArray): Boolean =
+    if (NAT64.contains(address)) {
+        isGloballyRoutableV4(address.copyOfRange(NAT64_V4_OFFSET, address.size))
+    } else {
+        V6_GLOBAL_UNICAST.contains(address) && V6_REFUSED.none { it.contains(address) }
     }
 
 /** An address block in CIDR notation: [prefix] and the number of leading bits that count. */
@@ -76,8 +79,6 @@ private class AddressBlock(
 
 private fun ByteArray.bitAt(index: Int): Int =
     (this[index / Byte.SIZE_BITS].toInt() shr (Byte.SIZE_BITS - 1 - index % Byte.SIZE_BITS)) and 1
-
-private val V4_LOOPBACK = AddressBlock("127.0.0.0/8")
 
 /** RFC 6890 and its updates: the IPv4 blocks that are not globally reachable, plus multicast. */
 private val V4_REFUSED =
@@ -98,8 +99,6 @@ private val V4_REFUSED =
         "224.0.0.0/4",
         "240.0.0.0/4",
     ).map(::AddressBlock)
-
-private val V6_LOOPBACK = AddressBlock("::1/128")
 
 private val V6_GLOBAL_UNICAST = AddressBlock("2000::/3")
 

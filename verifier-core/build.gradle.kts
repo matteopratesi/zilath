@@ -24,6 +24,8 @@ dependencies {
     testFixturesImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
+    // Self-signed certificates for the TLS tests of HttpDocumentFetcher, made at test time.
+    testImplementation(libs.bcpkix)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
