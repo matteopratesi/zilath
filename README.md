@@ -32,10 +32,11 @@ Born for accessibility rights: letting a person with a disability prove an entit
 > Target spec: IT-Wallet v1.4.6 — see [docs/spec-version.md](docs/spec-version.md).
 >
 > **0.3.0 cannot verify a genuine European Disability Card in the production IT-Wallet
-> configuration.** 0.4.0 verifies a card shaped as IT-Wallet 1.4.6 writes it against the
-> production federation's own documents, in a test; no card actually issued has been
-> through it. What that test shows and what it does not:
-> [SECURITY.md](SECURITY.md#production-readiness).
+> configuration.** In 0.4.0, in tests, the production federation's documents as served,
+> untouched, are trusted for the issuer's real key, and a card shaped as IT-Wallet 1.4.6
+> writes it verifies against the same documents re-signed under test keys, the real ones
+> not being ours. No card actually issued has been through it. What those tests show and
+> what they do not: [SECURITY.md](SECURITY.md#production-readiness).
 >
 > What this library does with the data it touches, what it keeps and what it cannot
 > promise: [docs/privacy-by-design.md](docs/privacy-by-design.md).
@@ -254,11 +255,12 @@ Two things stand between that card and a private relying party. Production verif
 private relying parties does not exist yet. And the library was not ready for it either:
 **0.3.0 cannot verify any genuine card of that issuer**, even once verification is allowed —
 the production federation's trust chain ended untrusted, and past that a status list token
-in the IT-Wallet form was refused. 0.4.0 verifies a card shaped as IT-Wallet 1.4.6 writes it
-against the production federation's documents, in a test with a synthetic card; but the
-issuer advertises status assertion and attestation endpoints rather than a status list, and
-a card whose status carries only an assertion or an attestation is still rejected. The
-details, and what else the test does not show, are in
+in the IT-Wallet form was refused. In 0.4.0, in tests, the production federation's documents
+as served, untouched, are trusted for the issuer's real key, and a synthetic card shaped as
+IT-Wallet 1.4.6 writes it verifies against the same documents re-signed under test keys; but
+the issuer advertises status assertion and attestation endpoints rather than a status list,
+and a card whose status carries only an assertion or an attestation is still rejected. The
+details, and what else the tests do not show, are in
 [SECURITY.md](SECURITY.md#production-readiness).
 
 The simulation therefore mirrors the real claim names (`given_name`, `family_name`,
