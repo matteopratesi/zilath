@@ -16,6 +16,7 @@
  */
 package dev.zilath.demo
 
+import dev.zilath.verifier.core.HttpDocumentFetcher
 import dev.zilath.verifier.openid4vp.FlowOutcome
 import dev.zilath.verifier.openid4vp.PollToken
 import dev.zilath.verifier.openid4vp.PresentationRequest
@@ -23,18 +24,16 @@ import dev.zilath.verifier.openid4vp.RelyingPartyConfiguration
 import dev.zilath.verifier.openid4vp.RpEntityConfiguration
 import dev.zilath.verifier.openid4vp.TransactionId
 import dev.zilath.verifier.openid4vp.VerificationFlow
-import dev.zilath.verifier.trust.FederationDocumentNotFoundException
 import dev.zilath.verifier.trust.FederationFetcher
+import dev.zilath.verifier.trust.HttpFederationFetcher
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RestController
+import java.net.InetAddress
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.time.Clock
@@ -114,65 +113,66 @@ class ConformanceController(
 }
 
 /**
- * Federation fetcher over the JDK HTTP client. With [insecureTls] the TLS trust checks
- * are DISABLED: acceptable only against the conformance tool's local, self-signed
- * trust anchor server on localhost — never against anything reachable from outside.
+ * The demo's federation fetcher: the library's [HttpFederationFetcher], whose network
+ * boundary it keeps. Loopback is reached only when [anchorId] is itself on this machine —
+ * the conformance tool's local federation — so that a demo pointed at a real federation
+ * still refuses every internal destination.
+ *
+ * With [insecureTls] the TLS trust checks are DISABLED: acceptable only against the
+ * conformance tool's self-signed anchor server, and so then nothing but loopback is reached —
+ * by the name in the URL and by every address [resolve] gives for it. The HTTP client resolves
+ * the name again to connect: what that leaves open is in SECURITY.md, boundary 1.
  */
-internal fun httpFetcher(insecureTls: Boolean): FederationFetcher {
-    val builder = HttpClient.newBuilder()
-    if (insecureTls) {
-        val trustAll =
-            object : X509TrustManager {
-                override fun checkClientTrusted(
-                    chain: Array<X509Certificate>,
-                    authType: String,
-                ) = Unit
-
-                override fun checkServerTrusted(
-                    chain: Array<X509Certificate>,
-                    authType: String,
-                ) = Unit
-
-                override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
-            }
-        val context = SSLContext.getInstance("TLS")
-        context.init(null, arrayOf(trustAll), SecureRandom())
-        builder.sslContext(context)
-    }
-    val client = builder.connectTimeout(java.time.Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS)).build()
+internal fun httpFetcher(
+    insecureTls: Boolean,
+    anchorId: String,
+    resolve: (String) -> List<InetAddress> = { InetAddress.getAllByName(it).toList() },
+): FederationFetcher {
+    val localFederation = runCatching { URI(anchorId).host }.getOrNull() in LOOPBACK_HOSTS
+    val federation =
+        HttpFederationFetcher(
+            HttpDocumentFetcher(
+                allowLoopback = insecureTls || localFederation,
+                sslContext = if (insecureTls) trustAllTls() else null,
+            ),
+        )
+    if (!insecureTls) return federation
     return FederationFetcher { url ->
-        val uri = URI.create(url)
-        if (insecureTls) {
-            // The documented restriction, enforced: trust-all TLS never leaves this machine.
-            check(uri.host in LOOPBACK_HOSTS) { "insecure TLS is restricted to loopback, refused for ${uri.host}" }
+        // The documented restriction, enforced: trust-all TLS never leaves this machine.
+        val host = runCatching { URI(url).host }.getOrNull()
+        check(host in LOOPBACK_HOSTS && resolvesOnlyToLoopback(host, resolve)) {
+            "insecure TLS is restricted to loopback, refused for $host"
         }
-        val request =
-            HttpRequest
-                .newBuilder(uri)
-                .timeout(java.time.Duration.ofSeconds(REQUEST_TIMEOUT_SECONDS))
-                .GET()
-                .build()
-        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
-        // The federation's answer that the document does not exist — how a superior withdraws
-        // an entity — must reach the evaluator as such: any other failure counts as an outage,
-        // which the offline fallback answers from the credential's own header.
-        if (response.statusCode() in NOT_FOUND_STATUSES) {
-            throw FederationDocumentNotFoundException("GET $url returned ${response.statusCode()}")
-        }
-        check(response.statusCode() in HTTP_OK_MIN..HTTP_OK_MAX) { "GET $url returned ${response.statusCode()}" }
-        check(
-            response.body().length <= MAX_RESPONSE_CHARS,
-        ) { "response from $url larger than $MAX_RESPONSE_CHARS chars" }
-        response.body()
+        federation.fetch(url)
     }
 }
 
-private const val HTTP_NOT_FOUND = 404
-private const val HTTP_GONE = 410
-private val NOT_FOUND_STATUSES = setOf(HTTP_NOT_FOUND, HTTP_GONE)
-private const val HTTP_OK_MIN = 200
-private const val HTTP_OK_MAX = 299
-private const val CONNECT_TIMEOUT_SECONDS = 5L
-private const val REQUEST_TIMEOUT_SECONDS = 10L
-private const val MAX_RESPONSE_CHARS = 256 * 1024
+/** Whether every address [host] resolves to is a loopback one; false when it does not resolve. */
+private fun resolvesOnlyToLoopback(
+    host: String?,
+    resolve: (String) -> List<InetAddress>,
+): Boolean {
+    val addresses = host?.let { runCatching { resolve(it.removeSurrounding("[", "]")) }.getOrNull() }
+    return !addresses.isNullOrEmpty() && addresses.all(InetAddress::isLoopbackAddress)
+}
+
+/** A TLS context that trusts every certificate: see [httpFetcher] for where it may be used. */
+private fun trustAllTls(): SSLContext {
+    val trustAll =
+        object : X509TrustManager {
+            override fun checkClientTrusted(
+                chain: Array<X509Certificate>,
+                authType: String,
+            ) = Unit
+
+            override fun checkServerTrusted(
+                chain: Array<X509Certificate>,
+                authType: String,
+            ) = Unit
+
+            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+        }
+    return SSLContext.getInstance("TLS").apply { init(null, arrayOf(trustAll), SecureRandom()) }
+}
+
 private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1", "[::1]")

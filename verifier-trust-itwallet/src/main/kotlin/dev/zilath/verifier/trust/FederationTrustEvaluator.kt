@@ -161,7 +161,8 @@ data class TrustAnchorConfig(
  */
 class FederationDocumentNotFoundException(
     message: String? = null,
-) : RuntimeException(message)
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
 
 /**
  * Retrieves federation documents over HTTP; injectable so tests stay offline.
@@ -175,7 +176,8 @@ class FederationDocumentNotFoundException(
  * resolves names, so the network boundary is this implementation's job: set aggressive
  * timeouts, cap the response size, refuse redirects or re-check each redirect target
  * against the same rules — and when the deployment has an internal network to protect,
- * refuse destinations that resolve into it.
+ * refuse destinations that resolve into it. [HttpFederationFetcher] does, within the limit
+ * [dev.zilath.verifier.core.HttpDocumentFetcher] states.
  */
 fun interface FederationFetcher {
     /**
