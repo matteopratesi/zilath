@@ -28,7 +28,7 @@ import dev.zilath.verifier.core.usableHttpsUriOrNull
 
 /**
  * An entity identifier must be an HTTPS URL with a host, no query and no fragment — plain
- * `http` only for the exact localhost names, as [RpFederationConfig] already requires of our
+ * `http` only for the exact localhost names, as `RpFederationConfig` already requires of our
  * own.
  *
  * This runs BEFORE the first fetch, and the identifier at that point is the `iss` of a

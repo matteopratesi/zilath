@@ -54,12 +54,15 @@ Born for accessibility rights: letting a person with a disability prove an entit
 ## Using it
 
 Published to Maven Central as `dev.zilath`. Take `verifier-spring-boot-starter` for a Spring
-Boot application — it brings the rest with it — or `verifier-core` alone to verify
-credentials with no framework, and no network I/O beyond the fetcher you give it.
+Boot application — it brings `verifier-openid4vp` and `verifier-core` with it — and
+`verifier-trust-itwallet` beside it for OpenID Federation trust (`FederationTrustEvaluator`,
+`HttpFederationFetcher`), which the starter does not bring; or `verifier-core` alone to
+verify credentials with no framework, and no network I/O beyond the fetcher you give it.
 
 ```kotlin
 dependencies {
     implementation("dev.zilath:verifier-spring-boot-starter:0.4.0")
+    implementation("dev.zilath:verifier-trust-itwallet:0.4.0")
 }
 ```
 
