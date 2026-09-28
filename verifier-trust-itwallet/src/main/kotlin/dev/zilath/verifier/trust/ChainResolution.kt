@@ -98,7 +98,7 @@ private fun freshOr(
     fetch: () -> EntityStatement,
 ): EntityStatement = runCatching(fetch).getOrElse { if (it is FederationUnreachable) carried else throw it }
 
-/** One superior's configuration, the anchor's verified first, and its statement about [subject]. */
+/** One superior's configuration, the anchor's verified first, and its statement about the entity below it. */
 private class Hop(
     val superiorConfiguration: EntityStatement,
     val statement: EntityStatement,
@@ -134,7 +134,7 @@ internal fun fetchEntityConfiguration(
 }
 
 /**
- * Fetches the statement the entity of [superiorConfiguration] issues about [subject], from
+ * Fetches the statement the entity of `superiorConfiguration` issues about `subject`, from
  * its `federation_fetch_endpoint` once that has the shape a fetch endpoint must have. Its
  * signature is verified with the rest of the chain.
  */

@@ -167,7 +167,7 @@ class FederationDocumentNotFoundException(
 /**
  * Retrieves federation documents over HTTP; injectable so tests stay offline.
  *
- * SECURITY: every [url] derives from content an attacker may influence — the `iss` of a
+ * SECURITY: every `url` it is given derives from content an attacker may influence — the `iss` of a
  * credential nobody has verified yet, `authority_hints` and `federation_fetch_endpoint`
  * values from documents that are only verified once the chain closes at the anchor. The
  * library enforces their shape — https with a hostname, no userinfo, no IP literals —

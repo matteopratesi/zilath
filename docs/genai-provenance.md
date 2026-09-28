@@ -335,3 +335,26 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   artifacts: three advisories, all on Tomcat 11.0.24, in features no module uses — checked
   by searching the sources for them.
 - **Funding status**: pre-existing.
+
+### 2026-09-28 — Publication of 0.4.0
+
+- **What**: `0.4.0` built from `main` at `0512cca`, the merge of #47, signed, checked, uploaded
+  to Maven Central and published; the tag `v0.4.0` on the same commit, signed with the artifact
+  key. After it, the next development version, `0.5.0-SNAPSHOT`, and two corrections found on the
+  way: the README said the starter brings every module, and its POM does not bring
+  `verifier-trust-itwallet`; four KDoc links Dokka could not resolve, two of them there since
+  `0.3.0`.
+- **Model**: Anthropic Claude Opus 5.5.
+- **Assistance**: the release steps given one at a time, and the checks around the irreversible
+  one: `docs/releasing.md` step 2 run on `main`; the bundle read beyond what
+  `scripts/verify-bundle.sh` checks — every signature verified against the artifact key,
+  `META-INF/LICENSE` in all twelve jars, `Automatic-Module-Name` in the four main ones, no key
+  material, the POMs' coordinates, licence and dependencies; after publication, every artifact
+  downloaded back from Central and compared with the bundle.
+- **Human contribution**: the decision to publish that day; every step that needs the signing key
+  or the Central token — exporting the key, the upload, the deliberate publication in the Portal,
+  the signed tag.
+- **Verification**: the twenty artifacts served by `repo1.maven.org` identical, by SHA-256, to the
+  twenty of the bundle built here, and their twenty signatures, as downloaded, valid with key
+  `6A207A58428BC47BA9AC0029392ABDC140E3041A`; `git tag -v v0.4.0` valid, on `0512cca`.
+- **Funding status**: pre-existing.
