@@ -19,8 +19,10 @@ tokens in the form IT-Wallet 1.4.6 gives them, without `iss`, were refused. In 0
 production federation as served on 2026-09-24, untouched, is trusted for that issuer's real
 signing key and for the card's type; and a card shaped as IT-Wallet 1.4.6 writes it, with a
 status list, verifies against those documents from one end to the other, re-signed under
-substitute keys since the real ones are not ours. A card whose status is only a status
-assertion is still rejected, now saying why.
+substitute keys since the real ones are not ours. But the production issuer advertises
+status assertion and attestation endpoints, not a status list, and a card whose status
+carries only an assertion or an attestation is still rejected, now saying why: no card IPZS
+actually issued has been through the library.
 
 A minor, not a patch: many items change what a verifier accepts or rejects, and the API
 moves with them. **Breaking** lists the flow and starter API; in `verifier-core` and
@@ -314,6 +316,17 @@ that started it, and the README gains a guide for Spring Security, tested by the
 - Every dependency and plugin is checked against the SHA-256 recorded in
   `gradle/verification-metadata.xml`: a changed or unknown artifact fails the build. The
   plugin repository is declared explicitly in `settings.gradle.kts`.
+
+### Dependencies
+
+- **Tomcat 11.0.24**, which Spring Boot 4.1.1 — the latest 4.1 release on 2026-09-28 —
+  brings with `spring-boot-starter-web`, has three critical advisories, fixed in 11.0.25: a
+  replay in its DIGEST authenticator (CVE-2026-65905), security constraints bypassed by the
+  order they are declared in (CVE-2026-65182), and a bypass in its FORM authentication
+  (CVE-2026-68525). The library, the starter and the demo use none of these. An application
+  that does should override the Tomcat version its Spring Boot manages, to 11.0.25 or later,
+  until a Spring Boot release ships one. No other artifact of the starter's runtime
+  classpath has an advisory in OSV on that date.
 
 ## [0.3.0] — 2026-09-02
 

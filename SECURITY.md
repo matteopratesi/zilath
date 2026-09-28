@@ -130,7 +130,7 @@ token in the IT-Wallet form, which carries no `iss`, was refused. The regulatory
 missing as well — private relying parties are not yet admitted to verify the card in
 production — but this failure did not depend on it, and would have remained once they are.
 
-The code on `main`, not released at the time of writing, can verify such a card as far as
+0.4.0 can verify such a card as far as
 `verifier-trust-itwallet/src/test/kotlin/dev/zilath/verifier/trust/ProductionCedEndToEndTest.kt`
 shows: a card shaped as IT-Wallet 1.4.6 writes it, with a Token Status List reference,
 verified from one end to the other against the production federation documents as served on
@@ -203,8 +203,8 @@ the real federation rather than against fixtures written by the same hands as th
   the status list URI reached the fetcher without the shape rule this file claimed for it.
   In the demo, out of scope, the ticket page showed a holder's name and entitlement to
   anyone who had the transaction id.
-- **Where it stands.** The fixes are on `main`, not released at the time of writing; the
-  changelog's *Unreleased* section lists them. What was left open is stated where it
+- **Where it stands.** The fixes are released in 0.4.0, and the changelog's 0.4.0 section
+  lists them. What was left open is stated where it
   applies: the boundaries and the section on production readiness above, and the known
   limits in `docs/privacy-by-design.md`.
 
