@@ -253,7 +253,7 @@ available everywhere and `GPG_TTY` is what this file assumes.
    reversible.
 
    ```sh
-   ./scripts/verify-bundle.sh 0.3.0     # the version you are releasing
+   ./scripts/verify-bundle.sh 0.4.0     # the version you are releasing
    ```
 
    It checks three things and **exits non-zero** if any fails, because a check that only
@@ -330,14 +330,16 @@ available everywhere and `GPG_TTY` is what this file assumes.
 | Module | Published |
 |---|---|
 | `verifier-core` | yes — without its test fixtures |
-| `verifier-openid4vp` | yes |
+| `verifier-openid4vp` | yes — without its test fixtures, the store contract test among them |
 | `verifier-trust-itwallet` | yes |
 | `verifier-spring-boot-starter` | yes |
 | `demo-checkout` | no — an application, not an artifact to depend on |
 
 The test fixtures of `verifier-core` are deliberately excluded: they were written for our own
 tests, not as a supported API, and publishing them would commit us to keeping them stable
-forever. Adding them later is easy; removing them later is impossible.
+forever. Adding them later is easy; removing them later is impossible. Those of
+`verifier-openid4vp` are excluded too; the store contract test among them is meant for
+integrators, who take it from the repository, not from Maven Central.
 
 ## Before the first release
 

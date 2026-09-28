@@ -273,7 +273,7 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   address it resolves to is globally routable, no redirect is followed, and time and response
   size are bounded. The demo moved onto them; `SECURITY.md`, the README, privacy-by-design and
   `CHANGELOG.md` say what they hold and what they leave open. Prompted by a concern the automated
-  review kept in its security architecture review of #40.
+  review kept in its security architecture review of #40. Pull request #45.
 - **Model**: Anthropic Claude Opus 5.5.
 - **Assistance**: the two classes and the address classification, their tests, one mutation
   check per protection (eighteen), the documentation changes, the issue's text, and the fixes
@@ -283,7 +283,9 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   boundary documented only, and the choice of the JDK's client with no new dependency, accepting
   the DNS rebinding window that a dependency could have closed.
 - **Verification**: every protection has a test that fails once that protection is removed;
-  `clean build` green, with dependency verification.
+  `clean build` green, with dependency verification; the automated review repeated on #45,
+  whose last two findings, both in code #46 replaces, are fixed there. Merged with #46 on
+  2026-09-28.
 - **Funding status**: pre-existing.
 
 ### 2026-09-27 — Connecting only to the checked addresses
@@ -295,7 +297,7 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   to bounded lines, head and body, and refuses what it would have to guess at. `allowLoopback`
   became `destinations`, whose `LOOPBACK` keeps the demo's trust-all TLS on this machine by the
   same single lookup. Prompted by the concern the automated review kept, as High, on the
-  previous deliverable's pull request.
+  previous deliverable's pull request. Pull request #46, stacked on #45.
 - **Model**: Anthropic Claude Opus 5.5.
 - **Assistance**: the exchange and the response reader, their tests — among them a TLS test
   against names no resolver knows, which only a pinned connection can pass — one mutation check
@@ -306,5 +308,30 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   on the JDK's sockets over a new dependency and over leaving the window documented, accepting
   that the JVM's proxy settings are no longer used.
 - **Verification**: every protection has a test that fails once that protection is removed;
-  `clean build` green, with dependency verification.
+  `clean build` green, with dependency verification; the automated review repeated until the
+  head drew no actionable comment. Merged after #45 on 2026-09-28.
+- **Funding status**: pre-existing.
+
+### 2026-09-28 — Cutting 0.4.0
+
+- **What**: the release pull request for `0.4.0`. The section of `CHANGELOG.md`: its title and
+  date, and an opening that says what the release carries — the fourth review's fixes (#39, #40,
+  #41) and the library's own HTTP fetchers (#45, #46) — and what `0.3.0` cannot do that `0.4.0`
+  does; three of its paragraphs reflowed, no word changed; a note on the Tomcat advisories. The
+  version in `build.gradle.kts` and in `docs/releasing.md`'s verify command, and that file's
+  table of what is published; the README's version, its migration note from `0.3.0`, and the
+  sentences about unreleased code on `main` in the README and `SECURITY.md`, now about `0.4.0`.
+  The publication follows `docs/releasing.md` and is recorded once done.
+- **Model**: Anthropic Claude Opus 5.5.
+- **Assistance**: the opening, with each of its claims checked against the test or the code
+  that establishes it: `IpzsProductionChainTest` for the trust decision on the untouched
+  production documents, `ProductionCedEndToEndTest` for the card verified end to end and the
+  status assertion still refused, and the constructors it calls source-compatible; the
+  advisory lookup of `docs/releasing.md` step 2, run on every artifact of the starter's
+  runtime classpath, fifty of them, rather than on the four libraries the step names.
+- **Human contribution**: the decision to cut the release, numbered `0.4.0`.
+- **Verification**: the opening read against the tests and constructors named above; a
+  word-level diff showing the reflowed paragraphs unchanged; OSV queried for the fifty
+  artifacts: three advisories, all on Tomcat 11.0.24, in features no module uses — checked
+  by searching the sources for them.
 - **Funding status**: pre-existing.

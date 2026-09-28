@@ -32,10 +32,11 @@ Born for accessibility rights: letting a person with a disability prove an entit
 > Target spec: IT-Wallet v1.4.6 — see [docs/spec-version.md](docs/spec-version.md).
 >
 > **0.3.0 cannot verify a genuine European Disability Card in the production IT-Wallet
-> configuration.** The code on `main`, not released yet, verifies a card shaped as
-> IT-Wallet 1.4.6 writes it against the production federation's own documents, in a test;
-> no card actually issued has been through it. What that test shows and what it does not:
-> [SECURITY.md](SECURITY.md#production-readiness).
+> configuration.** In 0.4.0, in tests, the production federation's documents as served,
+> untouched, are trusted for the issuer's real key, and a card shaped as IT-Wallet 1.4.6
+> writes it verifies against the same documents re-signed under test keys, the real ones
+> not being ours. No card actually issued has been through it. What those tests show and
+> what they do not: [SECURITY.md](SECURITY.md#production-readiness).
 >
 > What this library does with the data it touches, what it keeps and what it cannot
 > promise: [docs/privacy-by-design.md](docs/privacy-by-design.md).
@@ -58,7 +59,7 @@ credentials with no framework, and no network I/O beyond the fetcher you give it
 
 ```kotlin
 dependencies {
-    implementation("dev.zilath:verifier-spring-boot-starter:0.3.0")
+    implementation("dev.zilath:verifier-spring-boot-starter:0.4.0")
 }
 ```
 
@@ -69,13 +70,18 @@ versions, and the [changelog](CHANGELOG.md) calls out separately every change th
 what a verifier accepts or rejects — those are the ones that can quietly let something
 through.
 
+Coming from **0.3.0**: recompile — several constructors gained parameters with defaults,
+which keeps sources compiling but not binaries linking. An outcome is read with the
+`PollToken` that `start()` returns, `awaitOutcome(txId, pollToken)`: the transaction id
+alone reads nothing. `Verified.claims` is an allowlist, and issuer plaintext nobody asked
+for is no longer returned. A DCQL query without `meta.vct_values` is refused when the
+request is built, and every key of `TrustAnchorConfig` needs its `kid`. The changelog's
+0.4.0 section lists the rest, under *Breaking* and *Changed*.
+
 Coming from **0.2.0**: `Verified.claims` no longer carries the issuer envelope. `iat`, `exp`,
 `nbf`, `cnf`, `status`, `sub`, `aud` and `jti` are stripped — each is stable per credential,
 so passing them on would let anything downstream link two verifications of the same person.
 Code that read `iat` or `exp` from the claims must stop.
-
-The rest of this section describes `main`, which is ahead of 0.3.0 and breaks its API in
-places: the changelog's *Unreleased* section lists every difference.
 
 ### Reading the outcome
 
@@ -247,14 +253,15 @@ carry).
 
 Two things stand between that card and a private relying party. Production verification by
 private relying parties does not exist yet. And the library was not ready for it either:
-**0.3.0 cannot verify any genuine card of that issuer**, even once verification is allowed
-— the production federation's trust chain ended untrusted, and past that a status list
-token in the IT-Wallet form was refused. The code on `main`, not released yet, verifies a
-card shaped as IT-Wallet 1.4.6 writes it against the production federation's documents, in
-a test with a synthetic card; but the issuer advertises status assertion and attestation
-endpoints rather than a status list, and a card whose status carries only an assertion or
-an attestation is still rejected. The details, and what else the test does not show, are
-in [SECURITY.md](SECURITY.md#production-readiness).
+**0.3.0 cannot verify any genuine card of that issuer**, even once verification is allowed —
+the production federation's trust chain ended untrusted, and past that a status list token
+in the IT-Wallet form was refused. In 0.4.0, in tests, the production federation's documents
+as served, untouched, are trusted for the issuer's real key, and a synthetic card shaped as
+IT-Wallet 1.4.6 writes it verifies against the same documents re-signed under test keys; but
+the issuer advertises status assertion and attestation endpoints rather than a status list,
+and a card whose status carries only an assertion or an attestation is still rejected. The
+details, and what else the tests do not show, are in
+[SECURITY.md](SECURITY.md#production-readiness).
 
 The simulation therefore mirrors the real claim names (`given_name`, `family_name`,
 `constant_attendance_allowance`, `expiry_date`) under an openly fake vct and federation — it

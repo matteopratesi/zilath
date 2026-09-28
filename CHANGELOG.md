@@ -8,15 +8,28 @@ Until 1.0.0 the public API may change between minor versions. Anything that chan
 verifier accepts or rejects is called out explicitly, because that is the kind of change
 that can silently let something through.
 
-## [Unreleased]
+## [0.4.0] — 2026-09-28
 
-The fixes of the fourth internal review (2026-09-04 to 2026-09-24), landing in parts. Headed
-for 0.4.0, not a patch: many items change what a verifier accepts or rejects, and the API
-moves with them. In three parts: `verifier-core` and the build; `verifier-trust-itwallet`;
-`verifier-openid4vp`, the Spring starter, the demo application and the documentation. The
-demo binds each transaction to the browser that started it; the README gains a guide for
-Spring Security, tested by the starter. After the review, the library also gains HTTP
-fetchers of its own, for the network boundary it used to leave to each application.
+The fixes of the fourth internal review (2026-09-04 to 2026-09-24), and HTTP fetchers of the
+library's own for the network boundary it used to leave to each application.
+
+**0.3.0 verifies no genuine disability card of the production IT-Wallet issuer**: the
+anchor's `metadata_policy` was applied to entity types the issuer is not, and status list
+tokens in the form IT-Wallet 1.4.6 gives them, without `iss`, were refused. In 0.4.0 the
+production federation as served on 2026-09-24, untouched, is trusted for that issuer's real
+signing key and for the card's type; and a card shaped as IT-Wallet 1.4.6 writes it, with a
+status list, verifies against those documents from one end to the other, re-signed under
+substitute keys since the real ones are not ours. But the production issuer advertises
+status assertion and attestation endpoints, not a status list, and a card whose status
+carries only an assertion or an attestation is still rejected, now saying why: no card IPZS
+actually issued has been through the library.
+
+A minor, not a patch: many items change what a verifier accepts or rejects, and the API
+moves with them. **Breaking** lists the flow and starter API; in `verifier-core` and
+`verifier-trust-itwallet`, `TrustAnchorConfig` now requires a unique `kid` on every key, and
+`VerificationContext` and `TrustDecision.Trusted` gain parameters with defaults,
+source-compatible but not binary-compatible. The demo binds each transaction to the browser
+that started it, and the README gains a guide for Spring Security, tested by the starter.
 
 ### Security — what the verifier now accepts that it refused
 
@@ -145,11 +158,11 @@ fetchers of its own, for the network boundary it used to leave to each applicati
 - **Expiry is the flow's.** A transaction carries one `expiresAt`; every call checks it
   first and redacts an expired entry in place, and a verification that finishes after it is
   not recorded, so no outcome with claims is read past the time to live, whatever the store
-  keeps: a verified outcome reads `Expired` from then on, a rejection keeps its reason without
-  its detail, a wallet error its code without its description. In 0.3.0 a recorded outcome
-  survived expiry. The in-memory store redacts an entry at its expiry and removes it a minute later,
-  sweeping itself in the background by due time; it holds at most 10,000 transactions
-  (`TooManyTransactionsException` beyond) and is closed with the flow.
+  keeps: a verified outcome reads `Expired` from then on, a rejection keeps its reason
+  without its detail, a wallet error its code without its description. In 0.3.0 a recorded
+  outcome survived expiry. The in-memory store redacts an entry at its expiry and removes it
+  a minute later, sweeping itself in the background by due time; it holds at most 10,000
+  transactions (`TooManyTransactionsException` beyond) and is closed with the flow.
 - **A `vp_token` carries exactly one presentation**, under the query's id and no other key,
   as a JSON string; the bare string of pre-1.0 wallets only under `ArfBaselineProfile`. A
   request is read at construction: a DCQL query the library cannot evaluate is refused when
@@ -161,19 +174,18 @@ fetchers of its own, for the network boundary it used to leave to each applicati
 - **What a wallet sends is bounded before it is kept or decoded**: the response (1 MiB,
   `maxWalletResponseLength`), its `error` (a token of 64 characters at most) and
   `error_description` (256 characters, printable ASCII). A `Transaction`, and a
-  `DirectPostBody` (the wallet's POST), print neither secrets nor claims. A rejection's detail reaches the starter's log bounded, on one
-  line. The time to live is capped at one hour.
+  `DirectPostBody` (the wallet's POST), print neither secrets nor claims. A rejection's
+  detail reaches the starter's log bounded, on one line. The time to live is capped at one
+  hour.
 - **The relying party's keys serve one purpose each**, under a `kid` of their own.
 - **The entity configuration meets the production anchor's policy for verifiers**: it
   publishes `redirect_uris` (the same-device callback, when there is one), `vp_formats` and
-  `authorization_encrypted_response_enc`
-  alongside their current names, and `contacts`, now required. One parameter the policy marks
-  essential, `authorization_signed_response_alg`, is left out on purpose: it would ask
-  wallets to sign the response inside the JWE, a form the flow does not read. A
-  cross-device-only relying party, which has no redirect, leaves out `redirect_uris` too, so
-  it cannot satisfy that policy. The
-  `trust_chain` of a request object is never sent expired, and can come from a
-  `TrustChainSource`.
+  `authorization_encrypted_response_enc` alongside their current names, and `contacts`, now
+  required. One parameter the policy marks essential, `authorization_signed_response_alg`,
+  is left out on purpose: it would ask wallets to sign the response inside the JWE, a form
+  the flow does not read. A cross-device-only relying party, which has no redirect, leaves
+  out `redirect_uris` too, so it cannot satisfy that policy. The `trust_chain` of a request
+  object is never sent expired, and can come from a `TrustChainSource`.
 - **The starter** answers the wallet with the statuses IT-Wallet 1.4.6 §12.2.1.6.1
   tabulates, 403, 400 or 500, with a fixed description instead of the rejection reason; serves
   both endpoints with `Cache-Control: no-store` and whatever the wallet puts in `Accept`;
@@ -304,6 +316,17 @@ fetchers of its own, for the network boundary it used to leave to each applicati
 - Every dependency and plugin is checked against the SHA-256 recorded in
   `gradle/verification-metadata.xml`: a changed or unknown artifact fails the build. The
   plugin repository is declared explicitly in `settings.gradle.kts`.
+
+### Dependencies
+
+- **Tomcat 11.0.24**, which Spring Boot 4.1.1 — the latest 4.1 release on 2026-09-28 —
+  brings with `spring-boot-starter-web`, has three critical advisories, fixed in 11.0.25: a
+  replay in its DIGEST authenticator (CVE-2026-65905), security constraints bypassed by the
+  order they are declared in (CVE-2026-65182), and a bypass in its FORM authentication
+  (CVE-2026-68525). The library, the starter and the demo use none of these. An application
+  that does should override the Tomcat version its Spring Boot manages, to 11.0.25 or later,
+  until a Spring Boot release ships one. No other artifact of the starter's runtime
+  classpath has an advisory in OSV on that date.
 
 ## [0.3.0] — 2026-09-02
 
