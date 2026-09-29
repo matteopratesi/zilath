@@ -8,6 +8,20 @@ Until 1.0.0 the public API may change between minor versions. Anything that chan
 verifier accepts or rejects is called out explicitly, because that is the kind of change
 that can silently let something through.
 
+## [Unreleased]
+
+### Changed
+
+- **The demo checks revocation.** Its example `StatusChecker` answered `UNKNOWN`, and so
+  rejected every credential that carries a status reference; its comment said the
+  conformance tool's PID carries none, and the PID of tool 1.2.1 does. The demo now declares
+  a `StatusListFetcher`, on which the starter builds its `OAuthStatusListChecker`. The
+  fetcher reaches the destinations of the demo's federation fetcher: under
+  `ZILATH_INSECURE_TLS`, loopback addresses only, by any name that resolves to them alone.
+  The tool's PID points at a status list under `credential-issuer.wct.example.org`, the
+  name its README maps to 127.0.0.1; without that hosts entry the PID is rejected with
+  `STATUS_CHECK_FAILED`. The library is unchanged.
+
 ## [0.4.0] — 2026-09-28
 
 The fixes of the fourth internal review (2026-09-04 to 2026-09-24), and HTTP fetchers of the

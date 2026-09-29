@@ -17,6 +17,7 @@
 package dev.zilath.demo
 
 import dev.zilath.verifier.core.HttpDocumentFetcher
+import dev.zilath.verifier.core.StatusListFetcher
 import dev.zilath.verifier.openid4vp.FlowOutcome
 import dev.zilath.verifier.openid4vp.PollToken
 import dev.zilath.verifier.openid4vp.PresentationRequest
@@ -139,6 +140,26 @@ internal fun httpFetcher(
         federation.fetch(url)
     }
 }
+
+/**
+ * The demo's status list fetcher, on which the starter builds its `OAuthStatusListChecker`:
+ * the library's [HttpDocumentFetcher], reaching what [destinationsFor] says.
+ *
+ * With [insecureTls] the TLS trust checks are DISABLED, as in [httpFetcher], and only
+ * loopback addresses are reached. Unlike that fetcher it does not also insist on a loopback
+ * name: the conformance tool's credentials point at its issuer's status list under
+ * `credential-issuer.wct.example.org`, a name the tool's README maps to 127.0.0.1 in the
+ * hosts file. The name is resolved once and the connection goes only to the addresses that
+ * were checked, so a name that resolves to anything but loopback is refused.
+ */
+internal fun statusListFetcher(
+    insecureTls: Boolean,
+    anchorId: String,
+): StatusListFetcher =
+    HttpDocumentFetcher(
+        destinations = destinationsFor(insecureTls, anchorId),
+        sslContext = if (insecureTls) trustAllTls() else null,
+    )
 
 /**
  * Loopback alone under [insecureTls]; loopback beside the public internet when [anchorId] is

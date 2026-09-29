@@ -60,8 +60,11 @@ and does not do, so that nobody copies it for more than it is:
   the callback hands the returning user-agent the token that reads the outcome.
 - The receipt is signed from the ticket page, once the demo's entitlement rule has been
   applied to the disclosed claims, and records that verdict.
-- Its example `StatusChecker` answers `UNKNOWN`: the demo cannot check revocation, so every
-  credential that carries a status reference is rejected.
+- Revocation is checked as in a deployment: the starter's `OAuthStatusListChecker`, on a
+  `StatusListFetcher` that reaches the same destinations as the federation fetcher. Under
+  `ZILATH_INSECURE_TLS` that is loopback addresses only, by any name that resolves to them
+  alone: the conformance tool's `credential-issuer.wct.example.org` does, once the hosts
+  entry its README asks for is in place.
 - Trust on first use of the anchor's keys (`ZILATH_TRUST_ANCHOR_TOFU`) and disabled TLS
   checks (`ZILATH_INSECURE_TLS`) exist for the conformance tool's local, ephemeral anchor,
   and for nothing else.

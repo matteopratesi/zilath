@@ -142,20 +142,6 @@ class DemoTransactionRegistryTest {
         }
     }
 
-    @Test
-    fun `the demo's example status checker never calls a credential valid`() {
-        // It is asked only about a credential that carries a status reference.
-        val checker = ConformanceDemoApp().statusChecker()
-        val status =
-            checker.check(
-                dev.zilath.verifier.core
-                    .StatusReference("https://status.example/1", 0),
-                dev.zilath.verifier.core
-                    .StatusIssuerTrust("https://issuer.example", emptyList()),
-            )
-        assertThat(status).isEqualTo(dev.zilath.verifier.core.CredentialStatus.UNKNOWN)
-    }
-
     private companion object {
         const val SESSION = "session-secret-of-the-starting-browser"
     }

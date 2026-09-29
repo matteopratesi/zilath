@@ -405,3 +405,23 @@ reconstructed here; naming the three is accurate, apportioning them would not be
 - **Verification**: the workflow's own pin check run locally on the changed file; the workflow
   parsed as YAML; CI on the pull request; `git notes --ref=genai show` on each of its commits.
 - **Funding status**: pre-existing.
+
+### 2026-09-29 — The demo checks revocation
+
+- **What**: `demo-checkout` — the example `StatusChecker`, which answered `UNKNOWN`, replaced by
+  a `StatusListFetcher` bean on which the starter builds its `OAuthStatusListChecker`, with the
+  fetcher next to the demo's federation fetcher; tests in `HttpFetcherTest` and
+  `DemoCheckoutSmokeTest`, and the test of the removed checker deleted. `SECURITY.md` and
+  `CHANGELOG.md`.
+- **Model**: Anthropic Claude Opus 5.5.
+- **Assistance**: a rerun of the PagoPA conformance tool 1.2.1 against 0.4.0, and the reading
+  of its logs and sources, which found that the tool's PID carries a status list reference the
+  demo could only answer `UNKNOWN` to. Then this change, its tests and this entry.
+- **Human contribution**: choosing a real status list check over the static `VALID` the demo
+  had until 2026-09-26, after being shown both; authorising the diagnostic runs below.
+- **Verification**: the demo module's checks; the new fetcher test failing when the fetcher's
+  destinations are changed to public only; the tool's presentation suite against the changed
+  demo, in a local copy whose trust chain check was disabled because the tool's mocked chain
+  does not pass it: the happy flow completed with the PID's status list fetched from the
+  tool's issuer, and failed with `STATUS_CHECK_FAILED` when the issuer's name did not resolve.
+- **Funding status**: pre-existing.

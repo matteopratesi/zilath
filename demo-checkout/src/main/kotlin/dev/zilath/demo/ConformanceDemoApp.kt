@@ -20,9 +20,9 @@ import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import dev.zilath.demo.cedsim.CedSim
-import dev.zilath.verifier.core.CredentialStatus
 import dev.zilath.verifier.core.CredentialVerifier
 import dev.zilath.verifier.core.StatusChecker
+import dev.zilath.verifier.core.StatusListFetcher
 import dev.zilath.verifier.core.TrustEvaluator
 import dev.zilath.verifier.openid4vp.OPENID_FEDERATION_PREFIX
 import dev.zilath.verifier.openid4vp.OpenId4VpVerificationFlow
@@ -54,18 +54,16 @@ import java.time.Clock
  */
 @SpringBootApplication
 class ConformanceDemoApp {
-    /** The demo's example status checker: it cannot check revocation, and says so. */
+    /**
+     * Revocation, as a real deployment has it: the starter builds its
+     * `OAuthStatusListChecker` on this fetcher. The conformance tool's PID carries a status
+     * list reference, which is then fetched and checked; the simulated card carries none.
+     */
     @Bean
-    fun statusChecker(): StatusChecker =
-        StatusChecker { _, _ ->
-            // The verifier asks only about a credential that carries a status reference — the
-            // conformance PID and the simulated card carry none — so this answers exactly for
-            // the credentials that could be revoked, and must not call them valid. A constant
-            // VALID here was the shortest way to switch revocation off in a copy of this code.
-            // A real deployment declares a StatusListFetcher and the starter wires
-            // OAuthStatusListChecker to it.
-            CredentialStatus.UNKNOWN
-        }
+    fun statusListFetcher(
+        @Value("\${zilath.demo.trust-anchor-id}") anchorId: String,
+        @Value("\${zilath.demo.insecure-tls:false}") insecureTls: Boolean,
+    ): StatusListFetcher = statusListFetcher(insecureTls, anchorId)
 
     /**
      * The federation trust evaluator: against the configured anchor keys, or, with
