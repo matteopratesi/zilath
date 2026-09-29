@@ -1,0 +1,5 @@
+Model: Anthropic Claude Opus 5.5 (claude-opus-5-5), in Claude Code.
+Prompts (summary): as for the previous commit of this pull request.
+Assistance: wrote the register entry for this pull request, and this commit message and note.
+Human contribution: none beyond the request; the entry follows the register's existing form.
+Verification: the entry placed last, in date order; its claims checked against the previous commit and its note.
