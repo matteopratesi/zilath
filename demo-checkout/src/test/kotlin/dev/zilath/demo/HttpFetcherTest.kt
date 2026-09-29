@@ -23,6 +23,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 
@@ -83,6 +84,18 @@ class HttpFetcherTest {
         assertThatThrownBy { httpFetcher(insecureTls = true, LOCAL_ANCHOR).fetch("https://ta.example/.well-known") }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessage("insecure TLS is restricted to loopback, refused for ta.example")
+    }
+
+    @Test
+    fun `the status list fetcher reaches a loopback status list under trust-all TLS`() {
+        assertThat(statusListFetcher(insecureTls = true, LOCAL_ANCHOR).fetch("$base/200")).isEqualTo("status 200")
+    }
+
+    @Test
+    fun `a demo pointed at a remote federation fetches no status list on this machine`() {
+        assertThatThrownBy { statusListFetcher(insecureTls = false, REMOTE_ANCHOR).fetch("$base/200") }
+            .isInstanceOf(IOException::class.java)
+            .hasMessageContaining("refused:")
     }
 
     @Test

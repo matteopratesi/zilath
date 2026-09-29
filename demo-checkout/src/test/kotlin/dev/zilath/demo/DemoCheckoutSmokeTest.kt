@@ -16,6 +16,8 @@
  */
 package dev.zilath.demo
 
+import dev.zilath.verifier.core.OAuthStatusListChecker
+import dev.zilath.verifier.core.StatusChecker
 import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -37,6 +39,9 @@ class DemoCheckoutSmokeTest {
     @Autowired
     lateinit var mockMvc: MockMvc
 
+    @Autowired
+    lateinit var statusChecker: StatusChecker
+
     /** A transaction started from the demo page, and the session cookie that owns it. */
     private class Started(
         val txId: String,
@@ -54,6 +59,11 @@ class DemoCheckoutSmokeTest {
             checkNotNull(response.getHeader("Location")).substringAfterLast('/'),
             checkNotNull(response.getCookie(DemoCheckoutController.SESSION_COOKIE)),
         )
+    }
+
+    @Test
+    fun `revocation is checked against the credential's status list`() {
+        assertThat(statusChecker).isInstanceOf(OAuthStatusListChecker::class.java)
     }
 
     @Test
