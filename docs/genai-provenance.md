@@ -16,8 +16,14 @@ and that is always a person. A tool that helped produce it is not an author in t
 and putting it there blurs a line worth keeping sharp.
 
 The equivalent information lives here instead: versioned, in the repository, auditable
-against the git history by date. Anyone wanting per-change granularity can cross-reference
-a dated entry below with `git log` for the same period.
+against the git history by date.
+
+**Since 2026-09-29 it is also recorded per commit, in git notes.** Each commit made with
+model assistance carries a note under `refs/notes/genai`: the model, a summary of the
+prompts, what the model did, what a person decided, and how the result was checked. A note is
+attached to a commit without being part of it, so the commit's message and authorship stay
+the person's. This file keeps one entry per pull request, which says the same for the change
+as a whole.
 
 ## Baseline: what already existed
 
@@ -49,9 +55,30 @@ to know how it came to exist.
 
 ## How entries are recorded from here on
 
-One entry per unit of work that produces a deliverable — a feature, a document, a
-migration — not one per commit. Per-commit granularity is unsustainable and would produce a
-log nobody reads, which serves nobody.
+**Until 2026-09-28**, one entry per unit of work that produces a deliverable — a feature, a
+document, a migration — and not one per commit.
+
+**From 2026-09-29**, two levels:
+
+- **a git note on each commit** made with model assistance, under `refs/notes/genai`, with the
+  fields *Model*, *Prompts (summary)*, *Assistance*, *Human contribution* and *Verification*;
+- **one entry here per pull request**, with the fields below.
+
+The change follows the funding body's published guidance, which expects disclosure per commit
+for generated code and accepts equivalent methods. Notes give that granularity without making
+a model the author of a commit.
+
+To read the notes, which the GitHub web interface does not show:
+
+```sh
+git fetch origin refs/notes/genai:refs/notes/genai
+git log --notes=genai
+git notes --ref=genai show <commit>
+```
+
+Pull requests are merged with a merge commit, so the commits that carry the notes reach
+`main` unchanged. Whoever rebases or amends a commit that has a note should first run
+`git config notes.rewriteRef refs/notes/genai`, so that the note follows the rewritten commit.
 
 Each entry states:
 
@@ -357,4 +384,24 @@ reconstructed here; naming the three is accurate, apportioning them would not be
 - **Verification**: the twenty artifacts served by `repo1.maven.org` identical, by SHA-256, to the
   twenty of the bundle built here, and their twenty signatures, as downloaded, valid with key
   `6A207A58428BC47BA9AC0029392ABDC140E3041A`; `git tag -v v0.4.0` valid, on `0512cca`.
+- **Funding status**: pre-existing.
+
+### 2026-09-29 — setup-gradle 6.3.0 with the open-source cache, and provenance per commit
+
+- **What**: `.github/workflows/build.yml` — `gradle/actions/setup-gradle` from v4.4.3 to v6.3.0
+  with `cache-provider: basic`, and the comment on the pinned SHAs, which still named the v4 tags
+  of 2026-09-25 after #42 and #44 had moved `checkout` and `setup-java` to v7.0.1 and v6.0.1.
+  This file and the README, for the move to notes. The notes on the commits of this pull
+  request.
+- **Model**: Anthropic Claude Opus 5.5.
+- **Assistance**: the review of the three Dependabot pull requests, #42, #43 and #44: each
+  proposed SHA checked against its release's tag through the GitHub API, and the release notes
+  between the pinned and the proposed versions read for breaking changes. That review found that
+  setup-gradle caches, since v6, through a proprietary component by default. Then the workflow
+  change, the new recording method and this entry.
+- **Human contribution**: not accepting the proprietary component's terms, and using the
+  MIT-licensed cache instead; merging #42 and #44 as Dependabot proposed them; recording
+  provenance per commit in notes, so that commit authorship stays with a person.
+- **Verification**: the workflow's own pin check run locally on the changed file; the workflow
+  parsed as YAML; CI on the pull request; `git notes --ref=genai show` on each of its commits.
 - **Funding status**: pre-existing.

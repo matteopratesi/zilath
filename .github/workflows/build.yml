@@ -15,8 +15,9 @@ jobs:
     steps:
       # Actions are pinned to full commit SHAs, not to tags: a tag can be moved by whoever
       # controls, or compromises, the action's repository, and the next run would execute
-      # different code under the same name. The comment names the release the SHA is; the
-      # pins are those the v4 tags pointed at on 2026-09-25. Dependabot proposes updates.
+      # different code under the same name. The comment names the release the SHA is, and
+      # each SHA is checked against that release's tag before it is merged. Dependabot
+      # proposes updates.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -24,7 +25,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+      # Since v6, setup-gradle caches through a proprietary component by default, under
+      # Gradle's own terms of use. The basic provider is the MIT-licensed one, built on
+      # actions/cache.
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
       # Keeps the rule above true: a step referring to an action by anything but a full commit
       # SHA fails the build. The value of each uses: is checked, not the line, so a SHA in a
       # trailing comment does not excuse a tag. References to this repository need none:
