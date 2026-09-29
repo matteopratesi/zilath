@@ -1,0 +1,5 @@
+Model: Anthropic Claude Opus 5.5 (claude-opus-5-5), in Claude Code.
+Prompts (summary): the maintainer asked for a rerun of the PagoPA conformance tool against 0.4.0, then chose, of the two ways shown to get past the demo's status check, to wire the demo to the library's status list checker.
+Assistance: found from the tool's logs and sources that its PID carries a status list reference the demo answered UNKNOWN to; wrote the fetcher, the bean, the tests, the SECURITY.md and CHANGELOG.md text, and this commit message and note.
+Human contribution: the choice of a real status list check over the static VALID the demo had until 2026-09-26; the authorisation of the diagnostic tool runs.
+Verification: :demo-checkout:check; the new fetcher test fails when the fetcher's destinations are changed to public only; the tool's presentation suite against the changed demo (trust chain check disabled in a local copy only) completed the happy flow with the PID's status list fetched from the tool's issuer, and failed with STATUS_CHECK_FAILED when the issuer's name did not resolve.
