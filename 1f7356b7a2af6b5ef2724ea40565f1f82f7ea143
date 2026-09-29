@@ -1,0 +1,5 @@
+Model: Anthropic Claude Opus 5.5 (claude-opus-5-5), in Claude Code.
+Prompts (summary): the maintainer asked for the model history stated in the funding proposal to match the logs, and agreed to correct the public register where it did not.
+Assistance: counted, per day and per model, the logged responses of the sessions working on the project, sub-agents included; wrote the corrections, the new entry, this message and note.
+Human contribution: the decision to correct the register rather than leave the earlier attribution standing.
+Verification: the per-day counts (Opus 5 alone on 2026-08-31 and 2026-09-01; Opus 4.8 on 2026-08-30 and in two sub-agents on 2026-09-04 and 2026-09-05, each starting on Fable 5.1); the diff read against them.
