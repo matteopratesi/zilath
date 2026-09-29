@@ -425,3 +425,25 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   does not pass it: the happy flow completed with the PID's status list fetched from the
   tool's issuer, and failed with `STATUS_CHECK_FAILED` when the issuer's name did not resolve.
 - **Funding status**: pre-existing.
+
+### 2026-09-29 — Trust marks in a subordinate statement
+
+- **What**: `verifier-trust-itwallet` — `trust_marks` taken out of the claims the chain check
+  refuses in a subordinate statement, with its KDoc; a test for a chain whose subordinate
+  statement carries trust marks, and the existing test kept on the other four claims.
+  `CHANGELOG.md`.
+- **Model**: Anthropic Claude Opus 5.5.
+- **Assistance**: while checking a report to the PagoPA conformance tool against IT-Wallet
+  1.4.6, found that the profile lets a subordinate statement carry trust marks, which the check
+  added in 0.4.0 refused. Checked every 1.4.x release, the library's use of trust marks (none
+  in a chain) and the subordinate statements of the production trust anchor. Then the change,
+  its tests and this entry.
+- **Human contribution**: the decision to follow the profile the library targets rather than
+  OpenID Federation 1.0 on this point, after weighing the proposal and the conflict between the
+  two specifications.
+- **Verification**: the module's checks; putting `trust_marks` back in the list fails the new
+  test, and taking `authority_hints` out fails the existing one; the conformance tool 1.2.1
+  against the change still refuses its mocked chain, for `authority_hints`
+  (pagopa/wallet-conformance-test#238); against a local copy of the tool with the change that
+  issue proposes, the presentation happy flow completes with no check disabled.
+- **Funding status**: pre-existing.

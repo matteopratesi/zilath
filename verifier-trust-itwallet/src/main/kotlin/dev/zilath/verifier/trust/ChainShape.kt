@@ -139,8 +139,9 @@ private fun checkClaimsBelongToTheirKind(
             trustFail("an entity configuration carries claims only a subordinate statement may")
         }
     }
-    // And the other way round: authority hints and trust marks are an entity's own claims
-    // about itself, which a superior's statement about it has no business carrying.
+    // And the other way round: authority hints are an entity's own claims about itself, and
+    // trust mark issuers and owners an anchor's, which a superior's statement about another
+    // entity has no business carrying. Trust marks are the exception: see the list below.
     subordinates.forEach { statement ->
         if (CONFIGURATION_ONLY_CLAIMS.any(statement::hasClaim)) {
             trustFail("a subordinate statement carries claims only an entity configuration may")
@@ -171,6 +172,13 @@ private fun checkClosingAnchorConfiguration(
 private val SUBORDINATE_ONLY_CLAIMS =
     listOf("metadata_policy", "metadata_policy_crit", "constraints", "source_endpoint")
 
-/** OID-FED §3.2: "the Entity Statement MUST be an Entity Configuration" when present. */
+/**
+ * OID-FED §3.2: "the Entity Statement MUST be an Entity Configuration" when present — except
+ * `trust_marks`, which §3.2 lists too. IT-Wallet 1.4.6, the profile this module implements,
+ * lets a subordinate statement carry the trust marks its issuer gives the subject (Subordinate
+ * Statements, and step 4 of onboarding, where the entity copies them into its own
+ * configuration). No trust mark in a chain is read here, so accepting them there means
+ * ignoring them; refusing them turned away every chain that used what the profile allows.
+ */
 private val CONFIGURATION_ONLY_CLAIMS =
-    listOf("authority_hints", "trust_anchor_hints", "trust_marks", "trust_mark_issuers", "trust_mark_owners")
+    listOf("authority_hints", "trust_anchor_hints", "trust_mark_issuers", "trust_mark_owners")

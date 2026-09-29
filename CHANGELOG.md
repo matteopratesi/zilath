@@ -10,6 +10,18 @@ that can silently let something through.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A subordinate statement may carry `trust_marks`.** Since 0.4.0 the chain check refused a
+  subordinate statement carrying any of the claims OpenID Federation 1.0 §3.2 reserves to
+  entity configurations, `trust_marks` among them. IT-Wallet 1.4.6 lets a subordinate
+  statement carry the trust marks its issuer gives the subject, so a chain that used what the
+  profile allows was untrusted. **This changes what a verifier accepts**: `trust_marks` is
+  accepted there and ignored, as no trust mark in a chain is read, while `authority_hints`,
+  `trust_anchor_hints`, `trust_mark_issuers` and `trust_mark_owners` are still refused. The
+  eight subordinate statements of the production trust anchor `ta.wallet.ipzs.it`, as served
+  on 2026-09-29, carry no `trust_marks`.
+
 ### Changed
 
 - **The demo checks revocation.** Its example `StatusChecker` answered `UNKNOWN`, and so
