@@ -1,0 +1,5 @@
+Model: Anthropic Claude Opus 5.5 (claude-opus-5-5), in Claude Code.
+Prompts (summary): the maintainer asked for an opinion on whether the chain check should follow IT-Wallet 1.4.6 or OpenID Federation 1.0 on trust marks in a subordinate statement, then asked for the change.
+Assistance: found the conflict while checking a report to the PagoPA conformance tool against IT-Wallet 1.4.6; checked every 1.4.x release, the library's use of trust marks (none in chains) and the production trust anchor's subordinate statements; wrote the change, the tests, the CHANGELOG entry, this message and note.
+Human contribution: the decision to align the check with the profile the library targets, after weighing the proposal and the conflict with OpenID Federation 1.0.
+Verification: :verifier-trust-itwallet:check; two mutations caught (trust_marks back in the list; authority_hints taken out); the PagoPA tool 1.2.1 against the change still refuses its mocked chain, for authority_hints; against a local copy of the tool with the change proposed in pagopa/wallet-conformance-test#238, the happy flow completes with no check disabled.
