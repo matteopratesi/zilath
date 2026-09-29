@@ -1,0 +1,5 @@
+Model: Anthropic Claude Opus 5.5 (claude-opus-5-5), in Claude Code.
+Prompts (summary): the maintainer decided on 2026-09-28 to record provenance per commit with git notes plus one register entry per pull request, starting with the next pull request of this repository; this is that pull request.
+Assistance: drafted the new recording method in docs/genai-provenance.md (the two levels, how to read the notes, notes.rewriteRef for rebases), the register entry for this pull request, the sentence in the README, this commit message and the notes on both commits.
+Human contribution: the choice of git notes over AI trailers in commit messages, so that commit authorship stays with a person; the choice to keep a register entry per pull request next to the notes.
+Verification: git notes --ref=genai show on both commits of the pull request; the register and README read in the rendered diff; review on the pull request.
