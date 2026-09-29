@@ -92,13 +92,14 @@ class ChainShapeTest {
 
     @Test
     fun `a subordinate statement carrying claims only an entity configuration may is malformed`() {
-        // OID-FED §3.2: authority_hints, trust_anchor_hints and the trust mark claims make the
-        // statement an entity configuration's; a superior's statement with them is malformed.
+        // OID-FED §3.2: authority_hints, trust_anchor_hints, trust_mark_issuers and
+        // trust_mark_owners make the statement an entity configuration's; a superior's
+        // statement with them is malformed. IT-Wallet 1.4.6 does not list them for a
+        // subordinate statement either.
         val configurationOnly =
             listOf(
                 "authority_hints" to listOf(ANCHOR_ID),
                 "trust_anchor_hints" to listOf(ANCHOR_ID),
-                "trust_marks" to emptyList<Any>(),
                 "trust_mark_issuers" to emptyMap<String, Any>(),
                 "trust_mark_owners" to emptyMap<String, Any>(),
             )
@@ -108,6 +109,20 @@ class ChainShapeTest {
                 .describedAs(name)
                 .contains("only an entity configuration may")
         }
+    }
+
+    @Test
+    fun `a subordinate statement may carry the trust marks its issuer gives the subject`() {
+        // IT-Wallet 1.4.6 lets it, and has the subject copy them into its own configuration;
+        // OID-FED §3.2 does not. Nothing reads them here, so the chain is trusted as without.
+        val trustMark =
+            mapOf(
+                "trust_mark_type" to "$ANCHOR_ID/trust_marks/credential-issuer",
+                "trust_mark" to signedStatement(anchorKey, ANCHOR_ID, LEAF_ID),
+            )
+        val statement = anchorStatementAboutLeaf { claim("trust_marks", listOf(trustMark)) }
+        assertThat(trustedKeyIds(decide(listOf(leafConfiguration(), statement))))
+            .containsExactly(TestVectors.issuerEcKey.keyID)
     }
 
     @Test
