@@ -124,6 +124,8 @@ Template — copy and fill:
 - **Model**: Anthropic Claude, version not recorded — several versions over the seven days,
   none logged at the time. This entry is retrospective, and that gap is the reason the
   register now exists: entries from here on name the version at the time of the work.
+  Reconstructed on 2026-09-29 from the session logs: Claude Fable 5 and Claude Opus 5, and
+  Claude Opus 4.8 for a few minutes on 2026-08-30.
 - **Assistance**: drafting of implementation code and tests, documentation, and two
   internal security reviews.
 - **Human contribution**: the entire design — what the library does and refuses to do, the
@@ -138,17 +140,16 @@ Template — copy and fill:
 <!-- New entries go below, newest last. -->
 
 Model attribution for the three entries that follow, covering 2026-08-31 and 2026-09-01
-up to the release — later entries carry their own: three versions were in use across those
-two days —
-**Anthropic Claude Fable 5, Opus 5 and Opus 4.8** — often alternating within a single
-session. Which one produced a given commit was not recorded at the time and is not
-reconstructed here; naming the three is accurate, apportioning them would not be.
+up to the release — later entries carry their own: **Anthropic Claude Opus 5**. These entries
+first named Fable 5, Opus 5 and Opus 4.8, as three versions in use across those two days with
+no record of which produced what. The session logs, read on 2026-09-29, show Opus 5 alone on
+both days; Fable 5 and Opus 4.8 were in use on 2026-08-30, under the entry above.
 
 ### 2026-08-31 — This register
 
 - **What**: `docs/genai-provenance.md` and the pointer to it in `README.md`
   (`c9049c1`..`d0bcab5`, PR #28).
-- **Model**: Anthropic Claude — Fable 5, Opus 5, Opus 4.8.
+- **Model**: Anthropic Claude Opus 5 (corrected on 2026-09-29; see the note above).
 - **Assistance**: drafting the document and its schema.
 - **Human contribution**: the decision to start a register before the funded work rather
   than reconstruct one after it. The refusal to use commit co-author trailers — commit
@@ -165,7 +166,7 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   22.13 requirement, and what the happy flow does); the configuration error messages in
   `ConformanceDemoApp.kt` with `ConfigurationMessagesTest` (`e121da1`, `e99b3d7`, PR #29;
   `cbaffc9`, PR #31).
-- **Model**: Anthropic Claude — Fable 5, Opus 5, Opus 4.8.
+- **Model**: Anthropic Claude Opus 5 (corrected on 2026-09-29; see the note above).
 - **Assistance**: diagnosing the script, rewriting it, generating the tests.
 - **Human contribution**: **the defect was found by the maintainer running the demo**, not
   by the model, and twice over — first the script that hung at step 4, then the startup
@@ -183,7 +184,7 @@ reconstructed here; naming the three is accurate, apportioning them would not be
 - **What**: first the ticket reference on the gate receipt, with validation of what gets
   stored (`a9cfd44`, `21a3b4d`, PR #30); then the removal of the whole module and its
   traces across six documents (`f8a452f`, PR #32).
-- **Model**: Anthropic Claude — Fable 5, Opus 5, Opus 4.8.
+- **Model**: Anthropic Claude Opus 5 (corrected on 2026-09-29; see the note above).
 - **Assistance**: implementing the reference field; later, surveying every reference to the
   module and rewriting the documents around its absence.
 - **Human contribution**: the question that started the first half — *there has to be a
@@ -253,7 +254,9 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   the maintainer's working notes and is not published.
 - **Model**: Anthropic Claude Fable 5.1 (search, deduplication and the first seven chunks of
   verification), Claude Opus 5.5 (the remaining verification chunks, the completeness critic and
-  the synthesis).
+  the synthesis), and Claude Opus 4.8 for part of the work of two reviewer sub-agents, on
+  2026-09-04 and 2026-09-05, which had started on Fable 5.1 (added on 2026-09-29 from the
+  session logs).
 - **Assistance**: the whole review: the probes, the judgements, the reproductions, the
   synthesis.
 - **Human contribution**: commissioning a fourth review of code already reviewed three times,
@@ -446,4 +449,20 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   against the change still refuses its mocked chain, for `authority_hints`
   (pagopa/wallet-conformance-test#238); against a local copy of the tool with the change that
   issue proposes, the presentation happy flow completes with no check disabled.
+- **Funding status**: pre-existing.
+
+### 2026-09-29 — Model attribution corrected from the session logs
+
+- **What**: this file — the model named for 2026-08-24 → 2026-08-30, for the three entries of
+  2026-08-31 and 2026-09-01, and for the fourth internal review, reconstructed from the Claude
+  Code session logs of the project, sub-agents included.
+- **Model**: Anthropic Claude Opus 5.5.
+- **Assistance**: counting, per day, which model produced each logged response in the sessions
+  working on the project, and writing the corrections and this entry.
+- **Human contribution**: the request to state in the funding proposal only what the logs show,
+  and so to correct the register where it said more.
+- **Verification**: the per-day counts from the session logs: Opus 5 alone on 2026-08-31 and
+  2026-09-01; Fable 5 and Opus 5 from 2026-08-23 to 2026-08-30, with Opus 4.8 on 2026-08-30
+  only; Opus 4.8 in two reviewer sub-agents on 2026-09-04 and 2026-09-05, each starting on
+  Fable 5.1.
 - **Funding status**: pre-existing.
