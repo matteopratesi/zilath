@@ -1,0 +1,5 @@
+Model: Anthropic Claude Opus 5.5 (claude-opus-5-5), in Claude Code.
+Prompts (summary): the maintainer asked to be told when the CodeRabbit review of this pull request was finished; its summary noted that the register ordering could be corrected.
+Assistance: moved the register entry of 2026-09-29 after the entries of 2026-09-28, unchanged; wrote this commit message and note.
+Human contribution: none beyond the review request; the change only restores the date order the register already follows.
+Verification: the register's headings listed in order after the move; the entry's text unchanged in the diff.
