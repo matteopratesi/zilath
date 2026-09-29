@@ -1,0 +1,5 @@
+Model: Anthropic Claude Opus 5.5 (claude-opus-5-5), in Claude Code.
+Prompts (summary): review the three open Dependabot pull requests for the GitHub Actions; then merge #42 and #44 and open a pull request that moves setup-gradle to 6.3.0 with the basic cache provider.
+Assistance: checked the three proposed SHAs against the releases' tags through the GitHub API; read the release notes between the pinned and the proposed versions for breaking changes; found in the v6.0.0 notes and in DISTRIBUTION.md that the default cache is a proprietary component; confirmed that cache-provider exists in action.yml at the pinned SHA; wrote this change and its commit message.
+Human contribution: the decision not to accept the proprietary component's terms and to use the MIT-licensed cache; the decision to merge the other two updates as Dependabot proposed them.
+Verification: the pin check of this workflow run locally on the changed file; the workflow parsed as YAML; CI on the pull request.
