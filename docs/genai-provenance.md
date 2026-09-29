@@ -363,26 +363,6 @@ reconstructed here; naming the three is accurate, apportioning them would not be
   by searching the sources for them.
 - **Funding status**: pre-existing.
 
-### 2026-09-29 — setup-gradle 6.3.0 with the open-source cache, and provenance per commit
-
-- **What**: `.github/workflows/build.yml` — `gradle/actions/setup-gradle` from v4.4.3 to v6.3.0
-  with `cache-provider: basic`, and the comment on the pinned SHAs, which still named the v4 tags
-  of 2026-09-25 after #42 and #44 had moved `checkout` and `setup-java` to v7.0.1 and v6.0.1.
-  This file and the README, for the move to notes. The notes on the commits of this pull
-  request.
-- **Model**: Anthropic Claude Opus 5.5.
-- **Assistance**: the review of the three Dependabot pull requests, #42, #43 and #44: each
-  proposed SHA checked against its release's tag through the GitHub API, and the release notes
-  between the pinned and the proposed versions read for breaking changes. That review found that
-  setup-gradle caches, since v6, through a proprietary component by default. Then the workflow
-  change, the new recording method and this entry.
-- **Human contribution**: not accepting the proprietary component's terms, and using the
-  MIT-licensed cache instead; merging #42 and #44 as Dependabot proposed them; recording
-  provenance per commit in notes, so that commit authorship stays with a person.
-- **Verification**: the workflow's own pin check run locally on the changed file; the workflow
-  parsed as YAML; CI on the pull request; `git notes --ref=genai show` on each of its commits.
-- **Funding status**: pre-existing.
-
 ### 2026-09-28 — Publication of 0.4.0
 
 - **What**: `0.4.0` built from `main` at `0512cca`, the merge of #47, signed, checked, uploaded
@@ -404,4 +384,24 @@ reconstructed here; naming the three is accurate, apportioning them would not be
 - **Verification**: the twenty artifacts served by `repo1.maven.org` identical, by SHA-256, to the
   twenty of the bundle built here, and their twenty signatures, as downloaded, valid with key
   `6A207A58428BC47BA9AC0029392ABDC140E3041A`; `git tag -v v0.4.0` valid, on `0512cca`.
+- **Funding status**: pre-existing.
+
+### 2026-09-29 — setup-gradle 6.3.0 with the open-source cache, and provenance per commit
+
+- **What**: `.github/workflows/build.yml` — `gradle/actions/setup-gradle` from v4.4.3 to v6.3.0
+  with `cache-provider: basic`, and the comment on the pinned SHAs, which still named the v4 tags
+  of 2026-09-25 after #42 and #44 had moved `checkout` and `setup-java` to v7.0.1 and v6.0.1.
+  This file and the README, for the move to notes. The notes on the commits of this pull
+  request.
+- **Model**: Anthropic Claude Opus 5.5.
+- **Assistance**: the review of the three Dependabot pull requests, #42, #43 and #44: each
+  proposed SHA checked against its release's tag through the GitHub API, and the release notes
+  between the pinned and the proposed versions read for breaking changes. That review found that
+  setup-gradle caches, since v6, through a proprietary component by default. Then the workflow
+  change, the new recording method and this entry.
+- **Human contribution**: not accepting the proprietary component's terms, and using the
+  MIT-licensed cache instead; merging #42 and #44 as Dependabot proposed them; recording
+  provenance per commit in notes, so that commit authorship stays with a person.
+- **Verification**: the workflow's own pin check run locally on the changed file; the workflow
+  parsed as YAML; CI on the pull request; `git notes --ref=genai show` on each of its commits.
 - **Funding status**: pre-existing.
