@@ -1,0 +1,5 @@
+Model: Anthropic Claude Sonnet 5.5 (claude-sonnet-5-5), as a sub-agent in Claude Code, briefed and reviewed by Claude Opus 5.5 (claude-opus-5-5).
+Prompts (summary): the maintainer asked to move the library to IT-Wallet 1.4.7 and to apply test ATT-004 with no transition, since the library has no users yet; the coordinating model wrote the sub-agent's brief from a comparison of the two releases, and asked for ATT-006 and the earlier algorithm check after reviewing the first commits.
+Assistance: the target version in docs/spec-version.md, the README, docs/note-divergenze.md and docs/privacy-by-design.md, the one code comment naming the current target, and the CHANGELOG entry.
+Human contribution: the decision to move the target to 1.4.7 with no transition period.
+Verification: the statements read against the specification diff between tags 1.4.6 and 1.4.7; clean build.
