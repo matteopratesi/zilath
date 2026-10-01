@@ -174,7 +174,7 @@ private val SUBORDINATE_ONLY_CLAIMS =
 
 /**
  * OID-FED §3.2: "the Entity Statement MUST be an Entity Configuration" when present — except
- * `trust_marks`, which §3.2 lists too. IT-Wallet 1.4.6, the profile this module implements,
+ * `trust_marks`, which §3.2 lists too. IT-Wallet 1.4.7, the profile this module implements,
  * lets a subordinate statement carry the trust marks its issuer gives the subject (Subordinate
  * Statements, and step 4 of onboarding, where the entity copies them into its own
  * configuration). No trust mark in a chain is read here, so accepting them there means

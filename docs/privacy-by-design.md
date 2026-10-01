@@ -276,4 +276,4 @@ Zilath handles the cryptography and the minimisation. It does not handle your ob
   the information indispensable to the service
 - Garante, decision of 13 May 2010 (doc. web 1729156): showing a document is enough,
   keeping a copy is not permitted
-- OpenID4VP 1.0; IT-Wallet technical rules v1.4.6; Directive (EU) 2024/2841
+- OpenID4VP 1.0; IT-Wallet technical rules v1.4.7; Directive (EU) 2024/2841

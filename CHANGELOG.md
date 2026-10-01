@@ -33,6 +33,14 @@ that can silently let something through.
   The tool's PID points at a status list under `credential-issuer.wct.example.org`, the
   name its README maps to 127.0.0.1; without that hosts entry the PID is rejected with
   `STATUS_CHECK_FAILED`. The library is unchanged.
+- **The target specification is IT-Wallet 1.4.7 LTS** (released 2026-09-22), up from 1.4.6.
+  The relying party flow requirements and the sections of the specification the code cites
+  are the same in both, and so are the rule texts the comments quote as 1.4.6. The breaking
+  changes of 1.4.7, in PAR (`typ`, `scope`) and in the federation entity type
+  `wallet_solution`, renamed `openid_wallet_provider`, are on the issuer and wallet provider
+  side, which the library does not read. What 1.4.7 adds for a relying party, an Identity
+  Matching section for the PID and the IT-Wallet ID, is the application's to do. The change
+  that reaches the verifier is the test ATT-004, under Security.
 
 ## [0.4.0] — 2026-09-28
 
