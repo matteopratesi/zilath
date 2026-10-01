@@ -64,8 +64,9 @@ that can silently let something through.
   name its README maps to 127.0.0.1; without that hosts entry the PID is rejected with
   `STATUS_CHECK_FAILED`. The library is unchanged.
 - **The target specification is IT-Wallet 1.4.7 LTS** (released 2026-09-22), up from 1.4.6.
-  The relying party flow requirements and the sections of the specification the code cites
-  are the same in both, and so are the rule texts the comments quote as 1.4.6. The breaking
+  The relying party flow requirements are the same in both, and so are the rule texts the
+  comments quote as 1.4.6; in a relying party's own federation metadata, `organization_uri`
+  may now stand in for `homepage_uri`, which the library publishes and which stays valid. The breaking
   changes of 1.4.7, in PAR (`typ`, `scope`) and in the federation entity type
   `wallet_solution`, renamed `openid_wallet_provider`, are on the issuer and wallet provider
   side, which the library does not read. What 1.4.7 adds for a relying party, an Identity

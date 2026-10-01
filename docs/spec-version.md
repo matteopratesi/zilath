@@ -3,10 +3,12 @@
 - **IT-Wallet technical specifications: v1.4.7 LTS** (released 2026-09-22), as published at
   https://italia.github.io/eid-wallet-it-docs/releases/1.4.7/it/ — bumped from v1.4.6 on
   2026-10-01 (logged decision): the 1.4.6→1.4.7 delta leaves the RP flow requirements
-  below unchanged, and so every section of the specification this library cites (the remote
-  flow, the relying party's entity configuration, credential revocation, the credential data
-  model, the cryptographic algorithms); the rule texts quoted in the code as "1.4.6" are the
-  same in 1.4.7. What it does change: PAR (`typ`, `scope`) and the federation entity type
+  below unchanged. The remote flow, the relying party's entity configuration, credential
+  revocation, the credential data model and the cryptographic algorithms are word for word
+  the same; in the trust infrastructure the entity statement tables are the same, and a
+  leaf's `federation_entity` metadata may now give `organization_uri` in place of
+  `homepage_uri` (the library publishes `homepage_uri`, which stays valid). The rule texts
+  quoted in the code as "1.4.6" are the same in 1.4.7. What it does change: PAR (`typ`, `scope`) and the federation entity type
   `wallet_solution`, renamed `openid_wallet_provider`, both breaking and both on the issuer
   and wallet provider side, where this library reads neither; a new Identity Matching section
   for what a relying party does with a verified PID or IT-Wallet ID (RPR-115, RPR-116), which
