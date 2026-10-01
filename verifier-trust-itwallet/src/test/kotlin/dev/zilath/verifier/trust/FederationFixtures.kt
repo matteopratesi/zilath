@@ -103,7 +103,7 @@ object FederationFixtures {
         return jwt.serialize()
     }
 
-    /** An RSA key of [bits], which Nimbus would refuse to generate below 2048. */
+    /** An RSA key of [bits], whatever the size: Nimbus would refuse to generate one below 2048. */
     fun rsaKey(
         bits: Int,
         kid: String,

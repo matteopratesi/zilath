@@ -40,13 +40,13 @@ import org.junit.jupiter.api.Test
  * PS512, the ones IT-Wallet 1.4.7 lists as MUST or RECOMMENDED (test ATT-004). The chain here
  * is RSA from the anchor down, the family with a listed and an unlisted choice. Every refusal
  * is paired with an acceptance of the same keys under a listed algorithm, so that what is
- * refused is the `alg` and nothing else: an RS256 signature under a good 2048-bit key
+ * refused is the `alg` and nothing else: an RS256 signature under a good 3072-bit key
  * verifies mathematically, and was accepted before 1.4.7.
  */
 class StatementAlgorithmTest {
     private val issuerKid = TestVectors.issuerEcKey.keyID
-    private val anchorRsa = RSAKeyGenerator(2048).keyID("ta-rsa").generate()
-    private val leafRsa = RSAKeyGenerator(2048).keyID("leaf-rsa").generate()
+    private val anchorRsa = RSAKeyGenerator(3072).keyID("ta-rsa").generate()
+    private val leafRsa = RSAKeyGenerator(3072).keyID("leaf-rsa").generate()
     private val rsaAnchor = TrustAnchorConfig(ANCHOR_ID, listOf(anchorRsa.toPublicJWK()))
 
     private val listed = listOf(JWSAlgorithm.PS256, JWSAlgorithm.PS384, JWSAlgorithm.PS512)

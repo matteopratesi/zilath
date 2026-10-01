@@ -171,13 +171,17 @@ class OAuthStatusListCheckerTest {
     }
 
     @Test
-    fun `a status list signed with a weak rsa issuer key is unknown`() {
+    fun `a status list signed with an rsa issuer key below 3072 bits is unknown`() {
         // The fourth internal review: with a factorable issuer key, a stranger forges a
-        // "valid" answer for a revoked credential. The key rule skips it like any unusable key.
-        val weak = weakRsaKey(1024)
-        assertThat(statusOf(token(signWith = weak), trust = StatusIssuerTrust(issuer, listOf(weak.toPublicJWK()))))
-            .isEqualTo(CredentialStatus.UNKNOWN)
-        val strong = RSAKeyGenerator(2048).generate()
+        // "valid" answer for a revoked credential. The key rule skips it like any unusable key,
+        // and since IT-Wallet 1.4.7 (ATT-006, 128 bits of security strength) that includes 2048 bits.
+        for (bits in listOf(1024, 2048)) {
+            val weak = weakRsaKey(bits)
+            assertThat(statusOf(token(signWith = weak), trust = StatusIssuerTrust(issuer, listOf(weak.toPublicJWK()))))
+                .`as`("$bits bits")
+                .isEqualTo(CredentialStatus.UNKNOWN)
+        }
+        val strong = RSAKeyGenerator(3072).generate()
         assertThat(statusOf(token(signWith = strong), trust = StatusIssuerTrust(issuer, listOf(strong.toPublicJWK()))))
             .isEqualTo(CredentialStatus.VALID)
     }
@@ -185,8 +189,8 @@ class OAuthStatusListCheckerTest {
     @Test
     fun `a status list signed with an unlisted algorithm is unknown, with a key that verifies it`() {
         // IT-Wallet 1.4.7 test ATT-004: only ES256/384/512 and PS256/384/512 are accepted. The
-        // same 2048-bit key and the same list: PS256 is believed, RS256 is not.
-        val strong = RSAKeyGenerator(2048).generate()
+        // same 3072-bit key and the same list: PS256 is believed, RS256 is not.
+        val strong = RSAKeyGenerator(3072).generate()
         val rsaTrust = StatusIssuerTrust(issuer, listOf(strong.toPublicJWK()))
         val revoked = byteArrayOf(0b0000_0001)
         listOf(JWSAlgorithm.PS256, JWSAlgorithm.PS384, JWSAlgorithm.PS512).forEach {

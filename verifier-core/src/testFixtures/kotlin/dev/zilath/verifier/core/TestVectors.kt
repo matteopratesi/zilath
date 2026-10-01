@@ -88,7 +88,7 @@ object TestVectors {
      * @param issuerTyp the issuer JWT `typ` header; null omits it.
      * @param issuerHeaderParams extra issuer JWT header parameters, such as `trust_chain`.
      * @param issuerSigningKey signs the issuer JWT instead of [issuerEcKey] or [issuerRsaKey];
-     *   RSA keys below 2048 bits are allowed here, which is the point of passing one.
+     *   RSA keys below 3072 bits are allowed here, which is the point of passing one.
      * @param issuerAlgorithm the issuer JWT `alg`, instead of the one the issuer key's type and
      *   curve give (ES256, ES384, ES512, or PS256 for an RSA key); the signature is made with
      *   it, so a key of the matching family signs and verifies.
@@ -384,5 +384,5 @@ object TestVectors {
 
     private val JAVA_DIGESTS = mapOf(SHA_256 to "SHA-256", "sha-384" to "SHA-384", "sha-512" to "SHA-512")
 
-    private const val RSA_KEY_SIZE = 2048
+    private const val RSA_KEY_SIZE = 3072
 }

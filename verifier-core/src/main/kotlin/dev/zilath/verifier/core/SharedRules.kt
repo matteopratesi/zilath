@@ -73,11 +73,17 @@ fun isAcceptedJwsAlgorithm(algorithm: JWSAlgorithm?): Boolean =
  *
  * Nimbus enforces a minimum RSA size only when GENERATING a key: `RSASSAVerifier` accepts
  * a 512-bit modulus, which factors in hours on ordinary hardware, and a signature under it
- * is a signature anyone can make. RFC 7518 §3.3 says a key of 2048 bits or larger MUST be
- * used with the RS and PS algorithms; below that the key is skipped, exactly as a key of
- * an unknown type is. Elliptic curves are limited to the three NIST curves the JOSE
- * algorithms name — the IT-Wallet profile mandates ES256/384/512 — which leaves out
- * secp256k1, a curve Nimbus also verifies.
+ * is a signature anyone can make. RFC 7518 §3.3 makes 2048 bits the floor for the RS and PS
+ * algorithms; IT-Wallet 1.4.7 asks for more. Its test ATT-006 wants keys that provide at
+ * least 128 bits of security strength as NIST SP 800-57 Part 1 defines it, and for RSA that
+ * is a modulus of 3072 bits (Table 2: 2048 bits give 112). Below 3072 the key is skipped,
+ * exactly as a key of an unknown type is.
+ *
+ * Elliptic curves are limited to the three NIST curves the JOSE algorithms name — the
+ * IT-Wallet profile mandates ES256/384/512 — which leaves out secp256k1, a curve Nimbus
+ * also verifies. P-256 gives 128 bits of security strength, P-384 192 and P-521 256, so none
+ * of the three falls under the bar ATT-006 sets, and the algorithms of
+ * [ACCEPTED_JWS_ALGORITHMS] reach no other curve.
  *
  * Returning null rather than throwing is deliberate: callers try every trusted key in
  * turn, and an unusable one must count as "does not match", never as an error that stops
@@ -88,7 +94,7 @@ fun acceptableJwsVerifierFor(key: JWK): JWSVerifier? =
     when (key.keyType) {
         KeyType.EC -> key.toECKey().takeIf { it.curve in ACCEPTED_CURVES }?.let(::ECDSAVerifier)
         // The bit length of the modulus itself, not RSAKey.size(): that counts the bytes of `n`
-        // as encoded, so a 1024-bit modulus padded with leading zero bytes reported 2048.
+        // as encoded, so a modulus padded with leading zero bytes reported the padded length.
         KeyType.RSA ->
             key
                 .toRSAKey()
@@ -101,7 +107,7 @@ fun acceptableJwsVerifierFor(key: JWK): JWSVerifier? =
  * True when [jwt] is signed with an algorithm of [ACCEPTED_JWS_ALGORITHMS] and verifies
  * under at least one of [keys] that [acceptableJwsVerifierFor] accepts. The algorithm comes
  * first and is not a fallback: a signature that is mathematically valid under a trusted key
- * but made with an unlisted algorithm (`RS256` under a 2048-bit RSA key, say) is refused.
+ * but made with an unlisted algorithm (`RS256` under a 3072-bit RSA key, say) is refused.
  *
  * A key that cannot produce a verifier, or that throws while verifying (an EC key against
  * a PS256 signature, say), simply does not count as a match — so an unusable key can never
@@ -217,7 +223,10 @@ private val NUMERIC_HOST = Regex("""[0-9.]+""")
 
 private val LOCALHOST_HOSTS = setOf("localhost", "127.0.0.1", "[::1]", "::1")
 
-/** RFC 7518 §3.3 and §3.5. */
-private const val MIN_RSA_KEY_BITS = 2048
+/**
+ * 128 bits of security strength, which IT-Wallet 1.4.7 asks of keys in test ATT-006: NIST SP 800-57
+ * Part 1, Table 2. RFC 7518 §3.3 and §3.5 alone would allow 2048.
+ */
+private const val MIN_RSA_KEY_BITS = 3072
 
 private val ACCEPTED_CURVES = setOf(Curve.P_256, Curve.P_384, Curve.P_521)

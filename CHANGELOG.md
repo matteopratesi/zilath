@@ -26,9 +26,16 @@ that can silently let something through.
   of a trust chain, the anchor's configuration included (the evaluator's reason says the
   same). The `alg` is not put in a `detail`: it is read from the credential. **An issuer, a
   wallet or a federation that signs with RS256 no longer verifies**; PS256 is the RSA
-  choice the profile lists. The key rules are as they were (RSA from 2048 bits, P-256,
-  P-384 and P-521). ESP256, ESP384 and ESP512 are in the list as COSE algorithms, and the
-  library has no COSE path.
+  choice the profile lists. ESP256, ESP384 and ESP512 are in the list as COSE algorithms,
+  and the library has no COSE path.
+- **RSA keys below 3072 bits verify nothing.** The floor was 2048 bits, RFC 7518 §3.3's.
+  Test ATT-006 of IT-Wallet 1.4.7 asks that keys provide at least 128 bits of security
+  strength as NIST SP 800-57 Part 1 defines it, and for RSA that is a modulus of 3072 bits
+  (Table 2: 2048 bits give 112). **A 2048-bit RSA key is now skipped**, as a key of an
+  unknown type is, for issuer, holder, status list and federation signatures alike. The
+  curves are as they were: P-256, P-384 and P-521 give 128, 192 and 256 bits, and no
+  algorithm of the list reaches another one. An issuer, a wallet or a federation with
+  2048-bit RSA keys no longer verifies; a 3072-bit key signing PS256 does.
 
 ### Fixed
 
@@ -59,8 +66,8 @@ that can silently let something through.
   changes of 1.4.7, in PAR (`typ`, `scope`) and in the federation entity type
   `wallet_solution`, renamed `openid_wallet_provider`, are on the issuer and wallet provider
   side, which the library does not read. What 1.4.7 adds for a relying party, an Identity
-  Matching section for the PID and the IT-Wallet ID, is the application's to do. The change
-  that reaches the verifier is the test ATT-004, under Security.
+  Matching section for the PID and the IT-Wallet ID, is the application's to do. The changes
+  that reach the verifier are the tests ATT-004 and ATT-006, under Security.
 
 ## [0.4.0] — 2026-09-28
 

@@ -36,10 +36,10 @@ import org.junit.jupiter.api.Test
  * the ones IT-Wallet 1.4.7 lists as MUST or RECOMMENDED (test ATT-004, [ACCEPTED_JWS_ALGORITHMS]).
  * Every refusal here is paired with an acceptance of the same key and claims under a listed
  * algorithm, so that what is refused is the `alg` and nothing else: RS256 under a good
- * 2048-bit key verifies mathematically, and was accepted before 1.4.7.
+ * 3072-bit key verifies mathematically, and was accepted before 1.4.7.
  */
 class SignatureAlgorithmPipelineTest {
-    private val rsa = RSAKeyGenerator(2048).keyID("rsa").generate()
+    private val rsa = RSAKeyGenerator(3072).keyID("rsa").generate()
     private val unlistedRsa = listOf(JWSAlgorithm.RS256, JWSAlgorithm.RS384, JWSAlgorithm.RS512)
     private val listedRsa = listOf(JWSAlgorithm.PS256, JWSAlgorithm.PS384, JWSAlgorithm.PS512)
 

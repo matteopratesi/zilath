@@ -10,10 +10,11 @@
   `wallet_solution`, renamed `openid_wallet_provider`, both breaking and both on the issuer
   and wallet provider side, where this library reads neither; a new Identity Matching section
   for what a relying party does with a verified PID or IT-Wallet ID (RPR-115, RPR-116), which
-  is the application's to do, not the library's; and test ATT-004, which now names the
+  is the application's to do, not the library's; test ATT-004, which now names the
   algorithms a signature may use: only those listed as MUST or RECOMMENDED in the
-  Cryptographic Algorithms section are accepted, the others rejected. The library follows it:
-  see the CHANGELOG.
+  Cryptographic Algorithms section are accepted, the others rejected; and test ATT-006,
+  which now asks keys to provide at least 128 bits of security strength (NIST SP 800-57
+  Part 1), which is 3072 bits for RSA. The library follows both: see the CHANGELOG.
   The 1.4.x line is LTS (EOL when IT-Wallet is notified as EUDIW-compliant, at the latest
   ~August 2027); further breaking changes live on the `eudiw`/1.5 branch and will be
   absorbed behind the WalletProfile seam.
