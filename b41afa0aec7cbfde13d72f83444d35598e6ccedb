@@ -1,0 +1,5 @@
+Model: Anthropic Claude Opus 5.5 (claude-opus-5-5), in Claude Code.
+Prompts (summary): the maintainer asked to move the library to IT-Wallet 1.4.7 and to apply test ATT-004 with no transition, since the library has no users yet; the coordinating model wrote the sub-agent's brief from a comparison of the two releases, and asked for ATT-006 and the earlier algorithm check after reviewing the first commits.
+Assistance: the provenance entry for the change.
+Human contribution: the decision to move the target to 1.4.7 with no transition period.
+Verification: the figures in it from a clean build run by the coordinating model (564 tests) and from the sub-agent's mutation checks.
