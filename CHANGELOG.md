@@ -10,6 +10,26 @@ that can silently let something through.
 
 ## [Unreleased]
 
+### Security — what the verifier now refuses that it accepted
+
+- **Signatures verify only under the algorithms IT-Wallet 1.4.7 lists.** Its test ATT-004
+  has whoever evaluates a signed statement accept the algorithms its Cryptographic
+  Algorithms section lists as MUST or RECOMMENDED, which for a signature are ES256, ES384,
+  ES512, PS256, PS384 and PS512, and reject the others. The library used to take whatever
+  Nimbus verifies under a trusted key. **RS256, RS384 and RS512 signatures under an RSA key
+  of 2048 bits or more were accepted and are now refused**. ES256K, EdDSA and the HMAC
+  algorithms needed keys the library already skipped, and `none` never verified; they are
+  refused by name now. The rule holds for every signature the library checks: the issuer
+  JWT and the key binding JWT of a presentation (`INVALID_ISSUER_SIGNATURE` and
+  `INVALID_KEY_BINDING`, the `detail` saying that the algorithm is not accepted), the status
+  list token (`UNKNOWN`, as for any token that does not verify), and every entity statement
+  of a trust chain, the anchor's configuration included (the evaluator's reason says the
+  same). The `alg` is not put in a `detail`: it is read from the credential. **An issuer, a
+  wallet or a federation that signs with RS256 no longer verifies**; PS256 is the RSA
+  choice the profile lists. The key rules are as they were (RSA from 2048 bits, P-256,
+  P-384 and P-521). ESP256, ESP384 and ESP512 are in the list as COSE algorithms, and the
+  library has no COSE path.
+
 ### Fixed
 
 - **A subordinate statement may carry `trust_marks`.** Since 0.4.0 the chain check refused a

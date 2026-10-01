@@ -79,17 +79,21 @@ object FederationFixtures {
         return jwt.serialize()
     }
 
-    /** The same statement signed PS256, with no minimum key size, to test the verifier's. */
+    /**
+     * The same statement signed with RSA, PS256 unless [algorithm] says otherwise, and with
+     * no minimum key size, to test the verifier's.
+     */
     fun signedRsaStatement(
         signer: RSAKey,
         iss: String,
         sub: String,
+        algorithm: JWSAlgorithm = JWSAlgorithm.PS256,
         configure: JWTClaimsSet.Builder.() -> Unit = {},
     ): String {
         val jwt =
             com.nimbusds.jwt.SignedJWT(
                 JWSHeader
-                    .Builder(JWSAlgorithm.PS256)
+                    .Builder(algorithm)
                     .keyID(signer.keyID)
                     .type(JOSEObjectType("entity-statement+jwt"))
                     .build(),

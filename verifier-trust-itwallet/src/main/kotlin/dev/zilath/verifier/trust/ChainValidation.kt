@@ -20,6 +20,7 @@ import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jwt.SignedJWT
 import dev.zilath.verifier.core.InternalZilathApi
 import dev.zilath.verifier.core.TrustDecision
+import dev.zilath.verifier.core.isAcceptedJwsAlgorithm
 import dev.zilath.verifier.core.verifiesWithAnyAcceptableKey
 import java.time.Duration
 import java.time.Instant
@@ -73,6 +74,7 @@ private fun verifyTopDown(
         val statement = statements[index]
         checkValidityWindow(statement, now)
         if (index > 0 && statement.issuer != statement.subject) checkLifetime(statement, rules.maxStatementLifetime)
+        requireAcceptedAlgorithm(statement, "the statement at chain position $index")
         if (!verifiesWithAny(statement.jwt, listOf(keyNamedBy(statement, trustedKeys)))) {
             trustFail("the signature of the statement at chain position $index does not verify")
         }
@@ -110,6 +112,7 @@ internal fun requireGenuineAnchorConfiguration(
     rules: ChainRules,
 ) {
     checkValidityWindow(configuration, rules.clock.instant())
+    requireAcceptedAlgorithm(configuration, "the trust anchor's entity configuration")
     if (!verifiesWithAny(configuration.jwt, listOf(keyNamedBy(configuration, rules.anchor.federationKeys)))) {
         trustFail("the trust anchor's entity configuration does not verify with the configured keys")
     }
@@ -165,6 +168,23 @@ private fun checkLifetime(
 ) {
     if (Duration.between(statement.issuedAt, statement.expiresAt) > maxLifetime) {
         trustFail("a subordinate statement is valid for longer than the configured maximum")
+    }
+}
+
+/**
+ * Fails the chain unless [statement] is signed with an algorithm IT-Wallet lists (test
+ * ATT-004: `ACCEPTED_JWS_ALGORITHMS` in the core). [verifiesWithAny] refuses the others
+ * anyway; this says so, where "does not verify" would send an operator looking for a forged
+ * signature in a valid one. [what] names the statement by a position or a role, never by a
+ * value read from the document, as every [TrustFailure] message must.
+ */
+@OptIn(InternalZilathApi::class)
+internal fun requireAcceptedAlgorithm(
+    statement: EntityStatement,
+    what: String,
+) {
+    if (!isAcceptedJwsAlgorithm(statement.jwt.header.algorithm)) {
+        trustFail("$what is signed with an algorithm that is not accepted")
     }
 }
 

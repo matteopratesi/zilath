@@ -163,6 +163,7 @@ private fun checkClosingAnchorConfiguration(
     if (configuration.federationJwks.isEmpty()) {
         trustFail("the statement at chain position $position carries no federation keys")
     }
+    requireAcceptedAlgorithm(configuration, "the statement at chain position $position")
     if (!verifiesWithAny(configuration.jwt, listOf(keyNamedBy(configuration, anchor.federationKeys)))) {
         trustFail("the signature of the statement at chain position $position does not verify")
     }
