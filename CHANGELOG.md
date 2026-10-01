@@ -10,6 +10,36 @@ that can silently let something through.
 
 ## [Unreleased]
 
+### Security — what the verifier now refuses that it accepted
+
+- **Signatures verify only under the algorithms IT-Wallet 1.4.7 lists.** Its test ATT-004
+  has whoever evaluates a signed statement accept the algorithms its Cryptographic
+  Algorithms section lists as MUST or RECOMMENDED, which for a signature are ES256, ES384,
+  ES512, PS256, PS384 and PS512, and reject the others. The library used to take whatever
+  Nimbus verifies under a trusted key. **RS256, RS384 and RS512 signatures under an RSA key
+  of 2048 bits or more were accepted and are now refused**. ES256K, EdDSA and the HMAC
+  algorithms needed keys the library already skipped, and `none` never verified; they are
+  refused by name now. The rule holds for every signature the library checks: the issuer
+  JWT and the key binding JWT of a presentation (`INVALID_ISSUER_SIGNATURE` and
+  `INVALID_KEY_BINDING`, the `detail` saying that the algorithm is not accepted), the status
+  list token (`UNKNOWN`, as for any token that does not verify), and every entity statement
+  of a trust chain, the anchor's configuration included (the evaluator's reason says the
+  same). The two algorithms of a presentation are read before the `TrustEvaluator` is asked,
+  which can mean a federation fetch: a credential signed with an unlisted algorithm costs
+  none, and is reported by these reasons even when its issuer is not trusted. The `alg` is
+  not put in a `detail`: it is read from the credential. **An issuer, a wallet or a
+  federation that signs with RS256 no longer verifies**; PS256 is the RSA choice the profile
+  lists. ESP256, ESP384 and ESP512 are in the list as COSE algorithms, and the library has
+  no COSE path.
+- **RSA keys below 3072 bits verify nothing.** The floor was 2048 bits, RFC 7518 §3.3's.
+  Test ATT-006 of IT-Wallet 1.4.7 asks that keys provide at least 128 bits of security
+  strength as NIST SP 800-57 Part 1 defines it, and for RSA that is a modulus of 3072 bits
+  (Table 2: 2048 bits give 112). **A 2048-bit RSA key is now skipped**, as a key of an
+  unknown type is, for issuer, holder, status list and federation signatures alike. The
+  curves are as they were: P-256, P-384 and P-521 give 128, 192 and 256 bits, and no
+  algorithm of the list reaches another one. An issuer, a wallet or a federation with
+  2048-bit RSA keys no longer verifies; a 3072-bit key signing PS256 does.
+
 ### Fixed
 
 - **A subordinate statement may carry `trust_marks`.** Since 0.4.0 the chain check refused a
@@ -33,6 +63,15 @@ that can silently let something through.
   The tool's PID points at a status list under `credential-issuer.wct.example.org`, the
   name its README maps to 127.0.0.1; without that hosts entry the PID is rejected with
   `STATUS_CHECK_FAILED`. The library is unchanged.
+- **The target specification is IT-Wallet 1.4.7 LTS** (released 2026-09-22), up from 1.4.6.
+  The relying party flow requirements are the same in both, and so are the rule texts the
+  comments quote as 1.4.6; in a relying party's own federation metadata, `organization_uri`
+  may now stand in for `homepage_uri`, which the library publishes and which stays valid. The breaking
+  changes of 1.4.7, in PAR (`typ`, `scope`) and in the federation entity type
+  `wallet_solution`, renamed `openid_wallet_provider`, are on the issuer and wallet provider
+  side, which the library does not read. What 1.4.7 adds for a relying party, an Identity
+  Matching section for the PID and the IT-Wallet ID, is the application's to do. The changes
+  that reach the verifier are the tests ATT-004 and ATT-006, under Security.
 
 ## [0.4.0] — 2026-09-28
 

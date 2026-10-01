@@ -88,8 +88,12 @@ object TestVectors {
      * @param issuerTyp the issuer JWT `typ` header; null omits it.
      * @param issuerHeaderParams extra issuer JWT header parameters, such as `trust_chain`.
      * @param issuerSigningKey signs the issuer JWT instead of [issuerEcKey] or [issuerRsaKey];
-     *   RSA keys below 2048 bits are allowed here, which is the point of passing one.
+     *   RSA keys below 3072 bits are allowed here, which is the point of passing one.
+     * @param issuerAlgorithm the issuer JWT `alg`, instead of the one the issuer key's type and
+     *   curve give (ES256, ES384, ES512, or PS256 for an RSA key); the signature is made with
+     *   it, so a key of the matching family signs and verifies.
      * @param holderSigningKey the holder key put in `cnf` and signing the key binding.
+     * @param holderAlgorithm the key binding JWT `alg`, with the same rule as [issuerAlgorithm].
      * @param kbTyp the key binding `typ` header; null omits it.
      * @param kbAudiences the key binding `aud` as a JSON array, instead of [audience] as a string.
      * @param kbIssuedAtEpochSecond the key binding `iat` verbatim, instead of [kbIssuedAt].
@@ -114,7 +118,9 @@ object TestVectors {
         issuerTyp: String? = null,
         issuerHeaderParams: Map<String, Any> = emptyMap(),
         issuerSigningKey: JWK? = null,
+        issuerAlgorithm: JWSAlgorithm? = null,
         holderSigningKey: JWK? = null,
+        holderAlgorithm: JWSAlgorithm? = null,
         kbTyp: String? = KB_TYP,
         kbAudiences: List<String>? = null,
         kbIssuedAtEpochSecond: Long? = null,
@@ -135,6 +141,7 @@ object TestVectors {
                 typ = issuerTyp,
                 headerParams = issuerHeaderParams,
                 signingKey = issuerSigningKey ?: if (useRsaIssuer) issuerRsaKey else issuerEcKey,
+                algorithm = issuerAlgorithm,
             )
         val binding =
             Binding(
@@ -144,6 +151,7 @@ object TestVectors {
                 issuedAt = kbIssuedAtEpochSecond ?: kbIssuedAt.epochSecond,
                 typ = kbTyp,
                 sdHashAlg = kbSdHashAlg ?: sdAlg,
+                algorithm = holderAlgorithm,
             )
         return present(issuance, envelope, binding, { true }) {
             if (statusNotAnObject) claim("status", "not-an-object")
@@ -265,6 +273,7 @@ object TestVectors {
         val typ: String? = null,
         val headerParams: Map<String, Any> = emptyMap(),
         val signingKey: JWK = issuerEcKey,
+        val algorithm: JWSAlgorithm? = null,
     )
 
     private data class Binding(
@@ -275,6 +284,7 @@ object TestVectors {
         val issuedAt: Long = NOW.epochSecond,
         val typ: String? = KB_TYP,
         val sdHashAlg: String = SHA_256,
+        val algorithm: JWSAlgorithm? = null,
     )
 
     private fun present(
@@ -301,7 +311,7 @@ object TestVectors {
             val key = issuance.signingKey
             val issued =
                 NimbusSdJwtOps
-                    .issuer(factory, signerFor(key), algorithmFor(key)) {
+                    .issuer(factory, signerFor(key), issuance.algorithm ?: algorithmFor(key)) {
                         issuance.typ?.let { type(JOSEObjectType(it)) }
                         issuance.headerParams.forEach { (name, value) -> customParam(name, value) }
                     }.issue(spec)
@@ -321,7 +331,7 @@ object TestVectors {
     ): String {
         val header =
             JWSHeader
-                .Builder(algorithmFor(binding.holder))
+                .Builder(binding.algorithm ?: algorithmFor(binding.holder))
                 .apply {
                     binding.typ?.let { type(JOSEObjectType(it)) }
                     keyID(binding.holder.keyID)
@@ -369,10 +379,10 @@ object TestVectors {
                     Curve.P_521 -> JWSAlgorithm.ES512
                     else -> JWSAlgorithm.ES256
                 }
-            else -> JWSAlgorithm.RS256
+            else -> JWSAlgorithm.PS256
         }
 
     private val JAVA_DIGESTS = mapOf(SHA_256 to "SHA-256", "sha-384" to "SHA-384", "sha-512" to "SHA-512")
 
-    private const val RSA_KEY_SIZE = 2048
+    private const val RSA_KEY_SIZE = 3072
 }

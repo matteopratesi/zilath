@@ -79,17 +79,21 @@ object FederationFixtures {
         return jwt.serialize()
     }
 
-    /** The same statement signed RS256, with no minimum key size, to test the verifier's. */
+    /**
+     * The same statement signed with RSA, PS256 unless [algorithm] says otherwise, and with
+     * no minimum key size, to test the verifier's.
+     */
     fun signedRsaStatement(
         signer: RSAKey,
         iss: String,
         sub: String,
+        algorithm: JWSAlgorithm = JWSAlgorithm.PS256,
         configure: JWTClaimsSet.Builder.() -> Unit = {},
     ): String {
         val jwt =
             com.nimbusds.jwt.SignedJWT(
                 JWSHeader
-                    .Builder(JWSAlgorithm.RS256)
+                    .Builder(algorithm)
                     .keyID(signer.keyID)
                     .type(JOSEObjectType("entity-statement+jwt"))
                     .build(),
@@ -99,7 +103,7 @@ object FederationFixtures {
         return jwt.serialize()
     }
 
-    /** An RSA key of [bits], which Nimbus would refuse to generate below 2048. */
+    /** An RSA key of [bits], whatever the size: Nimbus would refuse to generate one below 2048. */
     fun rsaKey(
         bits: Int,
         kid: String,

@@ -147,9 +147,10 @@ class StatementValidationTest {
     }
 
     @Test
-    fun `a federation key below 2048 RSA bits verifies nothing`() {
-        // RFC 7518 §3.3. Nimbus refuses to generate such a key but verifies with one.
-        for ((bits, trusted) in listOf(1024 to false, 2048 to true)) {
+    fun `a federation key below 3072 RSA bits verifies nothing`() {
+        // RFC 7518 §3.3 sets the floor at 2048 bits, and IT-Wallet 1.4.7 (ATT-006, 128 bits of
+        // security strength) at 3072. Nimbus refuses to generate a key below 2048 but verifies with one.
+        for ((bits, trusted) in listOf(1024 to false, 2048 to false, 3072 to true)) {
             val leafKey = FederationFixtures.rsaKey(bits, "leaf-rsa-$bits")
             val chain =
                 listOf(
@@ -173,13 +174,20 @@ class StatementValidationTest {
             }
         }
         // A weak key configured for the anchor does not verify the anchor's statement either.
-        val weakAnchor = FederationFixtures.rsaKey(1024, "ta-rsa-1024")
-        val statement =
-            FederationFixtures.signedRsaStatement(weakAnchor, ANCHOR_ID, LEAF_ID) {
-                claim("jwks", jwksClaim(leafFederationKey))
+        for ((bits, trusted) in listOf(1024 to false, 2048 to false, 3072 to true)) {
+            val anchorKey = FederationFixtures.rsaKey(bits, "ta-rsa-$bits")
+            val statement =
+                FederationFixtures.signedRsaStatement(anchorKey, ANCHOR_ID, LEAF_ID) {
+                    claim("jwks", jwksClaim(leafFederationKey))
+                }
+            val anchor = TrustAnchorConfig(ANCHOR_ID, listOf(anchorKey.toPublicJWK()))
+            val decision = decide(listOf(leafConfiguration(), statement), anchor)
+            if (trusted) {
+                assertThat(trustedKeyIds(decision)).describedAs("anchor, $bits bits").containsExactly(issuerKid)
+            } else {
+                assertThat(untrustedReason(decision)).describedAs("anchor, $bits bits").contains("does not verify")
             }
-        val anchor = TrustAnchorConfig(ANCHOR_ID, listOf(weakAnchor.toPublicJWK()))
-        assertThat(untrustedReason(decide(listOf(leafConfiguration(), statement), anchor))).contains("does not verify")
+        }
     }
 
     @Test

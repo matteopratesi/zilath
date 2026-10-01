@@ -466,3 +466,28 @@ both days; Fable 5 and Opus 4.8 were in use on 2026-08-30, under the entry above
   only; Opus 4.8 in two reviewer sub-agents on 2026-09-04 and 2026-09-05, each starting on
   Fable 5.1.
 - **Funding status**: pre-existing.
+
+### 2026-10-01 — IT-Wallet 1.4.7: the target, and the algorithms and key sizes it asks for
+
+- **What**: `docs/spec-version.md`, the README, `docs/note-divergenze.md` and
+  `docs/privacy-by-design.md` — the target moved to IT-Wallet 1.4.7. `verifier-core` — one list
+  of the signature algorithms accepted (ES256, ES384, ES512, PS256, PS384, PS512) for every
+  signature the library checks, RSA keys from 3072 bits, and a presentation's algorithms read
+  before its issuer's trust is asked. `verifier-trust-itwallet` — the same list on every entity
+  statement of a chain, with its own failure message. Tests for each path, the RSA test vectors
+  moved to 3072 bits and PS256, and `CHANGELOG.md`.
+- **Model**: Anthropic Claude Opus 5.5 (the comparison of the two releases, the review, the
+  corrections to the wording and this entry) and Claude Sonnet 5.5 (the code and the tests, as
+  a sub-agent working from a written brief).
+- **Assistance**: compared 1.4.6 and 1.4.7 in the specification repository, release notes and
+  the diff of the sources, against the library's code: the relying party's flow is unchanged,
+  and two tests of the signature test plan, ATT-004 (the algorithms a signature may use) and
+  ATT-006 (at least 128 bits of security strength), now ask for what the library did not do.
+  Then the change, its tests and the documents.
+- **Human contribution**: the decision to move the target to 1.4.7 with no transition period,
+  since the library has no users yet.
+- **Verification**: a clean build of every module, 564 tests; taking the algorithm list out
+  fails 13 of the new tests, putting the RSA floor back to 2048 bits fails 7, and moving the
+  presentation's algorithm check back after the trust evaluation fails 1; what the documents
+  say about 1.4.7, read against the specification's text at both tags.
+- **Funding status**: pre-existing.

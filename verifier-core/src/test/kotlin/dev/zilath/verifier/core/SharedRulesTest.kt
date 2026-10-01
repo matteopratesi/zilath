@@ -35,10 +35,13 @@ import org.junit.jupiter.api.Test
 @OptIn(InternalZilathApi::class)
 class SharedRulesTest {
     @Test
-    fun `rsa keys below 2048 bits get no verifier`() {
+    fun `rsa keys below 3072 bits get no verifier`() {
+        // 3072 bits is what gives the 128 bits of security strength IT-Wallet 1.4.7 asks for
+        // (ATT-006, NIST SP 800-57 Part 1 Table 2); 2048 bits give 112.
         assertThat(acceptableJwsVerifierFor(weakRsaKey(512).toPublicJWK())).isNull()
         assertThat(acceptableJwsVerifierFor(weakRsaKey(1024).toPublicJWK())).isNull()
-        assertThat(acceptableJwsVerifierFor(RSAKeyGenerator(2048).generate().toPublicJWK())).isNotNull()
+        assertThat(acceptableJwsVerifierFor(RSAKeyGenerator(2048).generate().toPublicJWK())).isNull()
+        assertThat(acceptableJwsVerifierFor(RSAKeyGenerator(3072).generate().toPublicJWK())).isNotNull()
     }
 
     @Test
@@ -50,11 +53,81 @@ class SharedRulesTest {
     }
 
     @Test
-    fun `a signature under a weak rsa key does not verify, a strong one does`() {
-        val weak = weakRsaKey(1024)
-        val strong = RSAKeyGenerator(2048).generate()
-        assertThat(verifiesWithAnyAcceptableKey(signedWith(weak), listOf(weak.toPublicJWK()))).isFalse()
+    fun `a signature under an rsa key below 3072 bits does not verify, a 3072 bit one does`() {
+        for (bits in listOf(1024, 2048)) {
+            val weak = weakRsaKey(bits)
+            assertThat(verifiesWithAnyAcceptableKey(signedWith(weak), listOf(weak.toPublicJWK())))
+                .`as`("$bits bits")
+                .isFalse()
+        }
+        val strong = RSAKeyGenerator(3072).generate()
         assertThat(verifiesWithAnyAcceptableKey(signedWith(strong), listOf(strong.toPublicJWK()))).isTrue()
+    }
+
+    @Test
+    fun `the accepted signature algorithms are the six IT-Wallet lists as MUST or RECOMMENDED`() {
+        // algorithms.rst of IT-Wallet 1.4.7: ES256, ES384, ES512 (MUST), PS256, PS384, PS512 (RECOMMENDED).
+        val listed = listOf("ES256", "ES384", "ES512", "PS256", "PS384", "PS512")
+        assertThat(ACCEPTED_JWS_ALGORITHMS.map { it.name }).containsExactlyInAnyOrderElementsOf(listed)
+        listed.forEach { assertThat(isAcceptedJwsAlgorithm(JWSAlgorithm(it))).`as`(it).isTrue() }
+    }
+
+    @Test
+    fun `every other signature algorithm is refused`() {
+        // RS* were accepted before; the HMAC family and none are the list's MUST NOT; ES256K and
+        // the Edwards algorithms are unlisted ("not required by the current profile"); ESP* are
+        // the list's COSE entries; the spelling is exact, as it is for any `alg`.
+        listOf(
+            "RS256",
+            "RS384",
+            "RS512",
+            "HS256",
+            "HS384",
+            "HS512",
+            "ES256K",
+            "EdDSA",
+            "Ed25519",
+            "Ed448",
+            "ESP256",
+            "ESP384",
+            "ESP512",
+            "none",
+            "es256",
+            "Es256",
+            "ps256",
+            "PS224",
+        ).forEach { assertThat(isAcceptedJwsAlgorithm(JWSAlgorithm(it))).`as`(it).isFalse() }
+        assertThat(isAcceptedJwsAlgorithm(null)).isFalse()
+    }
+
+    @Test
+    fun `a signature made with an unlisted algorithm does not verify under a key that is otherwise good`() {
+        // The same 3072-bit key, the same claims: only the `alg` differs, and with it the answer.
+        val strong = RSAKeyGenerator(3072).generate()
+        val keys = listOf(strong.toPublicJWK())
+        listOf(JWSAlgorithm.PS256, JWSAlgorithm.PS384, JWSAlgorithm.PS512).forEach {
+            assertThat(verifiesWithAnyAcceptableKey(signedWith(strong, it), keys)).`as`(it.name).isTrue()
+        }
+        listOf(JWSAlgorithm.RS256, JWSAlgorithm.RS384, JWSAlgorithm.RS512).forEach {
+            assertThat(signedWith(strong, it).verify(checkNotNull(acceptableJwsVerifierFor(strong.toPublicJWK()))))
+                .`as`("${it.name}: Nimbus itself verifies it")
+                .isTrue()
+            assertThat(verifiesWithAnyAcceptableKey(signedWith(strong, it), keys)).`as`(it.name).isFalse()
+        }
+    }
+
+    @Test
+    fun `the elliptic curve algorithms verify under their own curve`() {
+        listOf(
+            Curve.P_256 to JWSAlgorithm.ES256,
+            Curve.P_384 to JWSAlgorithm.ES384,
+            Curve.P_521 to JWSAlgorithm.ES512,
+        ).forEach { (curve, algorithm) ->
+            val key = ECKeyGenerator(curve).generate()
+            val jwt = SignedJWT(JWSHeader(algorithm), JWTClaimsSet.Builder().subject("x").build())
+            jwt.sign(ECDSASigner(key))
+            assertThat(verifiesWithAnyAcceptableKey(jwt, listOf(key.toPublicJWK()))).`as`(algorithm.name).isTrue()
+        }
     }
 
     @Test
@@ -62,7 +135,7 @@ class SharedRulesTest {
         val ec = ECKeyGenerator(Curve.P_256).generate()
         val jwt = SignedJWT(JWSHeader(JWSAlgorithm.ES256), JWTClaimsSet.Builder().subject("x").build())
         jwt.sign(ECDSASigner(ec))
-        val keys = listOf(RSAKeyGenerator(2048).generate().toPublicJWK(), ec.toPublicJWK())
+        val keys = listOf(RSAKeyGenerator(3072).generate().toPublicJWK(), ec.toPublicJWK())
         assertThat(verifiesWithAnyAcceptableKey(jwt, keys)).isTrue()
     }
 
@@ -118,14 +191,14 @@ class SharedRulesTest {
 
     @Test
     fun `a weak rsa modulus padded with zero bytes is still weak`() {
-        val weak = weakRsaKey(1024)
+        val weak = weakRsaKey(2048)
         val padded =
             RSAKey
-                .Builder(zeroPadded(weak.modulus, 256), weak.publicExponent)
+                .Builder(zeroPadded(weak.modulus, 384), weak.publicExponent)
                 .privateKey(weak.toRSAPrivateKey())
                 .build()
         // What the size check used to read: the encoded length, not the modulus.
-        assertThat(padded.size()).isEqualTo(2048)
+        assertThat(padded.size()).isEqualTo(3072)
         assertThat(acceptableJwsVerifierFor(padded.toPublicJWK())).isNull()
         assertThat(verifiesWithAnyAcceptableKey(signedWith(padded), listOf(padded.toPublicJWK()))).isFalse()
     }
@@ -138,8 +211,11 @@ class SharedRulesTest {
         return Base64URL.encode(ByteArray(bytes - raw.size) + raw)
     }
 
-    private fun signedWith(key: RSAKey): SignedJWT =
-        SignedJWT(JWSHeader(JWSAlgorithm.RS256), JWTClaimsSet.Builder().subject("x").build()).apply {
+    private fun signedWith(
+        key: RSAKey,
+        algorithm: JWSAlgorithm = JWSAlgorithm.PS256,
+    ): SignedJWT =
+        SignedJWT(JWSHeader(algorithm), JWTClaimsSet.Builder().subject("x").build()).apply {
             sign(RSASSASigner(key.toRSAPrivateKey(), setOf(AllowWeakRSAKey.getInstance())))
         }
 }

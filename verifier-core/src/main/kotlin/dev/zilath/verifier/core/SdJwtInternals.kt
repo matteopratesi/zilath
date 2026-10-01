@@ -17,7 +17,6 @@
 package dev.zilath.verifier.core
 
 import com.nimbusds.jose.Header
-import com.nimbusds.jose.JWSVerifier
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jwt.JWTClaimsSet
@@ -89,30 +88,34 @@ internal fun trustInputOf(issuerJwt: SignedJWT): IssuerTrustInput =
                 .filterIsInstance<String>(),
     )
 
-/** Accepts the issuer JWT only if its signature verifies against one of the trusted keys. */
+/**
+ * Accepts the issuer JWT only if it is signed with an algorithm of [ACCEPTED_JWS_ALGORITHMS]
+ * and its signature verifies against one of the trusted keys. Each key attempt is isolated
+ * ([verifiesWithAnyAcceptableKey]): a verifier throwing on an algorithm mismatch (e.g. an EC
+ * key against a PS256 JWT) must not prevent trying the next key.
+ */
+@OptIn(InternalZilathApi::class)
 internal fun issuerSignatureVerifier(trustedKeys: List<JWK>): JwtSignatureVerifier<SignedJWT> =
     JwtSignatureVerifier { unverifiedJwt ->
         runCatching {
             val jwt = SignedJWT.parse(unverifiedJwt)
-            // Each key attempt is isolated: a verifier throwing on an algorithm mismatch
-            // (e.g. an EC key against an RS256 JWT) must not prevent trying the next key.
-            val verifies =
-                trustedKeys.any { key ->
-                    runCatching { jwsVerifierFor(key)?.let(jwt::verify) == true }.getOrDefault(false)
-                }
-            if (verifies) jwt else null
+            if (verifiesWithAnyAcceptableKey(jwt, trustedKeys)) jwt else null
         }.getOrNull()
     }
 
-/** Requires a key binding JWT signed with the holder key advertised in the `cnf.jwk` claim. */
+/**
+ * Requires a key binding JWT signed, with an algorithm of [ACCEPTED_JWS_ALGORITHMS], by the
+ * holder key advertised in the `cnf.jwk` claim. One key-acceptance rule for issuer, holder,
+ * status list and federation keys alike: see [acceptableJwsVerifierFor].
+ */
+@OptIn(InternalZilathApi::class)
 internal fun holderKeyBindingVerifier(): KeyBindingVerifier.MustBePresentAndValid<SignedJWT> =
     KeyBindingVerifier.MustBePresentAndValid { issuerClaims: JsonObject ->
         holderKeyOf(issuerClaims)?.let { holderKey ->
             JwtSignatureVerifier { unverifiedJwt ->
                 runCatching {
                     val jwt = SignedJWT.parse(unverifiedJwt)
-                    val verifier = jwsVerifierFor(holderKey)
-                    if (verifier != null && jwt.verify(verifier)) jwt else null
+                    if (verifiesWithAnyAcceptableKey(jwt, listOf(holderKey))) jwt else null
                 }.getOrNull()
             }
         }
@@ -122,10 +125,6 @@ private fun holderKeyOf(issuerClaims: JsonObject): JWK? {
     val jwkJson = issuerClaims["cnf"]?.jsonObject?.get("jwk") ?: return null
     return runCatching { JWK.parse(jwkJson.toString()) }.getOrNull()
 }
-
-/** One key-acceptance rule for issuer, holder and status list keys alike: see [acceptableJwsVerifierFor]. */
-@OptIn(InternalZilathApi::class)
-internal fun jwsVerifierFor(key: JWK): JWSVerifier? = acceptableJwsVerifierFor(key)
 
 /**
  * Maps failures raised by the EUDI SD-JWT library onto stable [RejectionReason]s.

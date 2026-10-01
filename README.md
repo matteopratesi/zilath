@@ -29,7 +29,7 @@ Born for accessibility rights: letting a person with a disability prove an entit
 > Status: pre-alpha — the cross-device flow completes end to end against the official
 > PagoPA conformance tool (see [docs/conformance](docs/conformance/)), and the API is
 > not frozen yet.
-> Target spec: IT-Wallet v1.4.6 — see [docs/spec-version.md](docs/spec-version.md).
+> Target spec: IT-Wallet v1.4.7 — see [docs/spec-version.md](docs/spec-version.md).
 >
 > **0.3.0 cannot verify a genuine European Disability Card in the production IT-Wallet
 > configuration.** In 0.4.0, in tests, the production federation's documents as served,
