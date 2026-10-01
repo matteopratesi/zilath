@@ -46,16 +46,43 @@ private fun checkTypIfPresent(
 }
 
 /**
+ * Rejects an issuer JWT or a key binding JWT signed with an algorithm outside the list
+ * IT-Wallet 1.4.7 gives ([ACCEPTED_JWS_ALGORITHMS], test ATT-004), before the signature is
+ * tried. The signature check refuses them too, whatever the key; this is what lets the
+ * rejection say why, where "does not verify" would send an operator looking for a forgery
+ * in a signature that is valid. The `detail` is a fixed phrase: the `alg` is read from the
+ * credential and a rejection's `detail` reaches the log.
+ *
+ * A key binding JWT that does not parse here is left to the EUDI library, which reports it
+ * as it always did.
+ */
+@OptIn(InternalZilathApi::class)
+private fun checkSignatureAlgorithms(
+    issuerJwt: SignedJWT,
+    compact: String,
+) {
+    if (!isAcceptedJwsAlgorithm(issuerJwt.header.algorithm)) {
+        reject(RejectionReason.INVALID_ISSUER_SIGNATURE, "issuer signature algorithm is not accepted")
+    }
+    val keyBindingJwt = runCatching { SignedJWT.parse(compact.substringAfterLast(TILDE)) }.getOrNull()
+    if (keyBindingJwt != null && !isAcceptedJwsAlgorithm(keyBindingJwt.header.algorithm)) {
+        reject(RejectionReason.INVALID_KEY_BINDING, "key binding signature algorithm is not accepted")
+    }
+}
+
+/**
  * Verifies SD-JWT VC presentations (issuer JWT + selective disclosures + key binding JWT)
  * against the full set of checks required for a presentation to be accepted, in this
  * order: size limits before anything is parsed ([PresentationLimits]); the issuer trusted
- * by the [TrustEvaluator]; issuer signature, disclosure integrity, and the key binding's
- * signature with the `cnf` key and its `sd_hash` (these three in the EUDI library);
- * disclosure names and the envelope claims kept in plaintext; the issuer's authorisation
- * for the type and the type requested; temporal validity against the injected clock; the
- * key binding's `typ`, audience, nonce and freshness; the claims the request asked for
- * ([VerificationContext.requestedClaims]); revocation via [StatusChecker]. What a verified
- * presentation hands over is an allowlist: see [VerificationResult.Verified].
+ * by the [TrustEvaluator]; the signature algorithms of the issuer JWT and the key binding
+ * JWT, which must be on IT-Wallet's list ([checkSignatureAlgorithms]); issuer signature,
+ * disclosure integrity, and the key binding's signature with the `cnf` key and its
+ * `sd_hash` (these three in the EUDI library); disclosure names and the envelope claims
+ * kept in plaintext; the issuer's authorisation for the type and the type requested;
+ * temporal validity against the injected clock; the key binding's `typ`, audience, nonce
+ * and freshness; the claims the request asked for ([VerificationContext.requestedClaims]);
+ * revocation via [StatusChecker]. What a verified presentation hands over is an allowlist:
+ * see [VerificationResult.Verified].
  *
  * Cryptography and SD-JWT processing are delegated to Nimbus JOSE+JWT and the
  * EUDI `eudi-lib-jvm-sdjwt-kt` library; this class only orchestrates and maps
@@ -86,6 +113,7 @@ class SdJwtVcCredentialVerifier : CredentialVerifier {
         checkTypIfPresent(issuerJwt.header, ISSUER_JWT_TYPS, RejectionReason.UNSUPPORTED_FORMAT)
         val trusted = trustedIssuer(issuerJwt, ctx)
         val issuerKeys = trusted.issuerKeys
+        checkSignatureAlgorithms(issuerJwt, compact)
         val verified = verifyWithEudiLibrary(compact, issuerKeys)
         checkDisclosureNames(verified.sdJwt.disclosures)
         val recreated = recreateClaimsOf(verified.sdJwt)

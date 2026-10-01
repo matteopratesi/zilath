@@ -164,8 +164,9 @@ internal fun publicEncryptionJwk(key: ECKey): ECKey =
  * The SD-JWT issuer and key-binding algorithms this verifier advertises, in the request
  * object's `client_metadata` AND in the federation entity configuration — one constant so the
  * two cannot disagree. They did: the entity configuration said ES256/384/512 while the request
- * object said ES256 alone (third review). `jwsVerifierFor` accepts every EC curve and RSA;
- * what is advertised is the EC family the IT-Wallet profile names.
+ * object said ES256 alone (third review). The verifier accepts the six signature algorithms
+ * IT-Wallet lists (`ACCEPTED_JWS_ALGORITHMS`: ES256/384/512 and PS256/384/512); what is
+ * advertised is the EC family the profile names.
  */
 internal val SUPPORTED_SD_JWT_ALGS = listOf("ES256", "ES384", "ES512")
 internal val SUPPORTED_KB_JWT_ALGS = listOf("ES256")

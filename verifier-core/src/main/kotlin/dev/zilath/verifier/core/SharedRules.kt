@@ -16,6 +16,7 @@
  */
 package dev.zilath.verifier.core
 
+import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSVerifier
 import com.nimbusds.jose.crypto.ECDSAVerifier
 import com.nimbusds.jose.crypto.RSASSAVerifier
@@ -30,6 +31,41 @@ import java.util.Locale
  * Rules every Zilath module must apply the same way. Each one used to live, or not live,
  * in whichever module needed it first; see [InternalZilathApi] for why they are shared.
  */
+
+/**
+ * The `alg` values a JWS may carry for this library to verify its signature: the signature
+ * algorithms IT-Wallet 1.4.7 lists as MUST (`ES256`, `ES384`, `ES512`) or RECOMMENDED
+ * (`PS256`, `PS384`, `PS512`) in its Cryptographic Algorithms section (`algorithms.rst` of
+ * the specification), which test ATT-004 turns into a rule for any party that evaluates a
+ * signed statement: only the listed algorithms are accepted, "deprecated or unlisted
+ * algorithms are rejected".
+ *
+ * Not on the list, so refused: `RS256`, `RS384` and `RS512`, `ES256K`, and `EdDSA`,
+ * `Ed25519` and `Ed448` (the profile requires no Edwards-curve algorithm); and the HMAC
+ * algorithms and `none`, which the list gives as MUST NOT. `ESP256`, `ESP384` and `ESP512`
+ * are on the list as COSE algorithms (`-9`, `-51`, `-52`), whose JOSE counterparts are
+ * `ES256`, `ES384` and `ES512`; this library has no COSE path, and Nimbus 10.3 does not
+ * verify under the names either.
+ *
+ * Every JWS signature the library checks goes through [verifiesWithAnyAcceptableKey], which
+ * applies this set: the issuer JWT, the key binding JWT, the status list token and every
+ * federation entity statement. A new call site must go through it too.
+ */
+@InternalZilathApi
+val ACCEPTED_JWS_ALGORITHMS: Set<JWSAlgorithm> =
+    setOf(
+        JWSAlgorithm.ES256,
+        JWSAlgorithm.ES384,
+        JWSAlgorithm.ES512,
+        JWSAlgorithm.PS256,
+        JWSAlgorithm.PS384,
+        JWSAlgorithm.PS512,
+    )
+
+/** Whether a JWS whose header says [algorithm] may have its signature checked: see [ACCEPTED_JWS_ALGORITHMS]. */
+@InternalZilathApi
+fun isAcceptedJwsAlgorithm(algorithm: JWSAlgorithm?): Boolean =
+    algorithm != null && algorithm in ACCEPTED_JWS_ALGORITHMS
 
 /**
  * The verifier for [key], or null when the key is not one this library will check a
@@ -62,19 +98,24 @@ fun acceptableJwsVerifierFor(key: JWK): JWSVerifier? =
     }
 
 /**
- * True when [jwt] verifies under at least one of [keys] that [acceptableJwsVerifierFor]
- * accepts. A key that cannot produce a verifier, or that throws while verifying (an EC key
- * against an RS256 signature, say), simply does not count as a match — so an unusable key
- * can never turn into an accepted signature, nor stop the next key from being tried.
+ * True when [jwt] is signed with an algorithm of [ACCEPTED_JWS_ALGORITHMS] and verifies
+ * under at least one of [keys] that [acceptableJwsVerifierFor] accepts. The algorithm comes
+ * first and is not a fallback: a signature that is mathematically valid under a trusted key
+ * but made with an unlisted algorithm (`RS256` under a 2048-bit RSA key, say) is refused.
+ *
+ * A key that cannot produce a verifier, or that throws while verifying (an EC key against
+ * a PS256 signature, say), simply does not count as a match — so an unusable key can never
+ * turn into an accepted signature, nor stop the next key from being tried.
  */
 @InternalZilathApi
 fun verifiesWithAnyAcceptableKey(
     jwt: SignedJWT,
     keys: List<JWK>,
 ): Boolean =
-    keys.any { key ->
-        runCatching { acceptableJwsVerifierFor(key)?.let(jwt::verify) == true }.getOrDefault(false)
-    }
+    isAcceptedJwsAlgorithm(jwt.header.algorithm) &&
+        keys.any { key ->
+            runCatching { acceptableJwsVerifierFor(key)?.let(jwt::verify) == true }.getOrDefault(false)
+        }
 
 /**
  * Compares a JOSE `typ` header against the media subtype [expected] (`statuslist+jwt`,

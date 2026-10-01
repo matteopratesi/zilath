@@ -58,6 +58,72 @@ class SharedRulesTest {
     }
 
     @Test
+    fun `the accepted signature algorithms are the six IT-Wallet lists as MUST or RECOMMENDED`() {
+        // algorithms.rst of IT-Wallet 1.4.7: ES256, ES384, ES512 (MUST), PS256, PS384, PS512 (RECOMMENDED).
+        val listed = listOf("ES256", "ES384", "ES512", "PS256", "PS384", "PS512")
+        assertThat(ACCEPTED_JWS_ALGORITHMS.map { it.name }).containsExactlyInAnyOrderElementsOf(listed)
+        listed.forEach { assertThat(isAcceptedJwsAlgorithm(JWSAlgorithm(it))).`as`(it).isTrue() }
+    }
+
+    @Test
+    fun `every other signature algorithm is refused`() {
+        // RS* were accepted before; the HMAC family and none are the list's MUST NOT; ES256K and
+        // the Edwards algorithms are unlisted ("not required by the current profile"); ESP* are
+        // the list's COSE entries; the spelling is exact, as it is for any `alg`.
+        listOf(
+            "RS256",
+            "RS384",
+            "RS512",
+            "HS256",
+            "HS384",
+            "HS512",
+            "ES256K",
+            "EdDSA",
+            "Ed25519",
+            "Ed448",
+            "ESP256",
+            "ESP384",
+            "ESP512",
+            "none",
+            "es256",
+            "Es256",
+            "ps256",
+            "PS224",
+        ).forEach { assertThat(isAcceptedJwsAlgorithm(JWSAlgorithm(it))).`as`(it).isFalse() }
+        assertThat(isAcceptedJwsAlgorithm(null)).isFalse()
+    }
+
+    @Test
+    fun `a signature made with an unlisted algorithm does not verify under a key that is otherwise good`() {
+        // The same 2048-bit key, the same claims: only the `alg` differs, and with it the answer.
+        val strong = RSAKeyGenerator(2048).generate()
+        val keys = listOf(strong.toPublicJWK())
+        listOf(JWSAlgorithm.PS256, JWSAlgorithm.PS384, JWSAlgorithm.PS512).forEach {
+            assertThat(verifiesWithAnyAcceptableKey(signedWith(strong, it), keys)).`as`(it.name).isTrue()
+        }
+        listOf(JWSAlgorithm.RS256, JWSAlgorithm.RS384, JWSAlgorithm.RS512).forEach {
+            assertThat(signedWith(strong, it).verify(checkNotNull(acceptableJwsVerifierFor(strong.toPublicJWK()))))
+                .`as`("${it.name}: Nimbus itself verifies it")
+                .isTrue()
+            assertThat(verifiesWithAnyAcceptableKey(signedWith(strong, it), keys)).`as`(it.name).isFalse()
+        }
+    }
+
+    @Test
+    fun `the elliptic curve algorithms verify under their own curve`() {
+        listOf(
+            Curve.P_256 to JWSAlgorithm.ES256,
+            Curve.P_384 to JWSAlgorithm.ES384,
+            Curve.P_521 to JWSAlgorithm.ES512,
+        ).forEach { (curve, algorithm) ->
+            val key = ECKeyGenerator(curve).generate()
+            val jwt = SignedJWT(JWSHeader(algorithm), JWTClaimsSet.Builder().subject("x").build())
+            jwt.sign(ECDSASigner(key))
+            assertThat(verifiesWithAnyAcceptableKey(jwt, listOf(key.toPublicJWK()))).`as`(algorithm.name).isTrue()
+        }
+    }
+
+    @Test
     fun `an unusable key does not stop the next one from being tried`() {
         val ec = ECKeyGenerator(Curve.P_256).generate()
         val jwt = SignedJWT(JWSHeader(JWSAlgorithm.ES256), JWTClaimsSet.Builder().subject("x").build())
@@ -138,8 +204,11 @@ class SharedRulesTest {
         return Base64URL.encode(ByteArray(bytes - raw.size) + raw)
     }
 
-    private fun signedWith(key: RSAKey): SignedJWT =
-        SignedJWT(JWSHeader(JWSAlgorithm.PS256), JWTClaimsSet.Builder().subject("x").build()).apply {
+    private fun signedWith(
+        key: RSAKey,
+        algorithm: JWSAlgorithm = JWSAlgorithm.PS256,
+    ): SignedJWT =
+        SignedJWT(JWSHeader(algorithm), JWTClaimsSet.Builder().subject("x").build()).apply {
             sign(RSASSASigner(key.toRSAPrivateKey(), setOf(AllowWeakRSAKey.getInstance())))
         }
 }
