@@ -29,7 +29,9 @@ import org.junit.jupiter.api.Test
 class KeyPolicyPipelineTest {
     @Test
     fun `an issuer signature under a weak rsa key does not verify`() {
-        for (bits in listOf(512, 1024)) {
+        // 512 bits is out of this loop: a PS256 signature needs a modulus of at least 528 bits
+        // (RFC 8017 §9.1.1), so no such key can sign one. SharedRulesTest has the 512-bit key.
+        for (bits in listOf(768, 1024)) {
             val weak = weakRsaKey(bits)
             val result =
                 verifyPresentation(

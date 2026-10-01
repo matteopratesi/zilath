@@ -369,7 +369,7 @@ object TestVectors {
                     Curve.P_521 -> JWSAlgorithm.ES512
                     else -> JWSAlgorithm.ES256
                 }
-            else -> JWSAlgorithm.RS256
+            else -> JWSAlgorithm.PS256
         }
 
     private val JAVA_DIGESTS = mapOf(SHA_256 to "SHA-256", "sha-384" to "SHA-384", "sha-512" to "SHA-512")

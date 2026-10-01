@@ -93,7 +93,7 @@ class OAuthStatusListCheckerTest {
         val rsa = signWith is RSAKey
         val header =
             JWSHeader
-                .Builder(if (rsa) JWSAlgorithm.RS256 else JWSAlgorithm.ES256)
+                .Builder(if (rsa) JWSAlgorithm.PS256 else JWSAlgorithm.ES256)
                 .apply { typ?.let { type(JOSEObjectType(it)) } }
                 .build()
         val signer =

@@ -95,7 +95,7 @@ internal fun issuerSignatureVerifier(trustedKeys: List<JWK>): JwtSignatureVerifi
         runCatching {
             val jwt = SignedJWT.parse(unverifiedJwt)
             // Each key attempt is isolated: a verifier throwing on an algorithm mismatch
-            // (e.g. an EC key against an RS256 JWT) must not prevent trying the next key.
+            // (e.g. an EC key against a PS256 JWT) must not prevent trying the next key.
             val verifies =
                 trustedKeys.any { key ->
                     runCatching { jwsVerifierFor(key)?.let(jwt::verify) == true }.getOrDefault(false)

@@ -139,7 +139,7 @@ class SharedRulesTest {
     }
 
     private fun signedWith(key: RSAKey): SignedJWT =
-        SignedJWT(JWSHeader(JWSAlgorithm.RS256), JWTClaimsSet.Builder().subject("x").build()).apply {
+        SignedJWT(JWSHeader(JWSAlgorithm.PS256), JWTClaimsSet.Builder().subject("x").build()).apply {
             sign(RSASSASigner(key.toRSAPrivateKey(), setOf(AllowWeakRSAKey.getInstance())))
         }
 }

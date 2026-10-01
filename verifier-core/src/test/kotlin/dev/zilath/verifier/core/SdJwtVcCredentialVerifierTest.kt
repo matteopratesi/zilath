@@ -143,7 +143,7 @@ class SdJwtVcCredentialVerifierTest {
 
     @Test
     fun `a mixed trust list verifies even when the first key type does not match`() {
-        // Regression: an EC verifier throwing on an RS256 JWT must not abort the key loop.
+        // Regression: an EC verifier throwing on a PS256 JWT must not abort the key loop.
         val mixedTrust =
             TrustEvaluator {
                 TrustDecision.Trusted(
