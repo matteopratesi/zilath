@@ -1,0 +1,5 @@
+Model: Anthropic Claude Sonnet 5.5 (claude-sonnet-5-5), as a sub-agent in Claude Code, briefed and reviewed by Claude Opus 5.5 (claude-opus-5-5).
+Prompts (summary): the maintainer asked to move the library to IT-Wallet 1.4.7 and to apply test ATT-004 with no transition, since the library has no users yet; the coordinating model wrote the sub-agent's brief from a comparison of the two releases, and asked for ATT-006 and the earlier algorithm check after reviewing the first commits.
+Assistance: MIN_RSA_KEY_BITS from 2048 to 3072, for ATT-006 of 1.4.7 and NIST SP 800-57 Part 1 Table 2; the RSA test vectors at 3072 bits; 2048-bit keys refused on every path; the CHANGELOG entry.
+Human contribution: the decision to move the target to 1.4.7 with no transition period.
+Verification: with the floor back at 2048 bits, 7 tests fail; the EC curves accepted (P-256, P-384, P-521) checked against the algorithm list; clean build.
