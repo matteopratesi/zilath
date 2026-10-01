@@ -1,0 +1,5 @@
+Model: Anthropic Claude Opus 5.5 (claude-opus-5-5), in Claude Code.
+Prompts (summary): the maintainer asked to move the library to IT-Wallet 1.4.7 and to apply test ATT-004 with no transition, since the library has no users yet; the coordinating model wrote the sub-agent's brief from a comparison of the two releases, and asked for ATT-006 and the earlier algorithm check after reviewing the first commits.
+Assistance: in review, found that the trust infrastructure section does change in 1.4.7 (organization_uri in a leaf's federation_entity metadata), and corrected the two sentences that said every cited section was unchanged.
+Human contribution: the decision to move the target to 1.4.7 with no transition period.
+Verification: git diff 1.4.6 1.4.7 of trust-infrastructure.rst and relying-party-metadata.rst; the library's own federation metadata (homepage_uri).
