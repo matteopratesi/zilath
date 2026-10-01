@@ -1,0 +1,5 @@
+Model: Anthropic Claude Sonnet 5.5 (claude-sonnet-5-5), as a sub-agent in Claude Code, briefed and reviewed by Claude Opus 5.5 (claude-opus-5-5).
+Prompts (summary): the maintainer asked to move the library to IT-Wallet 1.4.7 and to apply test ATT-004 with no transition, since the library has no users yet; the coordinating model wrote the sub-agent's brief from a comparison of the two releases, and asked for ATT-006 and the earlier algorithm check after reviewing the first commits.
+Assistance: the presentation's algorithm check moved before the trust evaluation, with a test that an unlisted algorithm is refused without the trust evaluator being asked; the order of checks in the KDoc.
+Human contribution: the decision to move the target to 1.4.7 with no transition period.
+Verification: moving the check back after the trust evaluation fails that test alone; clean build.
