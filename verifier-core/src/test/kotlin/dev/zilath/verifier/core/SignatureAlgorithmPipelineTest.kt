@@ -105,6 +105,42 @@ class SignatureAlgorithmPipelineTest {
     }
 
     @Test
+    fun `an unlisted algorithm is refused without the trust evaluator being asked`() {
+        // Asking can mean fetching a federation chain over the network, for a credential that
+        // is refused whatever the answer. The counter is checked with a listed algorithm first:
+        // there the evaluator is asked once, so a count of zero below means something.
+        var asked = 0
+        val counting = { key: JWK ->
+            TrustEvaluator {
+                asked++
+                TrustDecision.Trusted(listOf(key.toPublicJWK()))
+            }
+        }
+        assertThat(
+            verifyPresentation(
+                TestVectors.vector(issuerSigningKey = rsa, issuerAlgorithm = JWSAlgorithm.PS256),
+                testContext(trust = counting(rsa)),
+            ),
+        ).isInstanceOf(VerificationResult.Verified::class.java)
+        assertThat(asked).isEqualTo(1)
+
+        asked = 0
+        assertThat(
+            verifyPresentation(
+                TestVectors.vector(issuerSigningKey = rsa, issuerAlgorithm = JWSAlgorithm.RS256),
+                testContext(trust = counting(rsa)),
+            ),
+        ).isEqualTo(issuerAlgorithmRefused)
+        assertThat(
+            verifyPresentation(
+                TestVectors.vector(holderSigningKey = rsa, holderAlgorithm = JWSAlgorithm.RS256),
+                testContext(trust = counting(TestVectors.issuerEcKey)),
+            ),
+        ).isEqualTo(keyBindingAlgorithmRefused)
+        assertThat(asked).isZero()
+    }
+
+    @Test
     fun `the issuer signature check refuses an unlisted algorithm by itself`() {
         // Below the pipeline's own check, in the verifier handed to the EUDI library: the
         // rule must hold even if nothing is asked before it.

@@ -24,10 +24,13 @@ that can silently let something through.
   `INVALID_KEY_BINDING`, the `detail` saying that the algorithm is not accepted), the status
   list token (`UNKNOWN`, as for any token that does not verify), and every entity statement
   of a trust chain, the anchor's configuration included (the evaluator's reason says the
-  same). The `alg` is not put in a `detail`: it is read from the credential. **An issuer, a
-  wallet or a federation that signs with RS256 no longer verifies**; PS256 is the RSA
-  choice the profile lists. ESP256, ESP384 and ESP512 are in the list as COSE algorithms,
-  and the library has no COSE path.
+  same). The two algorithms of a presentation are read before the `TrustEvaluator` is asked,
+  which can mean a federation fetch: a credential signed with an unlisted algorithm costs
+  none, and is reported by these reasons even when its issuer is not trusted. The `alg` is
+  not put in a `detail`: it is read from the credential. **An issuer, a wallet or a
+  federation that signs with RS256 no longer verifies**; PS256 is the RSA choice the profile
+  lists. ESP256, ESP384 and ESP512 are in the list as COSE algorithms, and the library has
+  no COSE path.
 - **RSA keys below 3072 bits verify nothing.** The floor was 2048 bits, RFC 7518 §3.3's.
   Test ATT-006 of IT-Wallet 1.4.7 asks that keys provide at least 128 bits of security
   strength as NIST SP 800-57 Part 1 defines it, and for RSA that is a modulus of 3072 bits
