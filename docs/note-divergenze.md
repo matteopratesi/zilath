@@ -66,11 +66,16 @@ not been run yet.
    against the leaf metadata; the credential keys come from the resolved metadata.
 4. **KB-JWT audience**: the two specifications disagree on whether the audience
    carries the Client Identifier Prefix. OpenID4VP 1.0 (App. B.3.6) says it is the Client
-   Identifier and its example keeps the prefix; the IT-Wallet rules say it must match the
-   "Relying Party unique entity identifier", which reads as the stripped form — and the
-   conformance tool implements OpenID4VP in its wallet and the profile wording in RPR-105/
-   106, so it contradicts itself. Reported: pagopa/wallet-conformance-test#221. Until it is
-   settled the verifier accepts BOTH forms of its own identifier (never a third party's).
+   Identifier and its example keeps the prefix; the IT-Wallet rules (1.4.7, remote flow) say
+   it must match the "Relying Party unique entity identifier", which reads as the stripped
+   form. The conformance tool used to follow both, OpenID4VP in its wallet and the profile
+   wording in RPR-105/106 (reported: pagopa/wallet-conformance-test#221). Its maintainers
+   have settled the tool on the OpenID4VP reading: since commit `770ba78` RPR-105/106 compare
+   the audience with the full `client_id`, prefix included, and #221 was closed on
+   2026-10-08. As of that date the change is in the tool's `v1.2.2` tag but in no release on
+   npm, where the latest is 1.2.1. The profile's text has not changed, and a wallet may still
+   follow it, so the verifier keeps accepting BOTH forms of its own identifier (never a
+   third party's).
 5. Status list tokens are validated per draft §8.3 — signature, `typ`, `sub`, expiry — but
    only when signed by the **issuer of the credential being checked**. The draft permits a
    separate Status Issuer (§11.3) and mandates no way to establish trust in one, so a token
