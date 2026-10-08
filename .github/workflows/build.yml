@@ -28,7 +28,7 @@ jobs:
       # Since v6, setup-gradle caches through a proprietary component by default, under
       # Gradle's own terms of use. The basic provider is the MIT-licensed one, built on
       # actions/cache.
-      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
         with:
           cache-provider: basic
       # Keeps the rule above true: a step referring to an action by anything but a full commit
