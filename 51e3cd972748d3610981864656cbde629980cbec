@@ -1,0 +1,5 @@
+Model: Anthropic Claude Opus 5.5 (claude-opus-5-5), in Claude Code.
+Prompts (summary): the maintainer forwarded the conformance tool's closing comment on pagopa/wallet-conformance-test#221 and asked to update the divergence note, after the model had checked the comment against the tool's repository.
+Assistance: the check of the cited commit, tags and npm registry, the reading of the IT-Wallet 1.4.7 text, and the wording of the note and of the provenance entry.
+Human contribution: the decision to keep both audience forms accepted while the profile's text is unchanged.
+Verification: commit 770ba78 of the tool read before and after (RPR-105/106 move from the stripped identifier to the request's client_id), its presence in tag v1.2.2, the npm registry's latest version (1.2.1) on 2026-10-08, and remote-flow.rst at IT-Wallet tag 1.4.7.
