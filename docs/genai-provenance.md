@@ -491,3 +491,20 @@ both days; Fable 5 and Opus 4.8 were in use on 2026-08-30, under the entry above
   presentation's algorithm check back after the trust evaluation fails 1; what the documents
   say about 1.4.7, read against the specification's text at both tags.
 - **Funding status**: pre-existing.
+
+### 2026-10-08 — KB-JWT audience: the conformance tool settled its side
+
+- **What**: point 4 of `docs/note-divergenze.md`. The conformance tool's maintainers closed
+  pagopa/wallet-conformance-test#221, and the tool now compares the audience with the full
+  `client_id`; the IT-Wallet text has not changed, so the verifier keeps accepting both forms.
+- **Model**: Anthropic Claude Opus 5.5.
+- **Assistance**: checking the maintainers' statement against the tool's repository (the
+  commit it names, the RPR-105/106 assertions before and after it, the tags) and the npm
+  registry, reading the IT-Wallet 1.4.7 text, and writing the note and this entry.
+- **Human contribution**: the decision to keep both forms accepted while the profile's text
+  stays as it is.
+- **Verification**: commit `770ba78` replaces, in RPR-105 and RPR-106, the stripped
+  identifier with the request's `client_id`, and is contained in the tag `v1.2.2`; on
+  2026-10-08 the npm registry lists 1.2.1 as the latest version; `remote-flow.rst` at the
+  IT-Wallet tag 1.4.7 still reads "Relying Party unique entity identifier".
+- **Funding status**: pre-existing.
