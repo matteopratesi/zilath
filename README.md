@@ -82,8 +82,8 @@ that signs RS256, or with a 2048-bit RSA key, no longer verifies. A credential s
 an unlisted algorithm is `INVALID_ISSUER_SIGNATURE` or `INVALID_KEY_BINDING` even when its
 issuer is untrusted, where 0.4.0 said `UNTRUSTED_ISSUER`. The starter also declares Gradle
 constraints that raise Tomcat and Jackson past their advisories; an application built with
-Spring Boot's dependency management takes them from its own BOM, and has to raise them
-itself. The changelog's 0.5.0 section has the details.
+Spring Boot's dependency management takes these versions from its own BOM, and has to
+raise them itself. The changelog's 0.5.0 section has the details.
 
 Coming from **0.3.0**: recompile — several constructors gained parameters with defaults,
 which keeps sources compiling but not binaries linking. An outcome is read with the

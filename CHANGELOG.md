@@ -71,8 +71,11 @@ public declarations added are marked `@InternalZilathApi`.
   fetcher reaches the destinations of the demo's federation fetcher: under
   `ZILATH_INSECURE_TLS`, loopback addresses only, by any name that resolves to them alone.
   The tool's PID points at a status list under `credential-issuer.wct.example.org`, the
-  name its README maps to 127.0.0.1; without that hosts entry the PID is rejected with
-  `STATUS_CHECK_FAILED`. The library is unchanged.
+  name its README maps to 127.0.0.1; without that hosts entry a PID that passed the trust
+  check is rejected with `STATUS_CHECK_FAILED`. The PID of tool 1.2.1 does not pass it: its
+  trust chain puts `authority_hints` in a subordinate statement
+  (pagopa/wallet-conformance-test#238), so it is rejected `UNTRUSTED_ISSUER` first. The
+  library is unchanged.
 - **The target specification is IT-Wallet 1.4.7 LTS** (released 2026-09-22), up from 1.4.6.
   The relying party flow requirements are the same in both, and so are the rule texts the
   comments quote as 1.4.6; in a relying party's own federation metadata, `organization_uri`
