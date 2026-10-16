@@ -508,3 +508,34 @@ both days; Fable 5 and Opus 4.8 were in use on 2026-08-30, under the entry above
   2026-10-08 the npm registry lists 1.2.1 as the latest version; `remote-flow.rst` at the
   IT-Wallet tag 1.4.7 still reads "Relying Party unique entity identifier".
 - **Funding status**: pre-existing.
+
+### 2026-10-16 — The starter raises Tomcat and Jackson past their advisories
+
+- **What**: `verifier-spring-boot-starter/build.gradle.kts` — Gradle constraints that raise
+  `tomcat-embed-core`, `tomcat-embed-el` and `tomcat-embed-websocket` to 11.0.27 and Jackson 3
+  `jackson-core` and `jackson-databind` to 3.1.7, over the 11.0.24 and 3.1.5 that Spring Boot
+  4.1.1 manages; the two versions and five aliases in `gradle/libs.versions.toml`;
+  `gradle/verification-metadata.xml`, regenerated; and the entry in `CHANGELOG.md` under
+  Security. The library modules and Spring Boot's version are untouched.
+- **Model**: Anthropic Claude Sonnet 5.5, as a sub-agent briefed and reviewed by Claude Opus
+  5.5.
+- **Assistance**: checking which Tomcat and Jackson artifacts the starter's and the demo's
+  runtime classpaths resolve, adding the constraints with the advisory ids in their reasons,
+  regenerating the verification metadata, reading its diff, and writing the changelog entry
+  and this entry. The briefing, the choice of target versions and their check against OSV
+  (on 2026-10-16, no advisories for 11.0.27 or 3.1.7) were the coordinating model's.
+- **Human contribution**: the maintainer's decision to raise the versions in a pull request of
+  its own before the 0.5.0 release.
+- **Verification**: the dependency tree of `verifier-spring-boot-starter` and of
+  `demo-checkout` on `runtimeClasspath` resolves Tomcat at 11.0.27 and Jackson 3 at 3.1.7,
+  with no 11.0.24 or 3.1.5; the compile classpath of the demo still shows them, since the
+  constraints belong to the runtime variant, and the three library modules have no Tomcat or
+  Jackson on their classpaths. The verification metadata was regenerated from an empty Gradle
+  home through the maintainer's corporate TLS-inspecting proxy, in 3 attempts because of
+  intermittent TLS errors on large downloads (`Tag mismatch`), and a clean build with
+  `--offline` then passed from that cache alone; CI re-verifies the hashes without the proxy.
+  The change adds 50 lines and removes none: the 11.0.24 and 3.1.5 entries stay, as the
+  Spring Boot Gradle plugin's classpath and a detached configuration of the demo's
+  `compileKotlin` still resolve them. A full `./gradlew clean build` with the normal Gradle
+  home: 564 tests, none failed.
+- **Funding status**: pre-existing.

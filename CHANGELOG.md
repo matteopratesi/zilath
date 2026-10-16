@@ -39,6 +39,21 @@ that can silently let something through.
   curves are as they were: P-256, P-384 and P-521 give 128, 192 and 256 bits, and no
   algorithm of the list reaches another one. An issuer, a wallet or a federation with
   2048-bit RSA keys no longer verifies; a 3072-bit key signing PS256 does.
+- **The starter constrains Tomcat to 11.0.27 and Jackson 3 to 3.1.7.** Spring Boot 4.1.1, the
+  latest release, manages Tomcat 11.0.24 and Jackson 3.1.5, and both have published
+  advisories. Tomcat 11.0.24 has GHSA-9xv2-5v5q-p794 (the DIGEST authenticator),
+  GHSA-gcx9-497g-6cp6 (improper access control) and GHSA-h3x4-894j-xpx5 (FORM
+  authentication), fixed in 11.0.25. Jackson 3.1.5 has GHSA-cxp5-3px4-pw24,
+  GHSA-gx83-3vf8-gh7j, GHSA-q4xh-88c3-wmh7, GHSA-wjgm-6hv5-3cvf and GHSA-wv8q-qhhj-9h54 in
+  `jackson-databind`, and GHSA-7hhh-6rmp-j9qf and GHSA-p6pp-m3f8-5c89 in `jackson-core`,
+  fixed in 3.1.6 and 3.1.7. `verifier-spring-boot-starter` now declares Gradle constraints on
+  `tomcat-embed-core`, `tomcat-embed-el`, `tomcat-embed-websocket`, `jackson-databind` and
+  `jackson-core`, so a Gradle build that resolves the starter, the demo included, gets
+  11.0.27 and 3.1.7. The three library modules (`verifier-core`, `verifier-openid4vp`,
+  `verifier-trust-itwallet`) contain neither Tomcat nor Jackson. **An application built with
+  Spring Boot's dependency management takes these versions from its own Spring Boot BOM, not
+  from the starter, so it has to raise them itself** until Spring Boot ships fixed versions.
+  Whether any of these advisories can be reached through Zilath has not been analysed.
 
 ### Fixed
 
