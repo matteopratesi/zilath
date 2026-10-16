@@ -10,6 +10,10 @@ kotlin = "2.4.10"
 springBoot = "4.1.1"
 # The Spring Security of Spring Boot 4.1.1 (its BOM); test classpath only.
 springSecurity = "7.1.1"
+# Raised past the versions of Spring Boot 4.1.1's BOM (Tomcat 11.0.24, Jackson 3.1.5), which have
+# advisories; used as constraints in verifier-spring-boot-starter only.
+tomcat = "11.0.27"
+jackson3 = "3.1.7"
 nimbusJoseJwt = "10.3"
 eudiSdJwt = "0.13.1"
 zxing = "3.5.4"
@@ -36,6 +40,11 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web", version.ref = "springBoot" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test", version.ref = "springBoot" }
 spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test", version.ref = "springBoot" }
+tomcat-embed-core = { module = "org.apache.tomcat.embed:tomcat-embed-core", version.ref = "tomcat" }
+tomcat-embed-el = { module = "org.apache.tomcat.embed:tomcat-embed-el", version.ref = "tomcat" }
+tomcat-embed-websocket = { module = "org.apache.tomcat.embed:tomcat-embed-websocket", version.ref = "tomcat" }
+jackson-core = { module = "tools.jackson.core:jackson-core", version.ref = "jackson3" }
+jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson3" }
 spring-security-config = { module = "org.springframework.security:spring-security-config", version.ref = "springSecurity" }
 spring-security-web = { module = "org.springframework.security:spring-security-web", version.ref = "springSecurity" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
