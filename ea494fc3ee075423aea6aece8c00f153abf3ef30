@@ -1,0 +1,5 @@
+Model: Anthropic Claude Opus 5.5 (claude-opus-5-5), in Claude Code.
+Prompts (summary): the maintainer asked to publish 0.5.0 that day; the model ran docs/releasing.md as scripts in the maintainer's terminal, one per step, and after publication checked what Central serves against the bundle, as was done for 0.4.0.
+Assistance: the provenance entry for the publication, with the checks and their results; the next development version in build.gradle.kts.
+Human contribution: the decision to publish that day; the passphrase to export the signing key and to sign the tag, the keychain access, and the go-ahead for the irreversible publication.
+Verification: twenty artifacts downloaded from repo1.maven.org identical by SHA-256 to the bundle's and their signatures valid with key 6A207A58428BC47BA9AC0029392ABDC140E3041A; the starter's published .module and .pom carry the Tomcat 11.0.27 and Jackson 3.1.7 constraints; git tag -v v0.5.0 valid on 9fe6c00.
