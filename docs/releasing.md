@@ -253,7 +253,7 @@ available everywhere and `GPG_TTY` is what this file assumes.
    reversible.
 
    ```sh
-   ./scripts/verify-bundle.sh 0.4.0     # the version you are releasing
+   ./scripts/verify-bundle.sh 0.5.0     # the version you are releasing
    ```
 
    It checks three things and **exits non-zero** if any fails, because a check that only

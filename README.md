@@ -26,13 +26,15 @@ Born for accessibility rights: letting a person with a disability prove an entit
 > public authority has already attested. It never issues a credential, and it never
 > decides who qualifies.
 >
-> Status: pre-alpha — the cross-device flow completes end to end against the official
-> PagoPA conformance tool (see [docs/conformance](docs/conformance/)), and the API is
-> not frozen yet.
+> Status: pre-alpha, and the API is not frozen yet. The cross-device flow completed end to
+> end against the official PagoPA conformance tool 1.2.1 in the runs of
+> [docs/conformance](docs/conformance/). Since 0.4.0 the library refuses the PID that
+> release of the tool mocks, as `UNTRUSTED_ISSUER`: its trust chain puts `authority_hints`
+> in a subordinate statement (pagopa/wallet-conformance-test#238).
 > Target spec: IT-Wallet v1.4.7 — see [docs/spec-version.md](docs/spec-version.md).
 >
 > **0.3.0 cannot verify a genuine European Disability Card in the production IT-Wallet
-> configuration.** In 0.4.0, in tests, the production federation's documents as served,
+> configuration.** Since 0.4.0, in tests, the production federation's documents as served,
 > untouched, are trusted for the issuer's real key, and a card shaped as IT-Wallet 1.4.6
 > writes it verifies against the same documents re-signed under test keys, the real ones
 > not being ours. No card actually issued has been through it. What those tests show and
@@ -61,8 +63,8 @@ verify credentials with no framework, and no network I/O beyond the fetcher you 
 
 ```kotlin
 dependencies {
-    implementation("dev.zilath:verifier-spring-boot-starter:0.4.0")
-    implementation("dev.zilath:verifier-trust-itwallet:0.4.0")
+    implementation("dev.zilath:verifier-spring-boot-starter:0.5.0")
+    implementation("dev.zilath:verifier-trust-itwallet:0.5.0")
 }
 ```
 
@@ -72,6 +74,16 @@ Artifacts are signed with key [`392ABDC140E3041A`](https://keys.openpgp.org/sear
 versions, and the [changelog](CHANGELOG.md) calls out separately every change that alters
 what a verifier accepts or rejects — those are the ones that can quietly let something
 through.
+
+Coming from **0.4.0**: no API change, but less verifies. A signature is checked only under
+ES256, ES384, ES512, PS256, PS384 or PS512, and an RSA key only from 3072 bits, as IT-Wallet
+1.4.7 asks (tests ATT-004 and ATT-006). An issuer, a wallet, a status list or a federation
+that signs RS256, or with a 2048-bit RSA key, no longer verifies. A credential signed with
+an unlisted algorithm is `INVALID_ISSUER_SIGNATURE` or `INVALID_KEY_BINDING` even when its
+issuer is untrusted, where 0.4.0 said `UNTRUSTED_ISSUER`. The starter also declares Gradle
+constraints that raise Tomcat and Jackson past their advisories; an application built with
+Spring Boot's dependency management takes these versions from its own BOM, and has to
+raise them itself. The changelog's 0.5.0 section has the details.
 
 Coming from **0.3.0**: recompile — several constructors gained parameters with defaults,
 which keeps sources compiling but not binaries linking. An outcome is read with the
@@ -132,8 +144,9 @@ fun statusListFetcher(): StatusListFetcher = HttpDocumentFetcher()
 
 **A `StatusChecker` that always answers `VALID` switches revocation off.** It is only ever
 called for a credential that carries a status reference, so a constant `VALID` is the wrong
-answer for every revoked one. The demo's example checker answers `UNKNOWN` instead, which
-rejects every credential that carries a status reference.
+answer for every revoked one. The demo declares a `StatusListFetcher` and no
+`StatusChecker`, so the starter checks revocation with `OAuthStatusListChecker`, as a
+deployment would.
 
 ### With Spring Security
 
@@ -233,13 +246,22 @@ from that same shell. The script checks this for you before doing anything else.
    whether the presentation went through is the transaction itself: the QR page in the
    browser that started it moves on to the ticket once the presentation is verified.
 
-5. The page turns into a nominative companion ticket; the "ricevuta di verifica" link is
-   the signed receipt a venue would keep — outcome, the venue's entitlement verdict and the
-   time, never a document or a claim value. The demo signs it from the ticket page, once its
-   entitlement rule has been applied.
+   With the tool's 1.2.1 release, the one the script runs, the PID does not verify: it is
+   rejected `UNTRUSTED_ISSUER`, because its trust chain puts `authority_hints` in a
+   subordinate statement, which the library refuses (pagopa/wallet-conformance-test#238).
+   The page then reads "Verifica non riuscita", and the application's log says which check
+   rejected it. A PID that passed the trust check would meet the next one: its status list
+   is under `credential-issuer.wct.example.org`, and without the hosts entry the tool's
+   README asks for, mapping that name to 127.0.0.1, it is rejected `STATUS_CHECK_FAILED`.
+
+5. Once a presentation is verified, the page turns into a nominative companion ticket; the
+   "ricevuta di verifica" link is the signed receipt a venue would keep — outcome, the
+   venue's entitlement verdict and the time, never a document or a claim value. The demo
+   signs it from the ticket page, once its entitlement rule has been applied.
 
    The demo pages answer only the browser that started the transaction, which holds its
-   session cookie: open the ticket and the receipt there.
+   session cookie: open the ticket and the receipt there. With the tool's 1.2.1 release the
+   PID does not get this far; the simulated card below does.
 
 ### Simulated CED mode
 
@@ -258,12 +280,12 @@ Two things stand between that card and a private relying party. Production verif
 private relying parties does not exist yet. And the library was not ready for it either:
 **0.3.0 cannot verify any genuine card of that issuer**, even once verification is allowed —
 the production federation's trust chain ended untrusted, and past that a status list token
-in the IT-Wallet form was refused. In 0.4.0, in tests, the production federation's documents
-as served, untouched, are trusted for the issuer's real key, and a synthetic card shaped as
-IT-Wallet 1.4.6 writes it verifies against the same documents re-signed under test keys; but
-the issuer advertises status assertion and attestation endpoints rather than a status list,
-and a card whose status carries only an assertion or an attestation is still rejected. The
-details, and what else the tests do not show, are in
+in the IT-Wallet form was refused. Since 0.4.0, in tests, the production federation's
+documents as served, untouched, are trusted for the issuer's real key, and a synthetic card
+shaped as IT-Wallet 1.4.6 writes it verifies against the same documents re-signed under
+test keys; but the issuer advertises status assertion and attestation endpoints rather than
+a status list, and a card whose status carries only an assertion or an attestation is still
+rejected. The details, and what else the tests do not show, are in
 [SECURITY.md](SECURITY.md#production-readiness).
 
 The simulation therefore mirrors the real claim names (`given_name`, `family_name`,

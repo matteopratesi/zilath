@@ -35,6 +35,13 @@ not been run yet.
   entity configuration alone is 39,668. A credential embedding that chain is rejected
   (`MALFORMED`, "issuer JWT header exceeds the parser limit"); one without it is resolved
   online.
+- The statement about the mock issuer, the second element of that `trust_chain`, is a
+  subordinate statement that carries `authority_hints: []` (reported:
+  pagopa/wallet-conformance-test#238, open on 2026-10-16). OpenID Federation 1.0 §3.1.2 and
+  §3.2 reserve `authority_hints` to entity configurations: "If the `authority_hints` Claim
+  is present, the Entity Statement MUST be an Entity Configuration". Since 0.4.0 the library
+  refuses such a chain, so the PID of the tool's 1.2.1 release is rejected
+  `UNTRUSTED_ISSUER`.
 - Wallet **authorization error responses** are posted to the same `response_uri` and the RP
   must acknowledge them with HTTP 200 (`direct_post` semantics).
 

@@ -51,10 +51,10 @@ and does not do, so that nobody copies it for more than it is:
   random session secret in a cookie (`HttpOnly`, `SameSite=Lax`, `Path=/demo`, `Secure`
   except over plain http on a loopback host). `/demo/wait`, `/demo/qr`,
   `/demo/authorize-url`, `/demo/status`, `/demo/ticket`, `/demo/receipt` and the
-  same-device callback `/demo/cb` answer for it only the browser holding it, as IT-Wallet
-  1.4.6 §12.2.1.7 asks of a relying party. Every transaction id the pages interpolate is
-  HTML-escaped, and a path variable outside the transaction id alphabet is answered 404
-  before the flow is asked.
+  same-device callback `/demo/cb` answer for it only the browser holding it, as the example
+  implementation of IT-Wallet 1.4.7 §12.2.1.7 does. Every transaction id the pages
+  interpolate is HTML-escaped, and a path variable outside the transaction id alphabet is
+  answered 404 before the flow is asked.
 - The conformance endpoints are separate. A transaction started through
   `/conformance/start` is not registered with the demo pages; after its same-device return
   the callback hands the returning user-agent the token that reads the outcome.
@@ -133,7 +133,7 @@ token in the IT-Wallet form, which carries no `iss`, was refused. The regulatory
 missing as well — private relying parties are not yet admitted to verify the card in
 production — but this failure did not depend on it, and would have remained once they are.
 
-0.4.0 can verify such a card as far as
+Since 0.4.0 the library can verify such a card as far as
 `verifier-trust-itwallet/src/test/kotlin/dev/zilath/verifier/trust/ProductionCedEndToEndTest.kt`
 shows: a card shaped as IT-Wallet 1.4.6 writes it, with a Token Status List reference,
 verified from one end to the other against the production federation documents as served on

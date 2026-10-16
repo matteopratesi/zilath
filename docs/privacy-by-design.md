@@ -134,7 +134,7 @@ retention rules in §6, because a receipt linked to a person is still personal d
   categories — no claim values, nothing about the credential's content, nothing that turns
   the endpoint into a probe for what a person's credential says.
 - **Diagnostic detail stays server-side at the HTTP boundary.** The Spring endpoint answers
-  the wallet with the HTTP status IT-Wallet 1.4.6 §12.2.1.6.1 tabulates and one fixed
+  the wallet with the HTTP status IT-Wallet 1.4.7 §12.2.1.6.1 tabulates and one fixed
   description per status, and keeps the reason code and `detail` in the log, bounded to
   one line.
 - **On the IT-Wallet profile, responses are encrypted and not merely signed.**
@@ -265,7 +265,7 @@ Zilath handles the cryptography and the minimisation. It does not handle your ob
 | Nothing is handed out past expiry | `verifier-openid4vp/.../Expiry.kt` |
 | Detail is kept server-side | `verifier-spring-boot-starter/.../OpenId4VpController.kt` |
 | Nonce single use, replay rejected | `verifier-openid4vp/.../OpenId4VpVerificationFlow.kt` |
-| No outbound calls to the project | grep the four library modules for sockets and HTTP clients: the only connection they open is `HttpDocumentFetcher`'s (`verifier-core/.../PinnedTarget.kt`), to the URL it is handed. Every network access goes through `FederationFetcher` and `StatusListFetcher`, interfaces you inject — that class, `HttpFederationFetcher` over it, or your own. (The `demo-checkout` app makes HTTP calls of its own too — its federation documents through `HttpFederationFetcher`, and its simulated wallet's to the verifier; it is an example, not a published artifact.) |
+| No outbound calls to the project | grep the four library modules for sockets and HTTP clients: the only connection they open is `HttpDocumentFetcher`'s (`verifier-core/.../PinnedTarget.kt`), to the URL it is handed. Every network access goes through `FederationFetcher` and `StatusListFetcher`, interfaces you inject — that class, `HttpFederationFetcher` over it, or your own. (The `demo-checkout` app makes HTTP calls of its own too — its federation documents through `HttpFederationFetcher`, its status lists through `HttpDocumentFetcher`, and its simulated wallet's to the verifier; it is an example, not a published artifact.) |
 
 ## References
 
