@@ -1,0 +1,5 @@
+Model: Anthropic Claude Sonnet 5.5 (claude-sonnet-5-5), as a sub-agent in Claude Code, briefed and reviewed by Claude Opus 5.5 (claude-opus-5-5).
+Prompts (summary): the coordinating model gave the sub-agent the content of the changelog entry (the advisories by id, the versions, what the library modules contain, what an application built with Spring Boot's dependency management must do) and the format of the provenance entry, and asked it not to claim anything about whether the advisories are exploitable through Zilath.
+Assistance: the changelog entry under Security and the provenance entry for 2026-10-16.
+Human contribution: the decision to raise the versions in a pull request of its own before the 0.5.0 release.
+Verification: the claim that the three library modules contain neither Tomcat nor Jackson checked on the compile, runtime and test runtime classpaths of each (no match); the metadata and build figures in the entry are those of the first commit; the lines wrapped at 95 columns.
