@@ -576,3 +576,29 @@ both days; Fable 5 and Opus 4.8 were in use on 2026-08-30, under the entry above
   changed only in the words intended; a full `./gradlew clean build` with the normal Gradle
   home: 564 tests, none failed.
 - **Funding status**: pre-existing.
+
+### 2026-10-16 — Publication of 0.5.0
+
+- **What**: `0.5.0` built from `main` at `9fe6c00`, the merge of #57, signed, checked, uploaded
+  to Maven Central and published; the tag `v0.5.0` on the same commit, signed with the artifact
+  key. After it, the next development version, `0.6.0-SNAPSHOT`.
+- **Model**: Anthropic Claude Opus 5.5.
+- **Assistance**: the release steps as scripts run in the maintainer's terminal, one per step
+  (bundle, upload and validation, publication, tag), each refusing to start unless the state
+  it expects holds and stopping before the next irreversible step; the checks around them:
+  `docs/releasing.md` step 2 on `main`, the advisory lookup done for #56; the starter's
+  published `.module` and `.pom` read in the bundle for the Tomcat and Jackson constraints of
+  #56; after publication, every artifact downloaded back from Central and compared with the
+  bundle.
+- **Human contribution**: the decision to publish that day; every step that needs the signing key
+  or the Central token — the passphrase to export the key and to sign the tag, the keychain
+  access, the go-ahead for the publication.
+- **Verification**: the twenty artifacts served by `repo1.maven.org` identical, by SHA-256, to the
+  twenty of the bundle built here, and their twenty signatures, as downloaded, valid with key
+  `6A207A58428BC47BA9AC0029392ABDC140E3041A`; `META-INF/LICENSE` in all twelve jars,
+  `Automatic-Module-Name` in the four main ones, no key material; the starter's `.module`
+  constrains Tomcat to 11.0.27 and Jackson to 3.1.7 in its runtime variant, and its `.pom`
+  lists them under `dependencyManagement`; `git tag -v v0.5.0` valid, on `9fe6c00`. Central
+  deployment `43e12af5-dd26-4e88-9d1c-c72f480a5ca7`, validated at 11:41 and published at
+  11:49 CEST.
+- **Funding status**: pre-existing.
