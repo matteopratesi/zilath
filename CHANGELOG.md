@@ -8,7 +8,17 @@ Until 1.0.0 the public API may change between minor versions. Anything that chan
 verifier accepts or rejects is called out explicitly, because that is the kind of change
 that can silently let something through.
 
-## [Unreleased]
+## [0.5.0] — 2026-10-16
+
+IT-Wallet 1.4.7 as the target, and the signature algorithms and key sizes it asks for.
+
+A minor, not a patch: the verifier refuses what 0.4.0 accepted. **An issuer, a wallet or a
+federation that signs with RS256, RS384 or RS512, or with an RSA key below 3072 bits, no
+longer verifies**; ES256 to ES512, and PS256 to PS512 under a key of 3072 bits or more, do.
+The production IT-Wallet federation documents the tests replay are signed ES256 under P-256
+keys and still verify. A subordinate statement may now carry trust marks, and the starter
+raises Tomcat and Jackson past their advisories. The public API does not change; the only
+public declarations added are marked `@InternalZilathApi`.
 
 ### Security — what the verifier now refuses that it accepted
 
@@ -40,17 +50,17 @@ that can silently let something through.
   algorithm of the list reaches another one. An issuer, a wallet or a federation with
   2048-bit RSA keys no longer verifies; a 3072-bit key signing PS256 does.
 
-### Fixed
+### Security — what the trust evaluator now accepts that it refused
 
 - **A subordinate statement may carry `trust_marks`.** Since 0.4.0 the chain check refused a
   subordinate statement carrying any of the claims OpenID Federation 1.0 §3.2 reserves to
-  entity configurations, `trust_marks` among them. IT-Wallet 1.4.6 lets a subordinate
-  statement carry the trust marks its issuer gives the subject, so a chain that used what the
-  profile allows was untrusted. **This changes what a verifier accepts**: `trust_marks` is
-  accepted there and ignored, as no trust mark in a chain is read, while `authority_hints`,
-  `trust_anchor_hints`, `trust_mark_issuers` and `trust_mark_owners` are still refused. The
-  eight subordinate statements of the production trust anchor `ta.wallet.ipzs.it`, as served
-  on 2026-09-29, carry no `trust_marks`.
+  entity configurations, `trust_marks` among them. IT-Wallet 1.4.6, like 1.4.7, lets a
+  subordinate statement carry the trust marks its issuer gives the subject, so a chain that
+  used what the profile allows was untrusted. **This changes what a verifier accepts**:
+  `trust_marks` is accepted there and ignored, as no trust mark in a chain is read, while
+  `authority_hints`, `trust_anchor_hints`, `trust_mark_issuers` and `trust_mark_owners` are
+  still refused. The eight subordinate statements of the production trust anchor
+  `ta.wallet.ipzs.it`, as served on 2026-09-29, carry no `trust_marks`.
 
 ### Changed
 
@@ -66,12 +76,17 @@ that can silently let something through.
 - **The target specification is IT-Wallet 1.4.7 LTS** (released 2026-09-22), up from 1.4.6.
   The relying party flow requirements are the same in both, and so are the rule texts the
   comments quote as 1.4.6; in a relying party's own federation metadata, `organization_uri`
-  may now stand in for `homepage_uri`, which the library publishes and which stays valid. The breaking
-  changes of 1.4.7, in PAR (`typ`, `scope`) and in the federation entity type
+  may now stand in for `homepage_uri`, which the library publishes and which stays valid.
+  The breaking changes of 1.4.7, in PAR (`typ`, `scope`) and in the federation entity type
   `wallet_solution`, renamed `openid_wallet_provider`, are on the issuer and wallet provider
   side, which the library does not read. What 1.4.7 adds for a relying party, an Identity
   Matching section for the PID and the IT-Wallet ID, is the application's to do. The changes
   that reach the verifier are the tests ATT-004 and ATT-006, under Security.
+
+### Build
+
+- CI caches through setup-gradle's MIT-licensed `basic` provider: since v6 its default is a
+  proprietary component under Gradle's own terms of use.
 
 ### Dependencies
 

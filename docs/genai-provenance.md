@@ -539,3 +539,40 @@ both days; Fable 5 and Opus 4.8 were in use on 2026-08-30, under the entry above
   `compileKotlin` still resolve them. A full `./gradlew clean build` with the normal Gradle
   home: 564 tests, none failed.
 - **Funding status**: pre-existing.
+
+### 2026-10-16 — Cutting 0.5.0
+
+- **What**: the release pull request for `0.5.0`. The section of `CHANGELOG.md`: its title and
+  date, and an opening that says what the release carries — IT-Wallet 1.4.7 as the target, with
+  the signature algorithms and RSA key sizes it asks for (#53), trust marks in a subordinate
+  statement (#51), the demo's revocation check (#50) and the starter's Tomcat and Jackson
+  (#56) — and that the verifier refuses what `0.4.0` accepted; the `trust_marks` entry moved
+  from Fixed to the security section of what the trust evaluator now accepts; a Build entry for
+  the CI cache provider (#49); one entry reflowed, no word changed. The version in
+  `build.gradle.kts` and in `docs/releasing.md`'s verify command; the README's version, its
+  migration note from `0.4.0`, its status line and demo steps, which now say that the
+  conformance tool's 1.2.1 PID is refused (pagopa/wallet-conformance-test#238), and its
+  revocation paragraph; `SECURITY.md`, `docs/privacy-by-design.md` and
+  `docs/note-divergenze.md`, corrected after the re-read that `docs/releasing.md` step 2 asks
+  for. The publication follows `docs/releasing.md` and is recorded once done.
+- **Model**: Anthropic Claude Sonnet 5.5, as a sub-agent briefed and reviewed by Claude Opus
+  5.5. The re-read of the three documents against the code, whose findings the sub-agent
+  checked, was done by a Claude Opus 5.5 sub-agent.
+- **Assistance**: checking each finding of the re-read in the code, the specification text and
+  the upstream issue before writing it, then the edits to the documents, the changelog and the
+  version, and this entry. One proposed sentence did not hold as written and was reworded: the
+  PID is rejected `STATUS_CHECK_FAILED` without the hosts entry only once it passes the trust
+  check, which the tool's 1.2.1 PID does not.
+- **Human contribution**: the maintainer's decision to release `0.5.0` now, with the dependency
+  raise in its own pull request first.
+- **Verification**: every changed sentence of the README, `SECURITY.md` and
+  `docs/privacy-by-design.md` read against the code it describes: the demo's and the starter's
+  revocation wiring, the rule and the reason code for `authority_hints` in a subordinate
+  statement, the order of the checks in `SdJwtVcCredentialVerifier`. The changelog's opening
+  read against the source diff from `v0.4.0` to `main`: the only public declarations added are
+  marked `@InternalZilathApi`, and one `internal` function is gone; the production federation
+  documents the tests replay are signed ES256 under P-256 keys. The text of IT-Wallet's remote
+  flow is byte-identical at the tags 1.4.6 and 1.4.7; a word-level diff showing the changelog
+  changed only in the words intended; a full `./gradlew clean build` with the normal Gradle
+  home: 564 tests, none failed.
+- **Funding status**: pre-existing.
