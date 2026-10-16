@@ -1,0 +1,5 @@
+Model: Anthropic Claude Opus 5.5 (claude-opus-5-5), in Claude Code.
+Prompts (summary): reviewing the release branch before opening the pull request; the sub-agent that prepared it reported that the changelog entry on the demo's revocation check still said the tool's PID is rejected STATUS_CHECK_FAILED without the hosts entry, while with tool 1.2.1 the trust check rejects it first.
+Assistance: the changelog entry narrowed to a PID that passed the trust check, with the reason tool 1.2.1's PID does not (pagopa/wallet-conformance-test#238); in the README's 0.4.0 migration note, "takes them" made "takes these versions" so it does not read as the constraints.
+Human contribution: the maintainer's decision to release 0.5.0 now, with the dependency raise in its own pull request first.
+Verification: the order of checks as the sub-agent read it in the code (trust before status) and the README's demo steps, which already say so; documentation only, no build change.
