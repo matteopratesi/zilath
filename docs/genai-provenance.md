@@ -516,7 +516,7 @@ both days; Fable 5 and Opus 4.8 were in use on 2026-08-30, under the entry above
   `jackson-core` and `jackson-databind` to 3.1.7, over the 11.0.24 and 3.1.5 that Spring Boot
   4.1.1 manages; the two versions and five aliases in `gradle/libs.versions.toml`;
   `gradle/verification-metadata.xml`, regenerated; and the entry in `CHANGELOG.md` under
-  Security. The library modules and Spring Boot's version are untouched.
+  Dependencies. The library modules and Spring Boot's version are untouched.
 - **Model**: Anthropic Claude Sonnet 5.5, as a sub-agent briefed and reviewed by Claude Opus
   5.5.
 - **Assistance**: checking which Tomcat and Jackson artifacts the starter's and the demo's
