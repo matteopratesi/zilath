@@ -1,0 +1,5 @@
+Model: Anthropic Claude Opus 5.5 (claude-opus-5-5), in Claude Code.
+Prompts (summary): reviewing the sub-agent's pull request before opening it, the coordinating model found the changelog entry under the Security heading about what the verifier refuses, while 0.4.0 had already recorded the Tomcat advisories under Dependencies, with an analysis of their reach.
+Assistance: the entry moved under a Dependencies heading of the unreleased section and rewritten to point at the 0.4.0 entry (same three advisories, GHSA ids mapped to the CVE ids through OSV aliases), keeping "not analysed" for Jackson only; the provenance entry's reference to the heading.
+Human contribution: the maintainer's decision to raise the versions in a pull request of its own before 0.5.0.
+Verification: OSV aliases of GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6 and GHSA-h3x4-894j-xpx5 are CVE-2026-65905, CVE-2026-65182 and CVE-2026-68525, the three of the 0.4.0 entry; documentation only, no build change.
