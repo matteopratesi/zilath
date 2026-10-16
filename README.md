@@ -63,8 +63,8 @@ verify credentials with no framework, and no network I/O beyond the fetcher you 
 
 ```kotlin
 dependencies {
-    implementation("dev.zilath:verifier-spring-boot-starter:0.4.0")
-    implementation("dev.zilath:verifier-trust-itwallet:0.4.0")
+    implementation("dev.zilath:verifier-spring-boot-starter:0.5.0")
+    implementation("dev.zilath:verifier-trust-itwallet:0.5.0")
 }
 ```
 
@@ -74,6 +74,16 @@ Artifacts are signed with key [`392ABDC140E3041A`](https://keys.openpgp.org/sear
 versions, and the [changelog](CHANGELOG.md) calls out separately every change that alters
 what a verifier accepts or rejects — those are the ones that can quietly let something
 through.
+
+Coming from **0.4.0**: no API change, but less verifies. A signature is checked only under
+ES256, ES384, ES512, PS256, PS384 or PS512, and an RSA key only from 3072 bits, as IT-Wallet
+1.4.7 asks (tests ATT-004 and ATT-006). An issuer, a wallet, a status list or a federation
+that signs RS256, or with a 2048-bit RSA key, no longer verifies. A credential signed with
+an unlisted algorithm is `INVALID_ISSUER_SIGNATURE` or `INVALID_KEY_BINDING` even when its
+issuer is untrusted, where 0.4.0 said `UNTRUSTED_ISSUER`. The starter also declares Gradle
+constraints that raise Tomcat and Jackson past their advisories; an application built with
+Spring Boot's dependency management takes them from its own BOM, and has to raise them
+itself. The changelog's 0.5.0 section has the details.
 
 Coming from **0.3.0**: recompile — several constructors gained parameters with defaults,
 which keeps sources compiling but not binaries linking. An outcome is read with the
