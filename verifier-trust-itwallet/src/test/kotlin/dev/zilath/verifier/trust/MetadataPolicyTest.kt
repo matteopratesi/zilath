@@ -193,7 +193,7 @@ class MetadataPolicyTest {
 
     @Test
     fun `incompatible subset_of and superset_of operands fail at validation`() {
-        // The CodeRabbit counterexample: without the operand check, ["ES256","RS256"]
+        // The counterexample: without the operand check, ["ES256","RS256"]
         // with subset_of ["ES256"] and superset_of ["RS256"] would resolve to ["ES256"].
         assertThatExceptionOfType(TrustFailure::class.java)
             .isThrownBy {
