@@ -135,8 +135,7 @@ says `0.2.0` while the world downloads `0.3.0`, which is the same lie pointing t
 way. That window is too narrow for a review to fit in, and on `0.3.0` the merge landed
 while automated review was still running: **merging a pull request stops the review, the
 slot is spent, and the reading never happens.** What it would have caught that day was a
-wrong date in the changelog and in the provenance register — the register whose only
-guarantee is that it can be checked against `git log`.
+wrong date in the changelog.
 
 So the window is not the thing to optimise. Take the order that leaves room to think:
 

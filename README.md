@@ -313,15 +313,6 @@ particular the red lines the project will not cross. Contributions are covered b
 [Contributor License Agreement](CLA.md), accepted by signing off your commits
 (`git commit -s`).
 
-## How this was built
-
-This library was written with the assistance of a large language model, under human
-direction and review. Where that assistance was used, and what was decided rather than
-generated, is recorded in [docs/genai-provenance.md](docs/genai-provenance.md) — kept
-current as work happens, because it cannot be reconstructed afterwards. Since 2026-09-29 each
-commit made with that assistance also carries a git note under `refs/notes/genai`; the same
-file says how to read them.
-
 ## Security
 
 Found a vulnerability? **Do not open a public issue** — see [SECURITY.md](SECURITY.md) for
